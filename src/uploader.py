@@ -103,14 +103,14 @@ async def _upload_to_telegram(
     Final message: ✅ [filename] — [size]MB — Saved to Telegram
     """
     milestones_sent: set[int] = set()
-    last_progress_msg: Message | None = None
+    all_progress_msgs: list[Message] = []
 
     # Pre-send a 0% message
     progress_text = f"📤 Uploading **{filename}**\n⏳ 0%"
-    last_progress_msg = await client.send_message(chat_id, progress_text)
+    initial_msg = await client.send_message(chat_id, progress_text)
+    all_progress_msgs.append(initial_msg)
 
     async def progress_callback(current: int, total: int) -> None:
-        nonlocal last_progress_msg
         if total == 0:
             return
         pct = int((current / total) * 100)
@@ -126,9 +126,10 @@ async def _upload_to_telegram(
                 f"{bar} {milestone}%"
             )
             try:
-                last_progress_msg = await client.send_message(
+                msg = await client.send_message(
                     chat_id, progress_text
                 )
+                all_progress_msgs.append(msg)
             except Exception as e:
                 log.warning("Progress message failed at %d%%: %s", milestone, e)
 
@@ -176,6 +177,13 @@ async def _upload_to_telegram(
         chat_id,
         f"✅ **{filename}** — {size_mb}MB — Saved to Telegram"
     )
+
+    # Delete all progress messages on success
+    for msg in all_progress_msgs:
+        try:
+            await msg.delete()
+        except Exception as e:
+            log.warning("Failed to delete progress message: %s", e)
 
     log.info("Uploaded %s to Telegram (chat_id=%d)", filename, chat_id)
     return sent_msg

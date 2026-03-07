@@ -15,12 +15,10 @@ create_bot()       → pyrogram.Client  (configured, not started)
 register_handlers(app, on_fetch, on_upload) → None
 """
 
-import asyncio
 import os
 import json
 import logging
 import re
-import requests as http_requests
 from typing import Callable, Any
 
 from pyrogram import Client, filters
@@ -37,7 +35,6 @@ from pyrogram.types import (
 REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🔍 Check Recordings"), KeyboardButton("🔑 Reauth")],
-        [KeyboardButton("⛔ Cancel Workflow")],
     ],
     resize_keyboard=True,
 )
@@ -291,7 +288,6 @@ _rename_overrides: dict[int, dict[int, str]] = {}         # chat_id → {idx: ne
 _rename_pending: dict[int, int | None] = {}               # chat_id → idx awaiting rename
 _upload_cancelled: dict[int, bool] = {}                   # chat_id → cancel flag
 _checklist_msg_id: dict[int, int] = {}                    # chat_id → message id of checklist
-_workflow_active: dict[int, bool] = {}                    # chat_id → workflow running flag
 
 
 def register_handlers(
@@ -388,10 +384,6 @@ def register_handlers(
         if text == "🔑 Reauth":
             await message.reply(REAUTH_MESSAGE)
             log.info("Reply-keyboard /reauth triggered.")
-            return
-
-        if text == "⛔ Cancel Workflow":
-            await _handle_cancel_workflow(client, message)
             return
 
         # ── Check if there's a rename pending ────────────────────
@@ -591,9 +583,8 @@ def register_handlers(
             await cb.answer("Selection invalid — try /check again.", show_alert=True)
             return
 
-        # Reset cancel flag and mark workflow as active
+        # Reset cancel flag
         _upload_cancelled[chat_id] = False
-        _workflow_active[chat_id] = True
 
         # Confirm selection
         names = "\n".join(f"  📥 {_clean_filename(r['name'])}" for r in selected_recs)
@@ -609,7 +600,6 @@ def register_handlers(
             log.error("Upload failed: %s", e)
         finally:
             # Clean up state
-            _workflow_active.pop(chat_id, None)
             _pending_results.pop(chat_id, None)
             _pending_selections.pop(chat_id, None)
             _flat_recordings.pop(chat_id, None)
@@ -619,77 +609,6 @@ def register_handlers(
             _upload_cancelled.pop(chat_id, None)
 
         await cb.answer()
-
-    # ── Cancel Workflow handler (reply keyboard) ─────────────────
-    async def _handle_cancel_workflow(client: Client, message: Message) -> None:
-        """Handle ⛔ Cancel Workflow reply-keyboard tap."""
-        chat_id = message.chat.id
-
-        # Check if a workflow is active
-        if not _workflow_active.get(chat_id, False):
-            info_msg = await message.reply("ℹ️ No active workflow to cancel.")
-            # Auto-delete after 4 seconds
-            await asyncio.sleep(4)
-            try:
-                await info_msg.delete()
-                await message.delete()
-            except Exception:
-                pass
-            return
-
-        # Mark cancelled — upload loop checks this flag
-        _upload_cancelled[chat_id] = True
-        _workflow_active[chat_id] = False
-
-        # Try to cancel GitHub Actions run
-        gh_pat = os.environ.get("GH_PAT", "")
-        gh_repo = os.environ.get("GITHUB_REPOSITORY", "")
-
-        api_ok = False
-        if gh_pat and gh_repo:
-            try:
-                # Try to find and cancel the latest in-progress run
-                headers = {
-                    "Authorization": f"Bearer {gh_pat}",
-                    "Accept": "application/vnd.github+json",
-                }
-                runs_url = f"https://api.github.com/repos/{gh_repo}/actions/runs?status=in_progress&per_page=1"
-                resp = http_requests.get(runs_url, headers=headers, timeout=10)
-                if resp.status_code == 200:
-                    runs = resp.json().get("workflow_runs", [])
-                    if runs:
-                        run_id = runs[0]["id"]
-                        cancel_url = f"https://api.github.com/repos/{gh_repo}/actions/runs/{run_id}/cancel"
-                        cancel_resp = http_requests.post(cancel_url, headers=headers, timeout=10)
-                        if cancel_resp.status_code in (202, 204):
-                            await message.reply(
-                                f"⛔ **Workflow cancelled.**\n"
-                                f"Run #{run_id} has been stopped.\n"
-                                f"Any uploads in progress have been halted."
-                            )
-                            api_ok = True
-                            log.info("Cancelled GitHub Actions run #%d", run_id)
-            except Exception as exc:
-                log.warning("GitHub Actions cancel API failed: %s", exc)
-
-        if not api_ok:
-            await message.reply(
-                "⚠️ **Local upload stopped.**\n"
-                "Could not reach GitHub API — cancel manually:\n"
-                f"github.com/{gh_repo}/actions" if gh_repo
-                else "⚠️ **Local upload stopped.**\n"
-                     "GH_PAT / GITHUB_REPOSITORY not configured."
-            )
-
-        # Clean up all state
-        _pending_results.pop(chat_id, None)
-        _pending_selections.pop(chat_id, None)
-        _flat_recordings.pop(chat_id, None)
-        _rename_overrides.pop(chat_id, None)
-        _rename_pending.pop(chat_id, None)
-        _checklist_msg_id.pop(chat_id, None)
-
-        log.info("Workflow cancelled by user (chat_id=%d)", chat_id)
 
 
 def _store_results(chat_id: int, results: dict[str, list[dict]]) -> None:
