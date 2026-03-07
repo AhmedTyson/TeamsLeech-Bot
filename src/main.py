@@ -32,10 +32,10 @@ from token_manager import (
     TokenManagerError,
 )
 from fetcher import fetch_recordings, save_last_run, load_subjects
-from bot import create_bot, register_handlers
+from bot import create_bot, register_handlers, send_startup_warnings
 from uploader import upload_recordings
 
-# ───────────────────────── logging ────────────────────────────
+# ───────────────────────── logging ──────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,12 +44,12 @@ logging.basicConfig(
 )
 log = logging.getLogger("main")
 
-# ───────────────────────── config ─────────────────────────────
+# ───────────────────────── config ─────────────────────────────────
 
 SUBJECTS_PATH = os.environ.get("SUBJECTS_PATH", "subjects_config.json")
 STATE_DIR = os.environ.get("STATE_DIR", ".state")
 
-# ───────────────────────── env validation ─────────────────────
+# ───────────────────────── env validation ───────────────────────
 
 REQUIRED_ENV = [
     "TEAMS_REFRESH_TOKEN",
@@ -72,7 +72,7 @@ def _validate_env() -> dict[str, str]:
     log.info("All %d required env vars present.", len(REQUIRED_ENV))
     return env
 
-# ───────────────────────── auth ───────────────────────────────
+# ───────────────────────── auth ───────────────────────────────────
 
 def _authenticate(env: dict[str, str]) -> str:
     """Exchange refresh_token for access_token and rotate the secret.
@@ -107,7 +107,7 @@ def _authenticate(env: dict[str, str]) -> str:
 
     return access_token
 
-# ───────────────────────── callback factories ─────────────────
+# ───────────────────────── callback factories ─────────────────────
 
 def _make_on_fetch(access_token: str):
     """Create the on_fetch callback for bot.register_handlers.
@@ -144,7 +144,7 @@ def _make_on_upload(access_token: str, tg_client, chat_id: int):
         )
     return on_upload
 
-# ───────────────────────── main ───────────────────────────────
+# ───────────────────────── main ───────────────────────────────────
 
 def main() -> None:
     """Wire all modules and start the bot."""
@@ -202,7 +202,15 @@ def main() -> None:
     log.info("Step 3/3: Starting bot polling...")
     log.info("Bot is live. Send /check in Telegram.")
     log.info("Press Ctrl+C to stop.")
-    app.run()
+
+    async def _run():
+        await app.start()
+        await send_startup_warnings(app, chat_id)
+        from pyrogram import idle
+        await idle()
+        await app.stop()
+
+    app.run(_run())
 
 
 if __name__ == "__main__":

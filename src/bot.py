@@ -13,6 +13,7 @@ Public API
 ----------
 create_bot()       → pyrogram.Client  (configured, not started)
 register_handlers(app, on_fetch, on_upload) → None
+send_startup_warnings(client, chat_id) → None
 """
 
 import os
@@ -42,7 +43,7 @@ REPLY_KEYBOARD = ReplyKeyboardMarkup(
 
 log = logging.getLogger("bot")
 
-# ───────────────────────── constants ──────────────────────────────
+# ───────────────────────── constants ──────────────────────────
 
 DIVIDER = "─────────────────────────────"
 
@@ -628,25 +629,6 @@ def register_handlers(
 
         await cb.answer()
 
-    # ── Startup hook — send warnings ─────────────────────────────
-    @app.on_connect()
-    async def _on_startup(client: Client) -> None:
-        """Send one-time startup warnings to the owner."""
-        if not owner_id:
-            return
-        gh_pat = os.environ.get("GH_PAT", "")
-        if not gh_pat:
-            try:
-                await client.send_message(
-                    owner_id,
-                    "⚠️ **GH_PAT secret is not set.**\n"
-                    "refresh_token will NOT auto-rotate.\n"
-                    "Update GH_PAT in GitHub Secrets to enable auto-rotation.",
-                )
-                log.warning("GH_PAT not set — startup warning sent to Telegram.")
-            except Exception as e:
-                log.warning("Failed to send GH_PAT warning: %s", e)
-
 def _store_results(chat_id: int, results: dict[str, list[dict]]) -> None:
     """Store fetch results and build flat recording list for selection."""
     _pending_results[chat_id] = results
@@ -659,3 +641,24 @@ def _store_results(chat_id: int, results: dict[str, list[dict]]) -> None:
     for recs in results.values():
         flat.extend(recs)
     _flat_recordings[chat_id] = flat
+
+
+# ───────────────────────── startup warnings ─────────────────────
+
+async def send_startup_warnings(client: Client, chat_id: int) -> None:
+    """Send one-time startup warnings to the owner.
+
+    Call this from main.py after app.start().
+    """
+    gh_pat = os.environ.get("GH_PAT", "")
+    if not gh_pat:
+        try:
+            await client.send_message(
+                chat_id,
+                "⚠️ **GH_PAT secret is not set.**\n"
+                "refresh_token will NOT auto-rotate.\n"
+                "Update GH_PAT in GitHub Secrets to enable auto-rotation.",
+            )
+            log.warning("GH_PAT not set — startup warning sent to Telegram.")
+        except Exception as e:
+            log.warning("Failed to send GH_PAT warning: %s", e)
