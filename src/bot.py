@@ -27,11 +27,21 @@ from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
+
+# Persistent reply keyboard shown at the bottom of every message
+REPLY_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("🔍 Check Recordings"), KeyboardButton("🔑 Reauth")],
+    ],
+    resize_keyboard=True,
 )
 
 log = logging.getLogger("bot")
 
-# ───────────────────────── config ─────────────────────────────
+# ───────────────────────── config ─────────────────────────────────
 
 def _load_subjects(path: str = "subjects_config.json") -> list[dict]:
     """Load subjects from JSON config (shared with fetcher)."""
@@ -39,7 +49,7 @@ def _load_subjects(path: str = "subjects_config.json") -> list[dict]:
         data = json.load(f)
     return data.get("subjects", [])
 
-# ───────────────────────── bot factory ────────────────────────
+# ───────────────────────── bot factory ────────────────────────────
 
 def create_bot(
     session_string: str | None = None,
@@ -79,7 +89,7 @@ def create_bot(
     log.info("Pyrogram bot client created.")
     return app
 
-# ───────────────────────── UI builders ────────────────────────
+# ───────────────────────── UI builders ────────────────────────────
 
 def _build_subject_keyboard(subjects: list[dict]) -> InlineKeyboardMarkup:
     """Build the /check subject selection keyboard.
@@ -116,7 +126,12 @@ def _build_checklist_text(
     results: dict[str, list[dict]],
     rename_overrides: dict[int, str] | None = None,
 ) -> str:
-    """Build the checklist message text (no keyboard)."""
+    """Build the checklist message text (no keyboard).
+
+    If the full listing exceeds Telegram's 4096-char limit, falls back
+    to a compact format showing only subject counts. The keyboard
+    buttons still carry all recording names.
+    """
     total = sum(len(recs) for recs in results.values())
 
     if total == 0:
@@ -141,7 +156,20 @@ def _build_checklist_text(
             )
             idx += 1
 
-    return "**New recordings found:**\n" + "\n".join(lines)
+    full_text = "**New recordings found:**\n" + "\n".join(lines)
+
+    # Telegram message limit is 4096 chars — fall back to compact view
+    if len(full_text) > 4000:
+        compact: list[str] = [f"**{total} new recording(s) found:**"]
+        for subj_name, recs in results.items():
+            if recs:
+                compact.append(f"📚 **{subj_name}** — {len(recs)} file(s)")
+            else:
+                compact.append(f"📚 **{subj_name}** — ✅")
+        compact.append("\n_Use the buttons below to select & upload._")
+        return "\n".join(compact)
+
+    return full_text
 
 
 def _build_checklist_keyboard(
@@ -219,7 +247,7 @@ Your Microsoft refresh token has expired. Follow these steps to recover:
 
 _This takes less than 5 minutes._"""
 
-# ───────────────────────── handler registration ─────────────────
+# ───────────────────────── handler registration ───────────────────
 
 # In-memory state for recording selections per user
 _pending_results: dict[int, dict[str, list[dict]]] = {}  # chat_id → results
@@ -264,7 +292,7 @@ def register_handlers(
         )
         return chat_id == owner_id
 
-    # ── /check command ───────────────────────────────────────
+    # ── /check command ───────────────────────────────────────────
     @app.on_message(filters.command("check") & filters.private)
     async def handle_check(client: Client, message: Message) -> None:
         if not _is_owner(message):
@@ -278,7 +306,7 @@ def register_handlers(
         )
         log.info("/check command received — subject keyboard sent.")
 
-    # ── /reauth command ──────────────────────────────────────
+    # ── /reauth command ──────────────────────────────────────────
     @app.on_message(filters.command("reauth") & filters.private)
     async def handle_reauth(client: Client, message: Message) -> None:
         if not _is_owner(message):
@@ -287,7 +315,7 @@ def register_handlers(
         await message.reply(REAUTH_MESSAGE)
         log.info("/reauth command received — recovery guide sent.")
 
-    # ── /start command ───────────────────────────────────────
+    # ── /start command ───────────────────────────────────────────
     @app.on_message(filters.command("start") & filters.private)
     async def handle_start(client: Client, message: Message) -> None:
         if not _is_owner(message):
@@ -295,8 +323,11 @@ def register_handlers(
 
         await message.reply(
             "📡 **TeamsLeech Bot**\n\n"
-            "Send /check to scan for new lecture recordings.\n"
-            "Send /reauth if your session has expired."
+            "Available commands:\n"
+            "/check   — 🔍 Scan for new lecture recordings\n"
+            "/reauth  — 🔑 Renew your session if expired\n\n"
+            "Tap /check to get started.",
+            reply_markup=REPLY_KEYBOARD,
         )
 
     # ── Text message — match subject name OR handle rename ───────
@@ -307,6 +338,22 @@ def register_handlers(
 
         chat_id = message.chat.id
         text = message.text.strip()
+
+        # ── Reply keyboard button taps ───────────────────────────
+        if text == "🔍 Check Recordings":
+            subjects = _load_subjects()
+            keyboard = _build_subject_keyboard(subjects)
+            await message.reply(
+                "**What do you want to check?**",
+                reply_markup=keyboard,
+            )
+            log.info("Reply-keyboard /check triggered.")
+            return
+
+        if text == "🔑 Reauth":
+            await message.reply(REAUTH_MESSAGE)
+            log.info("Reply-keyboard /reauth triggered.")
+            return
 
         # ── Check if there's a rename pending ────────────────────
         if chat_id in _rename_pending and _rename_pending[chat_id] is not None:
@@ -382,7 +429,7 @@ def register_handlers(
         if keyboard:
             _checklist_msg_id[chat_id] = sent.id
 
-    # ── Subject button callback ──────────────────────────────
+    # ── Subject button callback ──────────────────────────────────
     @app.on_callback_query(filters.regex(r"^subj:"))
     async def handle_subject_select(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
@@ -412,7 +459,7 @@ def register_handlers(
         except Exception:
             pass  # callback query expired during long fetch — harmless
 
-    # ── Checkbox toggle callback ─────────────────────────────
+    # ── Checkbox toggle callback ─────────────────────────────────
     @app.on_callback_query(filters.regex(r"^sel:"))
     async def handle_select_toggle(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
@@ -438,7 +485,7 @@ def register_handlers(
         await cb.message.edit_reply_markup(reply_markup=keyboard)
         await cb.answer()
 
-    # ── Rename button callback ───────────────────────────────
+    # ── Rename button callback ───────────────────────────────────
     @app.on_callback_query(filters.regex(r"^ren:"))
     async def handle_rename(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
@@ -468,7 +515,7 @@ def register_handlers(
         )
         await cb.answer()
 
-    # ── Cancel button callback ───────────────────────────────
+    # ── Cancel button callback ───────────────────────────────────
     @app.on_callback_query(filters.regex(r"^cancel:op"))
     async def handle_cancel(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
@@ -487,6 +534,10 @@ def register_handlers(
 
         await cb.message.reply("⏹ Operation cancelled.")
 
+        # Try to cancel GitHub Actions run if one is tracked
+        gh_pat = os.environ.get("GH_PAT", "")
+        gh_repo = os.environ.get("GITHUB_REPOSITORY", "")
+
         # Clean up state
         _pending_results.pop(chat_id, None)
         _pending_selections.pop(chat_id, None)
@@ -498,7 +549,7 @@ def register_handlers(
         log.info("Operation cancelled by user (chat_id=%d)", chat_id)
         await cb.answer()
 
-    # ── Upload confirm callback ──────────────────────────────
+    # ── Upload confirm callback ──────────────────────────────────
     @app.on_callback_query(filters.regex(r"^upload:confirm"))
     async def handle_upload_confirm(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
