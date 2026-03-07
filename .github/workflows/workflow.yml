@@ -1,1 +1,79 @@
-# Phase 6 — GitHub Actions workflow — not built yet
+# TeamsLeech Bot — GitHub Actions Workflow
+#
+# Trigger: Manual only (workflow_dispatch from GitHub UI)
+# Runner:  ubuntu-latest (free tier)
+# Purpose: Run main.py → authenticate → fetch → bot → upload
+#
+# State persistence: The .state/ directory (per-subject last_run timestamps)
+# is saved/restored via GitHub Actions artifacts between runs.
+
+name: TeamsLeech Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode (normal = full pipeline, reauth = bot only)'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - normal
+          - reauth
+
+jobs:
+  run:
+    name: Check & Upload Recordings
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      TEAMS_REFRESH_TOKEN: ${{ secrets.TEAMS_REFRESH_TOKEN }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+    steps:
+      # ── 1. Checkout code ────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ── 3. Install dependencies ─────────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 4. Restore .state/ from previous run ────────────────────
+      - name: Restore state (last_run timestamps)
+        uses: actions/download-artifact@v4
+        with:
+          name: teamsleech-state
+          path: .state/
+        continue-on-error: true  # first run has no artifact yet
+
+      # ── 5. Run the bot ────────────────────────────────────────
+      - name: Run TeamsLeech Bot
+        run: python src/main.py
+        timeout-minutes: 25
+
+      # ── 6. Save .state/ for next run ──────────────────────────
+      - name: Save state (last_run timestamps)
+        if: always()  # save even on failure so partial progress isn't lost
+        uses: actions/upload-artifact@v4
+        with:
+          name: teamsleech-state
+          path: .state/
+          retention-days: 90
+          if-no-files-found: ignore
