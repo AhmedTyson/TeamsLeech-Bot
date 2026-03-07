@@ -3,7 +3,7 @@ Phase 3 — bot
 
 Telegram bot interface for TeamsLeech using Pyrogram.
 Handles /check (subject buttons), text commands, /reauth recovery,
-and multi-select recording checkboxes.
+multi-select recording checkboxes, rename, and cancel.
 
 This module does NOT call fetcher.py or uploader.py directly.
 It exposes handler functions that the orchestrator (main.py, Phase 5)
@@ -18,6 +18,7 @@ register_handlers(app, on_fetch, on_upload) → None
 import os
 import json
 import logging
+import requests as http_requests
 from typing import Callable, Any
 
 from pyrogram import Client, filters
@@ -111,22 +112,19 @@ def _build_subject_keyboard(subjects: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
-def _build_recording_checklist(
+def _build_checklist_text(
     results: dict[str, list[dict]],
-) -> tuple[str, InlineKeyboardMarkup | None]:
-    """Build the recording selection message and checkbox keyboard.
-
-    Returns (message_text, keyboard_or_None).
-    """
+    rename_overrides: dict[int, str] | None = None,
+) -> str:
+    """Build the checklist message text (no keyboard)."""
     total = sum(len(recs) for recs in results.values())
 
     if total == 0:
-        # No recordings found
         subjects_checked = ", ".join(results.keys())
-        return f"No new recordings found for {subjects_checked} ✅", None
+        return f"No new recordings found for {subjects_checked} ✅"
 
+    overrides = rename_overrides or {}
     lines: list[str] = []
-    buttons: list[list[InlineKeyboardButton]] = []
     idx = 0
 
     for subj_name, recs in results.items():
@@ -136,24 +134,75 @@ def _build_recording_checklist(
 
         lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s):")
         for rec in recs:
+            display_name = overrides.get(idx, rec["name"])
             lines.append(
-                f"  🎥 `{rec['name']}` — {rec['size_mb']}MB — {rec['created']}"
+                f"  🎥 `{display_name}` — {rec['size_mb']}MB — {rec['created']}\n"
+                f"     Team: {rec['team_name']}"
             )
-            # Each recording gets a checkbox button
-            buttons.append([InlineKeyboardButton(
-                text=f"☐ {rec['name'][:40]}",
-                callback_data=f"sel:{idx}",
-            )])
             idx += 1
 
-    # Upload Selected button
+    return "**New recordings found:**\n" + "\n".join(lines)
+
+
+def _build_checklist_keyboard(
+    flat: list[dict],
+    selections: set[int],
+    rename_overrides: dict[int, str] | None = None,
+) -> InlineKeyboardMarkup:
+    """Build the checkbox + rename + upload + cancel keyboard."""
+    overrides = rename_overrides or {}
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for i, rec in enumerate(flat):
+        display_name = overrides.get(i, rec["name"])
+        mark = "☑" if i in selections else "☐"
+        # Row: checkbox button + rename button
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{mark} {display_name[:40]}",
+                callback_data=f"sel:{i}",
+            ),
+            InlineKeyboardButton(
+                text="✏️",
+                callback_data=f"ren:{i}",
+            ),
+        ])
+
+    # Upload Selected button with count
     buttons.append([InlineKeyboardButton(
-        text="📤 Upload Selected",
+        text=f"📤 Upload Selected ({len(selections)})",
         callback_data="upload:confirm",
     )])
+    # Cancel button
+    buttons.append([InlineKeyboardButton(
+        text="❌ Cancel",
+        callback_data="cancel:op",
+    )])
 
-    text = "**New recordings found:**\n" + "\n".join(lines)
-    return text, InlineKeyboardMarkup(buttons)
+    return InlineKeyboardMarkup(buttons)
+
+
+def _build_recording_checklist(
+    results: dict[str, list[dict]],
+) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Build the recording selection message and checkbox keyboard.
+
+    Returns (message_text, keyboard_or_None).
+    """
+    total = sum(len(recs) for recs in results.values())
+    if total == 0:
+        subjects_checked = ", ".join(results.keys())
+        return f"No new recordings found for {subjects_checked} ✅", None
+
+    text = _build_checklist_text(results)
+
+    # Build flat list for keyboard
+    flat: list[dict] = []
+    for recs in results.values():
+        flat.extend(recs)
+
+    keyboard = _build_checklist_keyboard(flat, set())
+    return text, keyboard
 
 
 REAUTH_MESSAGE = """⚠️ **Session Expired**
@@ -170,12 +219,16 @@ Your Microsoft refresh token has expired. Follow these steps to recover:
 
 _This takes less than 5 minutes._"""
 
-# ───────────────────────── handler registration ───────────────
+# ───────────────────────── handler registration ─────────────────
 
 # In-memory state for recording selections per user
 _pending_results: dict[int, dict[str, list[dict]]] = {}  # chat_id → results
 _pending_selections: dict[int, set[int]] = {}             # chat_id → selected indices
 _flat_recordings: dict[int, list[dict]] = {}              # chat_id → flat list
+_rename_overrides: dict[int, dict[int, str]] = {}         # chat_id → {idx: new_name}
+_rename_pending: dict[int, int | None] = {}               # chat_id → idx awaiting rename
+_upload_cancelled: dict[int, bool] = {}                   # chat_id → cancel flag
+_checklist_msg_id: dict[int, int] = {}                    # chat_id → message id of checklist
 
 
 def register_handlers(
@@ -211,7 +264,7 @@ def register_handlers(
         )
         return chat_id == owner_id
 
-    # ── /check command ───────────────────────────────────────────
+    # ── /check command ───────────────────────────────────────
     @app.on_message(filters.command("check") & filters.private)
     async def handle_check(client: Client, message: Message) -> None:
         if not _is_owner(message):
@@ -225,7 +278,7 @@ def register_handlers(
         )
         log.info("/check command received — subject keyboard sent.")
 
-    # ── /reauth command ──────────────────────────────────────────
+    # ── /reauth command ──────────────────────────────────────
     @app.on_message(filters.command("reauth") & filters.private)
     async def handle_reauth(client: Client, message: Message) -> None:
         if not _is_owner(message):
@@ -234,7 +287,7 @@ def register_handlers(
         await message.reply(REAUTH_MESSAGE)
         log.info("/reauth command received — recovery guide sent.")
 
-    # ── /start command ───────────────────────────────────────────
+    # ── /start command ───────────────────────────────────────
     @app.on_message(filters.command("start") & filters.private)
     async def handle_start(client: Client, message: Message) -> None:
         if not _is_owner(message):
@@ -246,16 +299,56 @@ def register_handlers(
             "Send /reauth if your session has expired."
         )
 
-    # ── Text message — match subject name ────────────────────────
+    # ── Text message — match subject name OR handle rename ───────
     @app.on_message(filters.text & filters.private & ~filters.command(["check", "reauth", "start"]))
     async def handle_text(client: Client, message: Message) -> None:
         if not _is_owner(message):
             return
 
+        chat_id = message.chat.id
         text = message.text.strip()
-        subjects = _load_subjects()
 
-        # Try to match text to a subject name or short name
+        # ── Check if there's a rename pending ────────────────────
+        if chat_id in _rename_pending and _rename_pending[chat_id] is not None:
+            idx = _rename_pending[chat_id]
+            _rename_pending[chat_id] = None  # clear pending
+
+            # Add .mp4 if not present
+            new_name = text.strip()
+            if not new_name.lower().endswith(".mp4"):
+                new_name += ".mp4"
+
+            # Store the rename override
+            if chat_id not in _rename_overrides:
+                _rename_overrides[chat_id] = {}
+            _rename_overrides[chat_id][idx] = new_name
+
+            await message.reply(f"✅ Renamed to: **{new_name}**")
+
+            # Update the checklist message with the new name
+            results = _pending_results.get(chat_id)
+            flat = _flat_recordings.get(chat_id, [])
+            selections = _pending_selections.get(chat_id, set())
+            overrides = _rename_overrides.get(chat_id, {})
+
+            if results and flat and chat_id in _checklist_msg_id:
+                try:
+                    checklist_text = _build_checklist_text(results, overrides)
+                    keyboard = _build_checklist_keyboard(flat, selections, overrides)
+                    await client.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=_checklist_msg_id[chat_id],
+                        text=checklist_text,
+                        reply_markup=keyboard,
+                    )
+                except Exception as e:
+                    log.warning("Failed to update checklist after rename: %s", e)
+
+            log.info("Renamed recording idx=%d to '%s'", idx, new_name)
+            return
+
+        # ── Normal subject matching ──────────────────────────────
+        subjects = _load_subjects()
         matched_subject = None
         text_lower = text.lower()
         for subj in subjects:
@@ -283,12 +376,13 @@ def register_handlers(
             log.error("Fetch failed for '%s': %s", matched_subject, e)
             return
 
-        chat_id = message.chat.id
         text_reply, keyboard = _build_recording_checklist(results)
         _store_results(chat_id, results)
-        await message.reply(text_reply, reply_markup=keyboard)
+        sent = await message.reply(text_reply, reply_markup=keyboard)
+        if keyboard:
+            _checklist_msg_id[chat_id] = sent.id
 
-    # ── Subject button callback ──────────────────────────────────
+    # ── Subject button callback ──────────────────────────────
     @app.on_callback_query(filters.regex(r"^subj:"))
     async def handle_subject_select(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
@@ -311,9 +405,14 @@ def register_handlers(
         text, keyboard = _build_recording_checklist(results)
         _store_results(chat_id, results)
         await cb.message.edit_text(text, reply_markup=keyboard)
-        await cb.answer()
+        if keyboard:
+            _checklist_msg_id[chat_id] = cb.message.id
+        try:
+            await cb.answer()
+        except Exception:
+            pass  # callback query expired during long fetch — harmless
 
-    # ── Checkbox toggle callback ─────────────────────────────────
+    # ── Checkbox toggle callback ─────────────────────────────
     @app.on_callback_query(filters.regex(r"^sel:"))
     async def handle_select_toggle(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
@@ -333,24 +432,73 @@ def register_handlers(
 
         # Rebuild keyboard with updated check/uncheck marks
         flat = _flat_recordings.get(chat_id, [])
-        buttons: list[list[InlineKeyboardButton]] = []
-        for i, rec in enumerate(flat):
-            mark = "☑" if i in selections else "☐"
-            buttons.append([InlineKeyboardButton(
-                text=f"{mark} {rec['name'][:40]}",
-                callback_data=f"sel:{i}",
-            )])
-        buttons.append([InlineKeyboardButton(
-            text=f"📤 Upload Selected ({len(selections)})",
-            callback_data="upload:confirm",
-        )])
+        overrides = _rename_overrides.get(chat_id, {})
+        keyboard = _build_checklist_keyboard(flat, selections, overrides)
 
-        await cb.message.edit_reply_markup(
-            reply_markup=InlineKeyboardMarkup(buttons)
+        await cb.message.edit_reply_markup(reply_markup=keyboard)
+        await cb.answer()
+
+    # ── Rename button callback ───────────────────────────────
+    @app.on_callback_query(filters.regex(r"^ren:"))
+    async def handle_rename(client: Client, cb: CallbackQuery) -> None:
+        if not _is_owner(cb):
+            return
+
+        chat_id = cb.message.chat.id
+        idx = int(cb.data.split(":", 1)[1])
+        flat = _flat_recordings.get(chat_id, [])
+
+        if idx >= len(flat):
+            await cb.answer("Invalid recording!", show_alert=True)
+            return
+
+        # Cancel previous rename if active
+        if chat_id in _rename_pending and _rename_pending[chat_id] is not None:
+            await cb.message.reply("❌ Rename cancelled.")
+
+        # Set new rename pending
+        _rename_pending[chat_id] = idx
+        overrides = _rename_overrides.get(chat_id, {})
+        current_name = overrides.get(idx, flat[idx]["name"])
+
+        await cb.message.reply(
+            f"✏️ Send the new name for:\n"
+            f"**{current_name}**\n"
+            f"_(type without extension — .mp4 will be added automatically)_"
         )
         await cb.answer()
 
-    # ── Upload confirm callback ──────────────────────────────────
+    # ── Cancel button callback ───────────────────────────────
+    @app.on_callback_query(filters.regex(r"^cancel:op"))
+    async def handle_cancel(client: Client, cb: CallbackQuery) -> None:
+        if not _is_owner(cb):
+            return
+
+        chat_id = cb.message.chat.id
+
+        # Set cancel flag (checked by upload loop if mid-upload)
+        _upload_cancelled[chat_id] = True
+
+        # Dismiss checklist keyboard
+        try:
+            await cb.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        await cb.message.reply("⏹ Operation cancelled.")
+
+        # Clean up state
+        _pending_results.pop(chat_id, None)
+        _pending_selections.pop(chat_id, None)
+        _flat_recordings.pop(chat_id, None)
+        _rename_overrides.pop(chat_id, None)
+        _rename_pending.pop(chat_id, None)
+        _checklist_msg_id.pop(chat_id, None)
+
+        log.info("Operation cancelled by user (chat_id=%d)", chat_id)
+        await cb.answer()
+
+    # ── Upload confirm callback ──────────────────────────────
     @app.on_callback_query(filters.regex(r"^upload:confirm"))
     async def handle_upload_confirm(client: Client, cb: CallbackQuery) -> None:
         if not _is_owner(cb):
@@ -359,16 +507,27 @@ def register_handlers(
         chat_id = cb.message.chat.id
         selections = _pending_selections.get(chat_id, set())
         flat = _flat_recordings.get(chat_id, [])
+        overrides = _rename_overrides.get(chat_id, {})
 
         if not selections:
-            await cb.answer("No recordings selected!", show_alert=True)
+            await cb.answer("⚠️ No recordings selected.", show_alert=True)
             return
 
-        selected_recs = [flat[i] for i in sorted(selections) if i < len(flat)]
+        selected_recs = []
+        for i in sorted(selections):
+            if i < len(flat):
+                rec = flat[i].copy()
+                # Apply rename override if present
+                if i in overrides:
+                    rec["name"] = overrides[i]
+                selected_recs.append(rec)
 
         if not selected_recs:
             await cb.answer("Selection invalid — try /check again.", show_alert=True)
             return
+
+        # Reset cancel flag
+        _upload_cancelled[chat_id] = False
 
         # Confirm selection
         names = "\n".join(f"  📥 {r['name']}" for r in selected_recs)
@@ -388,6 +547,10 @@ def register_handlers(
         _pending_results.pop(chat_id, None)
         _pending_selections.pop(chat_id, None)
         _flat_recordings.pop(chat_id, None)
+        _rename_overrides.pop(chat_id, None)
+        _rename_pending.pop(chat_id, None)
+        _checklist_msg_id.pop(chat_id, None)
+        _upload_cancelled.pop(chat_id, None)
         await cb.answer()
 
 
@@ -395,6 +558,9 @@ def _store_results(chat_id: int, results: dict[str, list[dict]]) -> None:
     """Store fetch results and build flat recording list for selection."""
     _pending_results[chat_id] = results
     _pending_selections[chat_id] = set()
+    _rename_overrides[chat_id] = {}
+    _rename_pending[chat_id] = None
+    _upload_cancelled[chat_id] = False
 
     flat: list[dict] = []
     for recs in results.values():
