@@ -3,7 +3,7 @@ Phase 3 — bot
 
 Telegram bot interface for TeamsLeech using Pyrogram.
 Handles /check (subject buttons), text commands, /reauth recovery,
-multi-select recording checkboxes, rename, and cancel.
+multi-select recording checkboxes, rename, select all, and cancel workflow.
 
 This module does NOT call fetcher.py or uploader.py directly.
 It exposes handler functions that the orchestrator (main.py, Phase 5)
@@ -15,9 +15,11 @@ create_bot()       → pyrogram.Client  (configured, not started)
 register_handlers(app, on_fetch, on_upload) → None
 """
 
+import asyncio
 import os
 import json
 import logging
+import re
 import requests as http_requests
 from typing import Callable, Any
 
@@ -35,11 +37,31 @@ from pyrogram.types import (
 REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🔍 Check Recordings"), KeyboardButton("🔑 Reauth")],
+        [KeyboardButton("⛔ Cancel Workflow")],
     ],
     resize_keyboard=True,
 )
 
 log = logging.getLogger("bot")
+
+# ───────────────────────── constants ──────────────────────────
+
+DIVIDER = "─────────────────────────────"
+
+# Emoji number labels: 1️⃣ through 🔟, then fallback to plain digits
+_NUM_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+def _num_label(n: int) -> str:
+    """Return emoji number for 1-based index n."""
+    if 1 <= n <= 10:
+        return _NUM_EMOJI[n - 1]
+    return f"**{n}.**"
+
+
+def _clean_filename(name: str) -> str:
+    """Remove redundant '-Meeting Recording' suffix from filename."""
+    return re.sub(r"-Meeting Recording", "", name)
+
 
 # ───────────────────────── config ─────────────────────────────────
 
@@ -126,11 +148,10 @@ def _build_checklist_text(
     results: dict[str, list[dict]],
     rename_overrides: dict[int, str] | None = None,
 ) -> str:
-    """Build the checklist message text (no keyboard).
+    """Build the checklist message text with numbered, separated recordings.
 
     If the full listing exceeds Telegram's 4096-char limit, falls back
-    to a compact format showing only subject counts. The keyboard
-    buttons still carry all recording names.
+    to a compact format showing only subject counts.
     """
     total = sum(len(recs) for recs in results.values())
 
@@ -147,13 +168,19 @@ def _build_checklist_text(
             lines.append(f"\n📚 **{subj_name}** — No new recordings ✅")
             continue
 
-        lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s):")
-        for rec in recs:
-            display_name = overrides.get(idx, rec["name"])
+        lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
+        lines.append(DIVIDER)
+
+        for rec_i, rec in enumerate(recs):
+            display_name = _clean_filename(overrides.get(idx, rec["name"]))
+            num = _num_label(rec_i + 1)
+
             lines.append(
-                f"  🎥 `{display_name}` — {rec['size_mb']}MB — {rec['created']}\n"
-                f"     Team: {rec['team_name']}"
+                f"\n{num}  📅 {rec['created']}   💾 {rec['size_mb']}MB\n"
+                f"👥 {rec['team_name']}\n"
+                f"📄 {display_name}"
             )
+            lines.append(f"\n{DIVIDER}")
             idx += 1
 
     full_text = "**New recordings found:**\n" + "\n".join(lines)
@@ -177,17 +204,22 @@ def _build_checklist_keyboard(
     selections: set[int],
     rename_overrides: dict[int, str] | None = None,
 ) -> InlineKeyboardMarkup:
-    """Build the checkbox + rename + upload + cancel keyboard."""
+    """Build the checkbox + rename + upload + select-all keyboard.
+
+    Each button row:  ☐ 1️⃣ 331.8MB • 2026-02-26  [✏️]
+    Bottom rows:      [ 📤 Upload Selected (N) ]
+                      [ ✅ Select All ]
+    """
     overrides = rename_overrides or {}
     buttons: list[list[InlineKeyboardButton]] = []
 
     for i, rec in enumerate(flat):
-        display_name = overrides.get(i, rec["name"])
         mark = "☑" if i in selections else "☐"
-        # Row: checkbox button + rename button
+        num = _num_label(i + 1)
+        label = f"{mark}  {num}  {rec['size_mb']}MB  •  {rec['created']}"
         buttons.append([
             InlineKeyboardButton(
-                text=f"{mark} {display_name[:40]}",
+                text=label,
                 callback_data=f"sel:{i}",
             ),
             InlineKeyboardButton(
@@ -201,10 +233,12 @@ def _build_checklist_keyboard(
         text=f"📤 Upload Selected ({len(selections)})",
         callback_data="upload:confirm",
     )])
-    # Cancel button
+    # Select All button
+    all_selected = len(selections) == len(flat) and len(flat) > 0
+    select_label = "☑ Deselect All" if all_selected else "✅ Select All"
     buttons.append([InlineKeyboardButton(
-        text="❌ Cancel",
-        callback_data="cancel:op",
+        text=select_label,
+        callback_data="sel:all",
     )])
 
     return InlineKeyboardMarkup(buttons)
@@ -257,6 +291,7 @@ _rename_overrides: dict[int, dict[int, str]] = {}         # chat_id → {idx: ne
 _rename_pending: dict[int, int | None] = {}               # chat_id → idx awaiting rename
 _upload_cancelled: dict[int, bool] = {}                   # chat_id → cancel flag
 _checklist_msg_id: dict[int, int] = {}                    # chat_id → message id of checklist
+_workflow_active: dict[int, bool] = {}                    # chat_id → workflow running flag
 
 
 def register_handlers(
@@ -353,6 +388,10 @@ def register_handlers(
         if text == "🔑 Reauth":
             await message.reply(REAUTH_MESSAGE)
             log.info("Reply-keyboard /reauth triggered.")
+            return
+
+        if text == "⛔ Cancel Workflow":
+            await _handle_cancel_workflow(client, message)
             return
 
         # ── Check if there's a rename pending ────────────────────
@@ -466,19 +505,28 @@ def register_handlers(
             return
 
         chat_id = cb.message.chat.id
-        idx = int(cb.data.split(":", 1)[1])
+        action = cb.data.split(":", 1)[1]
 
         if chat_id not in _pending_selections:
             _pending_selections[chat_id] = set()
 
+        flat = _flat_recordings.get(chat_id, [])
         selections = _pending_selections[chat_id]
-        if idx in selections:
-            selections.discard(idx)
+
+        if action == "all":
+            # Toggle all: if all selected → deselect all, else select all
+            if len(selections) == len(flat):
+                selections.clear()
+            else:
+                selections.update(range(len(flat)))
         else:
-            selections.add(idx)
+            idx = int(action)
+            if idx in selections:
+                selections.discard(idx)
+            else:
+                selections.add(idx)
 
         # Rebuild keyboard with updated check/uncheck marks
-        flat = _flat_recordings.get(chat_id, [])
         overrides = _rename_overrides.get(chat_id, {})
         keyboard = _build_checklist_keyboard(flat, selections, overrides)
 
@@ -515,40 +563,6 @@ def register_handlers(
         )
         await cb.answer()
 
-    # ── Cancel button callback ───────────────────────────────────
-    @app.on_callback_query(filters.regex(r"^cancel:op"))
-    async def handle_cancel(client: Client, cb: CallbackQuery) -> None:
-        if not _is_owner(cb):
-            return
-
-        chat_id = cb.message.chat.id
-
-        # Set cancel flag (checked by upload loop if mid-upload)
-        _upload_cancelled[chat_id] = True
-
-        # Dismiss checklist keyboard
-        try:
-            await cb.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-
-        await cb.message.reply("⏹ Operation cancelled.")
-
-        # Try to cancel GitHub Actions run if one is tracked
-        gh_pat = os.environ.get("GH_PAT", "")
-        gh_repo = os.environ.get("GITHUB_REPOSITORY", "")
-
-        # Clean up state
-        _pending_results.pop(chat_id, None)
-        _pending_selections.pop(chat_id, None)
-        _flat_recordings.pop(chat_id, None)
-        _rename_overrides.pop(chat_id, None)
-        _rename_pending.pop(chat_id, None)
-        _checklist_msg_id.pop(chat_id, None)
-
-        log.info("Operation cancelled by user (chat_id=%d)", chat_id)
-        await cb.answer()
-
     # ── Upload confirm callback ──────────────────────────────────
     @app.on_callback_query(filters.regex(r"^upload:confirm"))
     async def handle_upload_confirm(client: Client, cb: CallbackQuery) -> None:
@@ -577,11 +591,12 @@ def register_handlers(
             await cb.answer("Selection invalid — try /check again.", show_alert=True)
             return
 
-        # Reset cancel flag
+        # Reset cancel flag and mark workflow as active
         _upload_cancelled[chat_id] = False
+        _workflow_active[chat_id] = True
 
         # Confirm selection
-        names = "\n".join(f"  📥 {r['name']}" for r in selected_recs)
+        names = "\n".join(f"  📥 {_clean_filename(r['name'])}" for r in selected_recs)
         await cb.message.edit_text(
             f"**Uploading {len(selected_recs)} recording(s):**\n{names}\n\n"
             "Starting upload..."
@@ -592,17 +607,89 @@ def register_handlers(
         except Exception as e:
             await cb.message.reply(f"❌ Upload error: {e}")
             log.error("Upload failed: %s", e)
+        finally:
+            # Clean up state
+            _workflow_active.pop(chat_id, None)
+            _pending_results.pop(chat_id, None)
+            _pending_selections.pop(chat_id, None)
+            _flat_recordings.pop(chat_id, None)
+            _rename_overrides.pop(chat_id, None)
+            _rename_pending.pop(chat_id, None)
+            _checklist_msg_id.pop(chat_id, None)
+            _upload_cancelled.pop(chat_id, None)
+
+        await cb.answer()
+
+    # ── Cancel Workflow handler (reply keyboard) ─────────────────
+    async def _handle_cancel_workflow(client: Client, message: Message) -> None:
+        """Handle ⛔ Cancel Workflow reply-keyboard tap."""
+        chat_id = message.chat.id
+
+        # Check if a workflow is active
+        if not _workflow_active.get(chat_id, False):
+            info_msg = await message.reply("ℹ️ No active workflow to cancel.")
+            # Auto-delete after 4 seconds
+            await asyncio.sleep(4)
+            try:
+                await info_msg.delete()
+                await message.delete()
+            except Exception:
+                pass
             return
 
-        # Clean up state
+        # Mark cancelled — upload loop checks this flag
+        _upload_cancelled[chat_id] = True
+        _workflow_active[chat_id] = False
+
+        # Try to cancel GitHub Actions run
+        gh_pat = os.environ.get("GH_PAT", "")
+        gh_repo = os.environ.get("GITHUB_REPOSITORY", "")
+
+        api_ok = False
+        if gh_pat and gh_repo:
+            try:
+                # Try to find and cancel the latest in-progress run
+                headers = {
+                    "Authorization": f"Bearer {gh_pat}",
+                    "Accept": "application/vnd.github+json",
+                }
+                runs_url = f"https://api.github.com/repos/{gh_repo}/actions/runs?status=in_progress&per_page=1"
+                resp = http_requests.get(runs_url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    runs = resp.json().get("workflow_runs", [])
+                    if runs:
+                        run_id = runs[0]["id"]
+                        cancel_url = f"https://api.github.com/repos/{gh_repo}/actions/runs/{run_id}/cancel"
+                        cancel_resp = http_requests.post(cancel_url, headers=headers, timeout=10)
+                        if cancel_resp.status_code in (202, 204):
+                            await message.reply(
+                                f"⛔ **Workflow cancelled.**\n"
+                                f"Run #{run_id} has been stopped.\n"
+                                f"Any uploads in progress have been halted."
+                            )
+                            api_ok = True
+                            log.info("Cancelled GitHub Actions run #%d", run_id)
+            except Exception as exc:
+                log.warning("GitHub Actions cancel API failed: %s", exc)
+
+        if not api_ok:
+            await message.reply(
+                "⚠️ **Local upload stopped.**\n"
+                "Could not reach GitHub API — cancel manually:\n"
+                f"github.com/{gh_repo}/actions" if gh_repo
+                else "⚠️ **Local upload stopped.**\n"
+                     "GH_PAT / GITHUB_REPOSITORY not configured."
+            )
+
+        # Clean up all state
         _pending_results.pop(chat_id, None)
         _pending_selections.pop(chat_id, None)
         _flat_recordings.pop(chat_id, None)
         _rename_overrides.pop(chat_id, None)
         _rename_pending.pop(chat_id, None)
         _checklist_msg_id.pop(chat_id, None)
-        _upload_cancelled.pop(chat_id, None)
-        await cb.answer()
+
+        log.info("Workflow cancelled by user (chat_id=%d)", chat_id)
 
 
 def _store_results(chat_id: int, results: dict[str, list[dict]]) -> None:
