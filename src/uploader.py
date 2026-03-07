@@ -17,16 +17,17 @@ from typing import Any
 
 import requests
 from pyrogram import Client
+from pyrogram.errors import BadRequest
 from pyrogram.types import Message
 
 log = logging.getLogger("uploader")
 
-# ───────────────────────── constants ──────────────────────────
+# ───────────────────────── constants ──────────────────────────────
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 CHUNK_SIZE = 10 * 1024 * 1024  # 10 MB streaming chunks
 
-# ───────────────────────── exceptions ────────────────────────────
+# ───────────────────────── exceptions ─────────────────────────────
 
 class UploaderError(Exception):
     """Base exception for uploader failures."""
@@ -37,7 +38,7 @@ class DownloadError(UploaderError):
 class TelegramUploadError(UploaderError):
     """Raised when a Telegram upload fails."""
 
-# ───────────────────────── download from Graph ────────────────
+# ───────────────────────── download from Graph ────────────────────
 
 def _download_recording(
     drive_id: str,
@@ -87,7 +88,7 @@ def _download_recording(
     log.info("Downloaded %d MB to %s", total_written // (1024 * 1024), dest_path)
     return total_written
 
-# ───────────────────────── upload to Telegram ─────────────────
+# ───────────────────────── upload to Telegram ─────────────────────
 
 async def _upload_to_telegram(
     client: Client,
@@ -132,13 +133,38 @@ async def _upload_to_telegram(
                 log.warning("Progress message failed at %d%%: %s", milestone, e)
 
     try:
-        sent_msg = await client.send_document(
+        # Issue 1: send_video for inline playback
+        sent_msg = await client.send_video(
             chat_id=chat_id,
-            document=file_path,
+            video=file_path,
             file_name=filename,
             caption=f"🎥 {filename}",
+            supports_streaming=True,
+            width=1280,
+            height=720,
             progress=progress_callback,
         )
+    except BadRequest:
+        # Issue 2: codec incompatibility fallback → send as document
+        log.warning(
+            "send_video rejected for %s — falling back to send_document",
+            filename,
+        )
+        try:
+            sent_msg = await client.send_document(
+                chat_id=chat_id,
+                document=file_path,
+                file_name=filename,
+                caption=(
+                    f"🎥 {filename}\n"
+                    "(⚠️ inline play unavailable — tap to download)"
+                ),
+                progress=progress_callback,
+            )
+        except Exception as exc:
+            raise TelegramUploadError(
+                f"Telegram fallback upload failed for {filename}: {exc}"
+            ) from exc
     except Exception as exc:
         raise TelegramUploadError(
             f"Telegram upload failed for {filename}: {exc}"
@@ -154,7 +180,7 @@ async def _upload_to_telegram(
     log.info("Uploaded %s to Telegram (chat_id=%d)", filename, chat_id)
     return sent_msg
 
-# ───────────────────────── main entry point ───────────────────
+# ───────────────────────── main entry point ───────────────────────
 
 async def upload_recordings(
     recordings: list[dict],
@@ -183,71 +209,90 @@ async def upload_recordings(
         - success: bool
         - error: str | None
     """
+    # Issue 4: strip whitespace from access_token to prevent corruption
+    access_token = access_token.strip()
+
     results: list[dict] = []
 
-    for rec in recordings:
-        filename = rec["name"]
-        drive_id = rec["drive_id"]
-        item_id = rec["item_id"]
+    try:
+        for rec in recordings:
+            filename = rec["name"]
+            drive_id = rec["drive_id"]
+            item_id = rec["item_id"]
 
-        log.info("Processing: %s (drive=%s, item=%s)", filename, drive_id, item_id)
+            log.info("Processing: %s (drive=%s, item=%s)", filename, drive_id, item_id)
 
-        # Use a temp file for the download
-        tmp_dir = tempfile.mkdtemp(prefix="teamsleech_")
-        tmp_path = os.path.join(tmp_dir, filename)
-
-        try:
-            # Step 1: Download from Graph API
-            await tg_client.send_message(
-                chat_id,
-                f"⬇️ Downloading **{filename}** from Teams..."
+            # Use a named temp file for the download (no directory to clean)
+            tmp_file = tempfile.NamedTemporaryFile(
+                suffix=".mp4", prefix="teamsleech_", delete=False
             )
-            file_size = _download_recording(
-                drive_id, item_id, access_token, tmp_path
-            )
+            tmp_path = tmp_file.name
+            tmp_file.close()  # close handle so _download_recording can write
 
-            # Step 2: Upload to Telegram
-            await _upload_to_telegram(
-                tg_client, chat_id, tmp_path, filename, file_size
-            )
-
-            results.append({
-                "name": filename,
-                "success": True,
-                "error": None,
-            })
-
-        except (DownloadError, TelegramUploadError) as exc:
-            log.error("Failed: %s — %s", filename, exc)
             try:
+                # Step 1: Download from Graph API
                 await tg_client.send_message(
                     chat_id,
-                    f"❌ Failed: **{filename}**\n{exc}"
+                    f"⬇️ Downloading **{filename}** from Teams..."
                 )
-            except Exception:
-                pass
-            results.append({
-                "name": filename,
-                "success": False,
-                "error": str(exc),
-            })
+                file_size = _download_recording(
+                    drive_id, item_id, access_token, tmp_path
+                )
 
-        except Exception as exc:
-            log.error("Unexpected error for %s: %s", filename, exc)
-            results.append({
-                "name": filename,
-                "success": False,
-                "error": str(exc),
-            })
+                # Step 2: Upload to Telegram
+                await _upload_to_telegram(
+                    tg_client, chat_id, tmp_path, filename, file_size
+                )
 
-        finally:
-            # Clean up temp file
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-                os.rmdir(tmp_dir)
-            except OSError:
-                pass
+                results.append({
+                    "name": filename,
+                    "success": True,
+                    "error": None,
+                })
+
+            except (DownloadError, TelegramUploadError) as exc:
+                log.error("Failed: %s — %s", filename, exc)
+                try:
+                    await tg_client.send_message(
+                        chat_id,
+                        f"❌ Failed: **{filename}**\n{exc}"
+                    )
+                except Exception:
+                    pass
+                results.append({
+                    "name": filename,
+                    "success": False,
+                    "error": str(exc),
+                })
+
+            except Exception as exc:
+                log.error("Unexpected error for %s: %s", filename, exc)
+                # Issue 3: alert on unhandled exception
+                try:
+                    await tg_client.send_message(
+                        chat_id,
+                        f"❌ Upload failed: **{filename}**\n"
+                        f"Error: {type(exc).__name__}: {exc}\n"
+                        f"Phase: uploader.py"
+                    )
+                except Exception:
+                    pass
+                results.append({
+                    "name": filename,
+                    "success": False,
+                    "error": str(exc),
+                })
+                raise  # re-raise so main.py knows
+
+            finally:
+                # Clean up temp file — always runs
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+    except (DownloadError, TelegramUploadError, UploaderError):
+        pass  # already handled and appended to results above
 
     # Summary
     success_count = sum(1 for r in results if r["success"])
