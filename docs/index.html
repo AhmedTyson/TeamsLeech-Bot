@@ -57,17 +57,6 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    .unlock-logo {
-      width: 120px;
-      height: 120px;
-      margin-bottom: 24px;
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 20px;
-      overflow: hidden;
-    }
     .unlock-logo img {
       width: 100%;
       height: 100%;
@@ -166,7 +155,7 @@
     #unlock-error { color: var(--danger); display: none; }
     #biometric-status { color: var(--text-muted); display: none; margin-top: -4px; min-height: 16px; }
 
-    /* ── Dashboard (Bespoke layout) ── */
+    /* ── Dashboard ── */
     #dashboard {
       display: none;
       width: 100%;
@@ -229,10 +218,7 @@
     }
     .lock-btn:hover { color: var(--text); }
 
-    /* Layout Sections */
-    .section {
-      margin-bottom: 32px;
-    }
+    .section { margin-bottom: 32px; }
 
     .section-title {
       font-size: 12px;
@@ -246,7 +232,6 @@
       gap: 8px;
     }
 
-    /* Terminal-style status block */
     .status-block {
       background: var(--bg-panel);
       border: 1px solid var(--border);
@@ -271,16 +256,28 @@
     .pulse-dot {
       width: 8px; height: 8px;
       border-radius: 50%;
+      transition: background 0.5s ease, box-shadow 0.5s ease;
     }
-    .dot-grey { background: var(--text-dim); }
+    .dot-grey  { background: var(--text-dim); box-shadow: none; }
     .dot-green { background: var(--success); box-shadow: 0 0 10px rgba(16,185,129,0.4); }
-    .dot-yellow { background: var(--warning); box-shadow: 0 0 10px rgba(245,158,11,0.4); animation: blink 1.5s infinite; }
-    .dot-red { background: var(--danger); box-shadow: 0 0 10px rgba(239,68,68,0.4); }
-    
-    @keyframes blink { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+    .dot-yellow{ background: var(--warning); box-shadow: 0 0 10px rgba(245,158,11,0.4); animation: blink 1.5s infinite; }
+    .dot-red   { background: var(--danger);  box-shadow: 0 0 10px rgba(239,68,68,0.4); }
+    .dot-orange{ background: #f97316;        box-shadow: 0 0 10px rgba(249,115,22,0.4); animation: blink 1.5s infinite; }
 
-    .status-label { font-size: 13px; color: var(--text); }
-    .status-time { font-size: 11px; color: var(--text-dim); }
+    @keyframes blink { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+    .status-label {
+      font-size: 13px;
+      color: var(--text);
+      transition: opacity 0.2s ease;
+    }
+    .status-label.updating { opacity: 0; }
+    .status-time  {
+      font-size: 11px;
+      color: var(--text-dim);
+      transition: opacity 0.3s ease;
+    }
+    .status-time.flash { opacity: 0; }
 
     .status-logs {
       font-size: 12px;
@@ -293,22 +290,93 @@
     .log-line { display: flex; gap: 12px; }
     .log-prefix { color: var(--accent); user-select: none; }
 
-    /* Action block (Execution) */
-    .action-block {
-      display: flex;
-      gap: 12px;
+    /* ── Step Tracker ── */
+    #step-tracker {
+      display: none;
+      margin-top: 16px;
+      border-top: 1px dashed var(--border);
+      padding-top: 16px;
+      /* Slide down + fade when shown via JS */
+      animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    #control-area { flex: 1; }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
 
-    /* Resource tracking (Usage) */
-    .metric-group {
+    .step-tracker-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+
+    .step-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      padding: 4px 0;
+      color: var(--text-dim);
+      transition: color 0.35s ease, opacity 0.35s ease, transform 0.25s ease;
+      /* Staggered entrance — set via inline style in JS */
+      opacity: 0;
+      animation: rowFadeIn 0.3s ease forwards;
+    }
+
+    @keyframes rowFadeIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .step-row.active {
+      color: var(--accent);
+      transform: translateX(3px);  /* subtle rightward nudge — "moving forward" */
+    }
+    .step-row.success { color: var(--success); transform: translateX(0); }
+    .step-row.failure { color: var(--danger);  transform: translateX(0); }
+    .step-row.skipped { color: var(--text-dim); transform: translateX(0); }
+    .step-row.pending { color: var(--text-dim); opacity: 0.4; transform: translateX(0); }
+
+    .step-icon { width: 14px; text-align: center; flex-shrink: 0; }
+    .step-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .step-elapsed { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+
+    /* Cold-start progress bar — shown between dispatch and run appearing */
+    #coldstart-bar {
+      display: none;
+      margin-top: 14px;
+    }
+    #coldstart-label {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      margin-bottom: 6px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
-      margin-bottom: 12px;
+    }
+    #coldstart-track {
+      width: 100%;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #coldstart-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 1s linear;
     }
 
+    /* Action block */
+    .action-block { display: flex; gap: 12px; }
+    #control-area { flex: 1; }
+
+    /* Compute time */
     .metric-val {
       font-family: var(--font-mono);
       font-size: 24px;
@@ -318,9 +386,9 @@
     .metric-val span { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
 
     .track { width: 100%; height: 4px; background: var(--bg-panel); border-radius: 2px; overflow: hidden; }
-    .fill { height: 100%; width: 0%; background: var(--text); transition: width 0.8s ease; }
-    .fill.warn { background: var(--warning); }
-    .fill.danger { background: var(--danger); }
+    .fill  { height: 100%; width: 0%; background: var(--text); transition: width 0.8s ease; }
+    .fill.warn   { background: var(--warning); }
+    .fill.danger { background: var(--danger);  }
 
     .error-toast {
       display: none;
@@ -331,6 +399,37 @@
       border-radius: 6px;
       border: 1px solid rgba(239, 68, 68, 0.2);
       margin-top: 12px;
+      animation: toastIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Token-expiry toast — distinct orange colour */
+    .warn-toast {
+      display: none;
+      font-size: 12px;
+      color: #f97316;
+      background: rgba(249, 115, 22, 0.08);
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(249, 115, 22, 0.25);
+      margin-top: 12px;
+      animation: toastIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cold-start progress bar — shown between dispatch and run appearing */
+    #coldstart-bar {
+      display: none;
+      margin-top: 14px;
+      animation: fadeIn 0.4s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
 
     #control-info {
@@ -339,8 +438,27 @@
       margin-top: 8px;
       text-align: center;
       display: none;
+      animation: fadeIn 0.3s ease;
     }
 
+    /* Logo float — makes unlock screen feel alive */
+    .unlock-logo {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 24px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px;
+      overflow: hidden;
+      animation: logoFloat 4s ease-in-out infinite;
+    }
+
+    @keyframes logoFloat {
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-6px); }
+    }
   </style>
 </head>
 <body>
@@ -348,7 +466,7 @@
   <!-- ── Unlock Screen ── -->
   <div id="unlock-screen">
     <div class="unlock-logo">
-      <img src="logo_small.png" alt="TeamLeech Logo" style="width:100%; height:100%;">
+      <img src="logo_small.png" alt="TeamsLeech Logo" style="width:100%; height:100%;">
     </div>
     <div class="brand-name" style="font-size: 26px; margin-bottom: 32px;">TeamLeech</div>
     <div class="unlock-form">
@@ -367,12 +485,14 @@
     <div class="top-bar">
       <div class="brand">
         <div class="brand-icon">
-          <img src="logo_small.png" alt="TeamLeech Logo" style="width:100%; height:100%;">
+          <img src="logo_small.png" alt="TeamsLeech Logo" style="width:100%; height:100%;">
         </div>
         <div class="brand-name">TeamLeech</div>
         <div class="brand-badge">PROD</div>
       </div>
-      <button class="lock-btn" id="lock-btn" title="Lock Session"><i class="fa-solid fa-power-off"></i></button>
+      <button class="lock-btn" id="lock-btn" title="Lock Session">
+        <i class="fa-solid fa-power-off"></i>
+      </button>
     </div>
 
     <!-- Section: Telemetry -->
@@ -387,9 +507,33 @@
           <span class="status-time" id="status-time"></span>
         </div>
         <div class="status-logs">
-          <div class="log-line"><span class="log-prefix">~</span><span id="log-msg">Awaiting workflow heartbeat.</span></div>
+          <div class="log-line">
+            <span class="log-prefix">~</span>
+            <span id="log-msg">Awaiting workflow heartbeat.</span>
+          </div>
         </div>
+
+        <!-- Live Step Tracker — shown only during active runs -->
+        <div id="step-tracker">
+          <div class="step-tracker-title"><i class="fa-solid fa-list-check" style="margin-right:6px;"></i>Live Steps</div>
+          <div id="step-list"></div>
+          <!-- Cold-start bar: visible from dispatch until run object appears -->
+          <div id="coldstart-bar">
+            <div id="coldstart-label">
+              <span>GitHub booting runner...</span>
+              <span id="coldstart-pct">0%</span>
+            </div>
+            <div id="coldstart-track"><div id="coldstart-fill"></div></div>
+          </div>
+        </div>
+
         <div class="error-toast" id="status-auth-error">Authentication rejected by GitHub endpoint.</div>
+
+        <!-- Token-expiry warning — distinct from generic failure -->
+        <div class="warn-toast" id="token-expiry-warn">
+          <i class="fa-solid fa-key" style="margin-right:6px;"></i>
+          <strong>Token Expired</strong> — Send <code>/reauth</code> in Telegram to recover.
+        </div>
       </div>
     </div>
 
@@ -398,7 +542,9 @@
       <div class="section-title"><i class="fa-solid fa-terminal"></i> Workflow Control</div>
       <div class="action-block">
         <div id="control-area" style="width: 100%;">
-          <button class="btn btn-outline" style="width: 100%;" id="run-btn" type="button"><i class="fa-solid fa-play"></i> Initialize Run</button>
+          <button class="btn btn-outline" style="width: 100%;" id="run-btn" type="button">
+            <i class="fa-solid fa-terminal"></i> Initialize Run
+          </button>
         </div>
       </div>
       <div class="error-toast" id="control-error"></div>
@@ -408,13 +554,13 @@
     <!-- Section: Compute Time -->
     <div class="section">
       <div class="section-title"><i class="fa-solid fa-clock"></i> Workflow Compute Time</div>
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; font-family: var(--font-mono);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; font-family:var(--font-mono);">
         <div>
-          <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase;">Total (Last 100 Runs)</div>
+          <div style="font-size:11px; color:var(--text-dim); margin-bottom:4px; text-transform:uppercase;">Total (Last 100 Runs)</div>
           <div class="metric-val" id="total-time-text">--<span>m</span></div>
         </div>
-        <div style="text-align: right;">
-          <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase;">Last Run Duration</div>
+        <div style="text-align:right;">
+          <div style="font-size:11px; color:var(--text-dim); margin-bottom:4px; text-transform:uppercase;">Last Run Duration</div>
           <div class="metric-val" id="last-run-text">--<span>s</span></div>
         </div>
       </div>
@@ -422,38 +568,108 @@
   </div>
 
   <script>
-    const GIST_ID = "32d9c1c37fd6140aa65e6d8c55401bf5";
+    // ── Constants ─────────────────────────────────────────────────
+    const GIST_ID         = "32d9c1c37fd6140aa65e6d8c55401bf5";
     const GIST_READ_TOKEN = "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";
-    const REPO = "AhmedTyson/TeamsLeech-Bot";
-    const WORKFLOW_FILE = "workflow.yml";
+    const REPO            = "AhmedTyson/TeamsLeech-Bot";
+    const WORKFLOW_FILE   = "workflow.yml";
 
+    // ── State ─────────────────────────────────────────────────────
     let gh_pat = null, bot_token = null, chat_id = null;
-    let currentRunId = null, previousRunId = null;
-    let statusInterval = null, usageInterval = null;
-    let fastPollInterval = null, fastPollTimeout = null;
-    let lastKnownStatus = { dot: "dot-grey", text: "SYSTEM IDLE" };
+    let currentRunId   = null;
+    let previousRunId  = null;
+    let statusInterval = null;
+    let usageInterval  = null;
+    let fastPollInterval  = null;
+    let fastPollTimeout   = null;
+    let stepPollInterval  = null;
+    let lastKnownStatus   = { dot: "dot-grey", text: "SYSTEM IDLE" };
 
+    // ── Cancel lock ───────────────────────────────────────────────
+    // Prevents poll from flickering back to "running" after 202.
+    // Set true when cancel API returns 202. Cleared on terminal state.
+    let cancelLocked = false;
+
+    // ── Cold-start tracking ───────────────────────────────────────
+    // Records when dispatch fired so we can animate a progress bar
+    // toward the expected ~40s cold start without faking a timeout.
+    let dispatchedAt   = null;       // Date.now() at dispatch
+    let coldStartTimer = null;       // animates the progress bar
+
+    // Steps known from workflow.yml — pre-populated as pending immediately
+    // so the tracker never starts mid-movie.
+    const KNOWN_STEPS = [
+      "Checkout repository",
+      "Set up Python 3.11",
+      "Restore cached virtualenv",
+      "Install dependencies",
+      "Restore state (last_run timestamps)",
+      "Validate secrets present",
+      "Run TeamsLeech Bot",
+      "Save state (last_run timestamps)",
+    ];
+
+    // ── DOM helpers ───────────────────────────────────────────────
     const $ = id => document.getElementById(id);
-    const unlockScreen = $("unlock-screen"), dashboard = $("dashboard");
-    const passwordInput = $("master-password"), unlockBtn = $("unlock-btn");
-    const unlockError = $("unlock-error"), biometricStatus = $("biometric-status");
-    
-    // UI elements
-    const statusDot = $("status-dot"), statusText = $("status-text");
-    const statusTime = $("status-time"), logMsg = $("log-msg");
+    const unlockScreen  = $("unlock-screen");
+    const dashboard     = $("dashboard");
+    const passwordInput = $("master-password");
+    const unlockBtn     = $("unlock-btn");
+    const unlockError   = $("unlock-error");
+    const biometricStatus = $("biometric-status");
+    const statusDot     = $("status-dot");
+    const statusText    = $("status-text");
+    const statusTime    = $("status-time");
+    const logMsg        = $("log-msg");
     const statusAuthErr = $("status-auth-error");
-    const controlArea = $("control-area"), controlError = $("control-error");
-    const controlInfo = $("control-info");
-    const usageText = $("usage-text"), usageBar = $("usage-bar"), usageAuthErr = $("usage-auth-error");
+    const controlArea   = $("control-area");
+    const controlError  = $("control-error");
+    const controlInfo   = $("control-info");
+    const stepTracker   = $("step-tracker");
+    const stepList      = $("step-list");
+    const tokenExpiryWarn = $("token-expiry-warn");
+    const coldstartBar  = $("coldstart-bar");
+    const coldstartFill = $("coldstart-fill");
+    const coldstartPct  = $("coldstart-pct");
 
+    // Pre-populate step list with all known steps in pending state.
+    // Called immediately at dispatch — user sees the full pipeline from T+0.
+    function prepopulateSteps() {
+      stepList.innerHTML = KNOWN_STEPS.map((name, i) =>
+        `<div class="step-row pending" style="animation-delay:${i * 35}ms">
+          <span class="step-icon"><i class="fa-regular fa-circle" style="color:var(--text-dim);font-size:10px;"></i></span>
+          <span class="step-name">${escHtml(name)}</span>
+          <span class="step-elapsed"></span>
+        </div>`
+      ).join("");
+    }
+
+    // ── Status helpers ────────────────────────────────────────────
     function setStatusVisual(dotClass, text) {
+      // Dot: class swap triggers CSS transition on background/box-shadow
       statusDot.className = "pulse-dot " + dotClass;
-      statusText.textContent = text;
+
+      // Label: fade out → update → fade in
+      if (statusText.textContent !== text) {
+        statusText.classList.add("updating");
+        setTimeout(() => {
+          statusText.textContent = text;
+          statusText.classList.remove("updating");
+        }, 200);
+      }
+    }
+
+    function flashStatusTime(val) {
+      statusTime.classList.add("flash");
+      setTimeout(() => {
+        statusTime.textContent = val;
+        statusTime.classList.remove("flash");
+      }, 150);
     }
 
     function saveLastKnownStatus() {
       lastKnownStatus = {
-        dot: statusDot.className.replace("pulse-dot ", ""),
+        dot:  statusDot.className.replace("pulse-dot ", ""),
         text: statusText.textContent
       };
     }
@@ -467,215 +683,415 @@
       controlInfo.style.display = "none";
     }
 
+    // ── Step Tracker ──────────────────────────────────────────────
+    // Two phases:
+    //   Phase A (cold-start): run not yet in API. Show pre-populated
+    //     pending steps + animated progress bar counting toward ~40s.
+    //   Phase B (live): run ID known, poll /jobs every 2s, replace
+    //     pending rows with real status as they come in.
+
+    function showStepTrackerPending() {
+      prepopulateSteps();
+      stepTracker.style.display = "block";
+      coldstartBar.style.display = "block";
+      startColdStartBar();
+    }
+
+    function startColdStartBar() {
+      stopColdStartBar();
+      const BOOT_MS = 42000; // expected cold start duration
+      coldStartTimer = setInterval(() => {
+        if (!dispatchedAt) { stopColdStartBar(); return; }
+        const elapsed = Date.now() - dispatchedAt;
+        const pct = Math.min(98, Math.round((elapsed / BOOT_MS) * 100));
+        coldstartFill.style.width = pct + "%";
+        coldstartPct.textContent  = pct + "%";
+      }, 500);
+    }
+
+    function stopColdStartBar() {
+      clearInterval(coldStartTimer);
+      coldStartTimer = null;
+    }
+
+    function hideColdStartBar() {
+      stopColdStartBar();
+      coldstartBar.style.display = "none";
+      coldstartFill.style.width  = "0%";
+      coldstartPct.textContent   = "0%";
+    }
+
+    function startStepPoll(runId) {
+      stopStepPoll();
+      hideColdStartBar();            // run is live — bar no longer needed
+      stepTracker.style.display = "block";
+      fetchAndRenderSteps(runId);
+      stepPollInterval = setInterval(() => fetchAndRenderSteps(runId), 2000);
+    }
+
+    function stopStepPoll() {
+      clearInterval(stepPollInterval);
+      stepPollInterval = null;
+    }
+
+    function hideStepTracker() {
+      stopStepPoll();
+      hideColdStartBar();
+      stepTracker.style.display = "none";
+      stepList.innerHTML = "";
+    }
+
+    async function fetchAndRenderSteps(runId) {
+      if (!gh_pat || !runId) return;
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/runs/${runId}/jobs`,
+          { headers: { "Authorization": `token ${gh_pat}` } }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const job = data.jobs && data.jobs[0];
+        if (!job) return;
+
+        const steps = job.steps || [];
+        const html = steps.map((step, i) => {
+          const icon = stepIcon(step.status, step.conclusion);
+          const cls  = stepClass(step.status, step.conclusion);
+          const elapsed = stepElapsed(step);
+          return `<div class="step-row ${cls}" style="animation-delay:${i * 35}ms">
+            <span class="step-icon">${icon}</span>
+            <span class="step-name">${escHtml(step.name)}</span>
+            <span class="step-elapsed">${elapsed}</span>
+          </div>`;
+        }).join("");
+        stepList.innerHTML = html;
+
+        // Auto-stop polling once the job itself is done
+        if (job.status === "completed") {
+          stopStepPoll();
+          // Leave tracker visible for 4 s, then hide
+          setTimeout(hideStepTracker, 4000);
+        }
+      } catch(e) { /* silent — step tracker is non-critical */ }
+    }
+
+    function stepIcon(status, conclusion) {
+      if (status === "in_progress")  return '<i class="fa-solid fa-spinner fa-spin" style="color:var(--accent);font-size:10px;"></i>';
+      if (status === "completed") {
+        if (conclusion === "success") return '<i class="fa-solid fa-check"       style="color:var(--success);font-size:10px;"></i>';
+        if (conclusion === "failure") return '<i class="fa-solid fa-xmark"       style="color:var(--danger);font-size:10px;"></i>';
+        if (conclusion === "skipped") return '<i class="fa-solid fa-forward"     style="color:var(--text-dim);font-size:10px;"></i>';
+        return '<i class="fa-solid fa-circle-minus" style="color:var(--text-dim);font-size:10px;"></i>';
+      }
+      return '<i class="fa-regular fa-circle" style="color:var(--text-dim);font-size:10px;"></i>';
+    }
+
+    function stepClass(status, conclusion) {
+      if (status === "in_progress")  return "active";
+      if (status === "completed") {
+        if (conclusion === "success") return "success";
+        if (conclusion === "failure") return "failure";
+        if (conclusion === "skipped") return "skipped";
+      }
+      return "";
+    }
+
+    function stepElapsed(step) {
+      if (!step.started_at) return "";
+      const start = new Date(step.started_at).getTime();
+      const end   = step.completed_at ? new Date(step.completed_at).getTime() : Date.now();
+      const s = Math.round((end - start) / 1000);
+      if (s < 60)  return `${s}s`;
+      return `${Math.floor(s/60)}m ${s%60}s`;
+    }
+
+    function escHtml(str) {
+      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    // ── Token-expiry detection ─────────────────────────────────────
+    // The workflow's "Validate secrets present" step exits 1 with
+    //   ::error title=Secret Missing::...
+    // and the overall run conclusion is "failure".
+    //
+    // We detect token expiry by:
+    //   1. Run conclusion = "failure"  AND
+    //   2. Any step named "Validate secrets present" concluded as "failure"
+    //      OR the run's jobs contain a failed step at position ≤ 2
+    //      (meaning it died before even running main.py — i.e. token issue).
+    //
+    // We also check the run's name/title annotation via /jobs for the
+    // GitHub Actions error annotation text.
+
+    async function checkTokenExpiry(runId) {
+      if (!gh_pat || !runId) return false;
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/runs/${runId}/jobs`,
+          { headers: { "Authorization": `token ${gh_pat}` } }
+        );
+        if (!res.ok) return false;
+        const data = await res.json();
+        const job  = data.jobs && data.jobs[0];
+        if (!job)  return false;
+
+        // Heuristic 1: A step named "Validate secrets present" failed
+        const validateStep = (job.steps || []).find(
+          s => s.name === "Validate secrets present" && s.conclusion === "failure"
+        );
+        if (validateStep) return true;
+
+        // Heuristic 2: Run failed very early — steps 1-3 failed (before main.py)
+        const failedSteps = (job.steps || []).filter(s => s.conclusion === "failure");
+        if (failedSteps.length > 0) {
+          const failedIndices = failedSteps.map(s => s.number || 99);
+          if (Math.min(...failedIndices) <= 3) return true;
+        }
+
+        return false;
+      } catch(e) { return false; }
+    }
+
+    // ── Polling architecture ───────────────────────────────────────
+    //
+    // Normal:    pollStatus() every 10s.
+    // Fast:      Exponential backoff after dispatch/cancel.
+    //            Intervals: 3 → 6 → 10 → 15 → 15 → 15s (capped)
+    //            Timeout: 90s (GitHub cold start can take up to 60s).
+    //            ON TIMEOUT: do NOT show error, do NOT reset button.
+    //            Just slow down to 15s and keep waiting — 204 was
+    //            confirmed, the job was accepted, it will appear.
+    // Cancel:    cancelLocked = true after 202. Poll keeps running
+    //            but renderBtn() is blocked until terminal state confirmed.
+
+    const BACKOFF_STEPS = [3000, 6000, 10000, 15000];
+    let backoffIndex = 0;
+
+    function nextBackoffMs() {
+      const ms = BACKOFF_STEPS[Math.min(backoffIndex, BACKOFF_STEPS.length - 1)];
+      backoffIndex = Math.min(backoffIndex + 1, BACKOFF_STEPS.length - 1);
+      return ms;
+    }
+
+    function scheduleNextFastPoll(mode) {
+      clearInterval(fastPollInterval);
+      const delay = nextBackoffMs();
+      fastPollInterval = setTimeout(() => {
+        pollStatus(mode);
+        // After first poll fires, keep scheduling unless cancelled
+        if (fastPollInterval !== null) scheduleNextFastPoll(mode);
+      }, delay);
+    }
+
     function startFastPoll(mode) {
       clearInterval(statusInterval);
       clearInterval(fastPollInterval);
       clearTimeout(fastPollTimeout);
-      
-      fastPollInterval = setInterval(() => pollStatus(mode), 2000);
-      
-      // Auto-fallback to normal poll after 30s
+      backoffIndex = 0;
+      cancelLocked = (mode === "cancel");
+
+      scheduleNextFastPoll(mode);
+
+      // 90s safety net — but NEVER show an error or reset the button.
+      // Just transition to slow normal polling silently.
       fastPollTimeout = setTimeout(() => {
         stopFastPoll();
-        if (mode === 'start') {
-          controlError.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="margin-right: 4px;"></i> Run may not have started — check GitHub Actions tab';
-          controlError.style.display = "block";
-          setTimeout(() => { controlError.style.display = "none"; }, 5000);
-        }
-        renderBtn(false); 
-      }, 30000);
+        // mode=start: run will eventually show up on 10s normal poll.
+        // mode=cancel: same.
+        // No error shown. Dispatch returned 204 — the job exists.
+      }, 90000);
     }
 
     function stopFastPoll() {
       clearInterval(fastPollInterval);
       clearTimeout(fastPollTimeout);
       fastPollInterval = null;
+      fastPollTimeout  = null;
       hideControlInfo();
+      backoffIndex = 0;
+      // Immediate poll before resuming 10s interval — no blindness gap
+      pollStatus();
       clearInterval(statusInterval);
       statusInterval = setInterval(pollStatus, 10000);
     }
 
     function onNewRunDetected() {
       stopFastPoll();
+      cancelLocked = false;
       renderBtn(true);
+      if (currentRunId) startStepPoll(currentRunId);
     }
 
-    function b64ToBytes(b64) { const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr; }
-    function bytesToB64(uint8) { let bin=""; for(let i=0;i<uint8.length;i++) bin+=String.fromCharCode(uint8[i]); return btoa(bin); }
-
-    async function registerBiometric() {
-      if(!navigator.credentials || localStorage.getItem("webauthn_registered")==="true") return;
-      try {
-        const cred = await navigator.credentials.create({
-          publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rp: {name:"TeamsLeech"}, user: {id:crypto.getRandomValues(new Uint8Array(16)),name:"owner",displayName:"Owner"}, pubKeyCredParams: [{type:"public-key",alg:-7},{type:"public-key",alg:-257}], authenticatorSelection: {authenticatorAttachment:"platform",userVerification:"required",residentKey:"discouraged"}, timeout: 60000}
-        });
-        localStorage.setItem("webauthn_registered","true");
-        localStorage.setItem("webauthn_cred_id",bytesToB64(new Uint8Array(cred.rawId)));
-      } catch(e) {}
-    }
-
-    async function verifyBiometric() {
-      const storedId = localStorage.getItem("webauthn_cred_id");
-      if(!storedId) return false;
-      try {
-        await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), allowCredentials: [{id:b64ToBytes(storedId),type:"public-key"}], userVerification:"required", timeout:60000 } });
-        return true;
-      } catch(e) { return false; }
-    }
-
-    unlockBtn.addEventListener("click", handleUnlock);
-    passwordInput.addEventListener("keydown", e => { if (e.key === "Enter") handleUnlock(); });
-
-    async function handleUnlock() {
-      const pwd = passwordInput.value;
-      if (!pwd) return;
-
-      unlockBtn.disabled = true; unlockBtn.textContent = "Authenticating..."; unlockError.style.display = "none";
-
-      if (navigator.credentials && localStorage.getItem("webauthn_registered") === "true") {
-        biometricStatus.textContent = "Tap sensor to proceed"; biometricStatus.style.display = "block";
-        const ok = await verifyBiometric();
-        biometricStatus.style.display = "none";
-        if (!ok) { unlockError.textContent = "Biometric required"; unlockError.style.display="block"; unlockBtn.disabled=false; unlockBtn.textContent="Access Console"; return; }
-      }
-
-      try {
-        let res;
-        try { res = await fetch(`https://api.github.com/gists/${GIST_ID}`, { headers: {"Authorization": `token ${GIST_READ_TOKEN}`} }); } 
-        catch(e) { throw new Error("Network"); }
-        if(!res.ok) throw new Error("HTTP"+res.status);
-        
-        const data = await res.json();
-        const creds = JSON.parse(data.files["teamsleech_credentials.json"].content);
-        const salt=b64ToBytes(creds.salt), iv=b64ToBytes(creds.iv), cipher=b64ToBytes(creds.ciphertext);
-        const keyMat = await crypto.subtle.importKey("raw", new TextEncoder().encode(pwd), "PBKDF2", false, ["deriveKey"]);
-        const aesKey = await crypto.subtle.deriveKey({name:"PBKDF2",hash:"sha-256",salt,iterations:310000}, keyMat, {name:"AES-GCM",length:256}, false, ["decrypt"]);
-        const dec = await crypto.subtle.decrypt({name:"AES-GCM",iv}, aesKey, cipher);
-        const dict = JSON.parse(new TextDecoder().decode(dec));
-
-        gh_pat = dict.gh_pat; bot_token = dict.bot_token; chat_id = dict.chat_id;
-        
-        await registerBiometric();
-        unlockScreen.style.display="none"; dashboard.style.display="block";
-        passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
-        
-        pollStatus(); pollComputeTime();
-        statusInterval = setInterval(pollStatus, 10000); usageInterval = setInterval(pollComputeTime, 300000);
-      } catch(err) {
-        unlockError.textContent = "Access Denied"; unlockError.style.display="block";
-        passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
-      }
-    }
-
-    $("lock-btn").addEventListener("click", () => {
-      gh_pat=null; bot_token=null; chat_id=null;
-      clearInterval(statusInterval); clearInterval(usageInterval);
-      stopFastPoll();
-      dashboard.style.display="none"; unlockScreen.style.display="flex";
-      passwordInput.value=""; passwordInput.focus();
-    });
-
+    // ── Main status poll ──────────────────────────────────────────
     async function pollStatus(mode) {
-      if(!gh_pat) return;
+      if (!gh_pat) return;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      
+      const timeoutId  = setTimeout(() => controller.abort(), 15000);
+
       try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1`, { 
-          headers: {"Authorization": `token ${gh_pat}`},
-          signal: controller.signal
-        });
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/runs?per_page=1`,
+          { headers: { "Authorization": `token ${gh_pat}` }, signal: controller.signal }
+        );
         clearTimeout(timeoutId);
-        
-        if(res.status===401) { statusAuthErr.style.display="block"; return; }
-        if(!res.ok) throw new Error("API status " + res.status);
-        
+
+        if (res.status === 401) { statusAuthErr.style.display = "block"; return; }
+        if (!res.ok) throw new Error("API status " + res.status);
+
         const data = await res.json();
-        
+
+        // Clear connection-lost warning if present
         if (logMsg.innerHTML.includes("fa-triangle-exclamation")) {
           setStatusVisual(lastKnownStatus.dot, lastKnownStatus.text);
-          logMsg.innerHTML = '<i class="fa-solid fa-satellite-dish" style="color: var(--success);"></i> Connection restored.';
+          logMsg.innerHTML = '<i class="fa-solid fa-satellite-dish" style="color:var(--success);"></i> Connection restored.';
         }
-        
-        if(!data.workflow_runs || data.workflow_runs.length===0) {
+
+        if (!data.workflow_runs || data.workflow_runs.length === 0) {
           setStatusVisual("dot-grey", "SYSTEM IDLE");
           logMsg.textContent = "No workflow history found.";
           saveLastKnownStatus();
-          if(!fastPollInterval) renderBtn(false); 
+          if (!fastPollInterval) renderBtn(false);
           return;
         }
 
-        const run = data.workflow_runs[0]; 
+        const run    = data.workflow_runs[0];
         currentRunId = run.id;
-        const active = (run.status==="in_progress" || run.status==="queued");
+        const active = (run.status === "in_progress" || run.status === "queued");
 
-        if(active) { setStatusVisual("dot-yellow", "EXECUTING"); logMsg.textContent="Workflow is actively running in Github Actions."; }
-        else if(run.conclusion==="success") { setStatusVisual("dot-green", "COMPLETED"); logMsg.textContent="Last execution finished successfully."; }
-        else if(run.conclusion==="cancelled") { setStatusVisual("dot-grey", "CANCELLED"); logMsg.textContent="Last execution was manually aborted."; }
-        else { setStatusVisual("dot-red", "FAILED"); logMsg.textContent=`Workflow terminated with error state: ${run.conclusion}`; }
-        
-        statusTime.textContent = new Date(run.updated_at||run.created_at).toLocaleTimeString();
+        // ── Render status dot + log message ───────────────────────
+        tokenExpiryWarn.style.display = "none";  // default hidden
+
+        if (active) {
+          setStatusVisual("dot-yellow", "EXECUTING");
+          logMsg.textContent = "Workflow is actively running in GitHub Actions.";
+        } else if (run.conclusion === "success") {
+          setStatusVisual("dot-green", "COMPLETED");
+          logMsg.textContent = "Last execution finished successfully.";
+          stopStepPoll();
+          setTimeout(hideStepTracker, 4000);
+        } else if (run.conclusion === "cancelled") {
+          setStatusVisual("dot-grey", "CANCELLED");
+          logMsg.textContent = "Last execution was manually aborted.";
+          stopStepPoll();
+          hideStepTracker();
+        } else if (run.conclusion === "failure") {
+          // Check whether this is a token-expiry failure or generic failure
+          const expired = await checkTokenExpiry(run.id);
+          if (expired) {
+            setStatusVisual("dot-orange", "TOKEN EXPIRED");
+            logMsg.innerHTML = '<i class="fa-solid fa-key" style="color:#f97316;margin-right:4px;"></i> Refresh token expired — run <code>/reauth</code> in Telegram.';
+            tokenExpiryWarn.style.display = "block";
+          } else {
+            setStatusVisual("dot-red", "FAILED");
+            logMsg.textContent = `Workflow terminated with error state: ${run.conclusion}`;
+          }
+          stopStepPoll();
+          setTimeout(hideStepTracker, 4000);
+        } else {
+          setStatusVisual("dot-red", "FAILED");
+          logMsg.textContent = `Workflow terminated with error state: ${run.conclusion}`;
+          stopStepPoll();
+          setTimeout(hideStepTracker, 4000);
+        }
+
+        flashStatusTime(new Date(run.updated_at || run.created_at).toLocaleTimeString());
         saveLastKnownStatus();
 
-        if (fastPollInterval) {
-          if (mode === 'start' && active && currentRunId !== previousRunId) {
+        // ── Fast-poll transitions ─────────────────────────────────
+        if (fastPollInterval !== null || fastPollTimeout !== null) {
+          // We're in fast-poll mode
+          if (mode === "start" && active && currentRunId !== previousRunId) {
             onNewRunDetected();
-          } else if (mode === 'cancel' && run.conclusion === "cancelled") {
-            stopFastPoll();
-            renderBtn(false);
+          } else if (mode === "cancel") {
+            const terminal = !active && run.conclusion;
+            if (terminal) {
+              cancelLocked = false;
+              stopFastPoll();
+              renderBtn(false);
+            }
+            // While cancelLocked, never re-render button — prevents flicker
           }
         } else {
-          renderBtn(active);
+          // Normal poll mode
+          if (!cancelLocked) renderBtn(active);
+          if (active && !stepPollInterval) startStepPoll(currentRunId);
         }
 
       } catch(e) {
         clearTimeout(timeoutId);
-        logMsg.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: var(--warning);"></i> Connection issue — retrying...';
+        logMsg.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i> Connection issue — retrying...';
       }
     }
 
+    // ── Button renderer ───────────────────────────────────────────
+    // Fades out the current button, swaps content, fades back in.
+    // Prevents the jarring instant swap between Initialize / Abort.
     function renderBtn(active) {
-      if(active) {
-        controlArea.innerHTML = `<button class="btn btn-danger-outline" style="width: 100%;" id="cancel-btn" type="button"><i class="fa-solid fa-stop"></i> Abort Execution</button>`;
-        $("cancel-btn").addEventListener("click", cancelRun);
+      const existing = controlArea.firstElementChild;
+      const doRender = () => {
+        if (active) {
+          controlArea.innerHTML = `<button class="btn btn-danger-outline" style="width:100%;opacity:0;transition:opacity 0.2s ease;" id="cancel-btn" type="button"><i class="fa-solid fa-stop"></i> Abort Execution</button>`;
+          requestAnimationFrame(() => { const b = $("cancel-btn"); if(b) b.style.opacity="1"; });
+          $("cancel-btn").addEventListener("click", cancelRun);
+        } else {
+          controlArea.innerHTML = `<button class="btn btn-outline" style="width:100%;opacity:0;transition:opacity 0.2s ease;" id="run-btn" type="button"><i class="fa-solid fa-terminal"></i> Initialize Run</button>`;
+          requestAnimationFrame(() => { const b = $("run-btn"); if(b) b.style.opacity="1"; });
+          $("run-btn").addEventListener("click", startRun);
+        }
+      };
+      if (existing) {
+        existing.style.transition = "opacity 0.15s ease";
+        existing.style.opacity = "0";
+        setTimeout(doRender, 150);
       } else {
-        controlArea.innerHTML = `<button class="btn btn-outline" style="width: 100%;" id="run-btn" type="button"><i class="fa-solid fa-terminal"></i> Initialize Run</button>`;
-        $("run-btn").addEventListener("click", startRun);
+        doRender();
       }
     }
 
+    // ── Start run ─────────────────────────────────────────────────
     async function startRun() {
-      const b = $("run-btn"); if(!b||!gh_pat) return;
-      
-      // Step 1: Optimistic UI immediately
+      const b = $("run-btn");
+      if (!b || !gh_pat) return;
+
       previousRunId = currentRunId;
-      b.disabled = true; 
-      b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Starting...'; 
+      b.disabled = true;
+      b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Starting...';
       controlError.style.display = "none";
-      showControlInfo('<i class="fa-solid fa-spinner fa-spin" style="margin-right: 4px;"></i> Waiting for GitHub to queue the run...');
+      tokenExpiryWarn.style.display = "none";
+      showControlInfo('<i class="fa-solid fa-spinner fa-spin" style="margin-right:4px;"></i> Waiting for GitHub to queue the run...');
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId  = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`, {
-          method: "POST",
-          headers: {"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"},
-          body: JSON.stringify({ref:"main",inputs:{mode:"normal"}}),
-          signal: controller.signal
-        });
-        
-        if(res.status === 204) {
-          startFastPoll('start');
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
+          {
+            method: "POST",
+            headers: { "Authorization": `token ${gh_pat}`, "Accept": "application/vnd.github.v3+json" },
+            body: JSON.stringify({ ref: "main", inputs: { mode: "normal" } }),
+            signal: controller.signal
+          }
+        );
+
+        if (res.status === 204) {
+          // Dispatch confirmed. Record time for cold-start bar.
+          dispatchedAt = Date.now();
+          // Show full pipeline immediately in pending state — never mid-movie.
+          showStepTrackerPending();
+          setStatusVisual("dot-yellow", "QUEUED");
+          showControlInfo('<i class="fa-solid fa-satellite-dish" style="margin-right:4px;color:var(--accent);"></i> Runner booting — typically 20–40s...');
+          startFastPoll("start");
         } else {
           throw new Error(`API returned status ${res.status}`);
         }
       } catch(err) {
-        const msg = err.name === 'AbortError' ? 'Request timed out' : err.message;
-        controlError.innerHTML = '<i class="fa-solid fa-circle-xmark" style="margin-right: 4px;"></i> Failed to start: ' + msg;
+        dispatchedAt = null;
+        hideStepTracker();
+        const msg = err.name === "AbortError" ? "Request timed out" : err.message;
+        controlError.innerHTML = '<i class="fa-solid fa-circle-xmark" style="margin-right:4px;"></i> Failed to start: ' + msg;
         controlError.style.display = "block";
         setTimeout(() => { controlError.style.display = "none"; }, 5000);
-        
         b.disabled = false;
         b.innerHTML = '<i class="fa-solid fa-terminal"></i> Initialize Run';
         setStatusVisual(lastKnownStatus.dot, lastKnownStatus.text);
@@ -685,95 +1101,256 @@
       }
     }
 
+    // ── Cancel run ────────────────────────────────────────────────
     async function cancelRun() {
-      const b = $("cancel-btn"); if(!b||!gh_pat||!currentRunId) return;
-      
-      // Optimistic UI immediately
-      b.disabled = true; 
-      b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cancelling...'; 
+      const b = $("cancel-btn");
+      if (!b || !gh_pat || !currentRunId) return;
+
+      b.disabled = true;
+      b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cancelling...';
       controlError.style.display = "none";
       setStatusVisual("dot-grey", "Cancelling workflow...");
 
+      // Stop step tracker immediately — no point updating mid-cancel
+      stopStepPoll();
+      hideStepTracker();
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId  = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`, {
-          method: "POST",
-          headers: {"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"},
-          signal: controller.signal
-        });
-        
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`,
+          {
+            method: "POST",
+            headers: { "Authorization": `token ${gh_pat}`, "Accept": "application/vnd.github.v3+json" },
+            signal: controller.signal
+          }
+        );
+
         if (res.status === 202) {
-          b.innerHTML = '<i class="fa-solid fa-check"></i> Cancelled';
-          startFastPoll('cancel');
+          // Optimistic finality — the cancel was accepted.
+          // Lock UI in cancelled state immediately. Don't re-render
+          // the Cancel button even if the next poll still sees in_progress.
+          dispatchedAt = null;
+          cancelLocked = true;
+          setStatusVisual("dot-grey", "CANCELLING");
+          logMsg.textContent = "Cancellation sent — waiting for runner to stop.";
+          b.innerHTML = '<i class="fa-solid fa-check"></i> Abort sent';
+          startFastPoll("cancel");
         } else {
           throw new Error(`API returned status ${res.status}`);
         }
       } catch(err) {
-        const msg = err.name === 'AbortError' ? 'Request timed out' : err.message;
-        controlError.innerHTML = '<i class="fa-solid fa-circle-xmark" style="margin-right: 4px;"></i> Failed to cancel: ' + msg;
+        const msg = err.name === "AbortError" ? "Request timed out" : err.message;
+        controlError.innerHTML = '<i class="fa-solid fa-circle-xmark" style="margin-right:4px;"></i> Failed to cancel: ' + msg;
         controlError.style.display = "block";
         setTimeout(() => { controlError.style.display = "none"; }, 5000);
-        
         b.disabled = false;
         b.innerHTML = '<i class="fa-solid fa-stop"></i> Abort Execution';
-        setStatusVisual("dot-yellow", "EXECUTING"); // Revert
+        setStatusVisual("dot-yellow", "EXECUTING");
+        // Resume step tracker if cancel failed — run is still going
+        if (currentRunId) startStepPoll(currentRunId);
       } finally {
         clearTimeout(timeoutId);
       }
     }
 
+    // ── Count-up animation ────────────────────────────────────────
+    // Animates a metric value from its current displayed number to a
+    // new target over ~600ms. Feels like the number is being computed.
+    function animateCount(el, target, suffix, duration = 600) {
+      const text = el.textContent.replace(/[^0-9]/g, "");
+      const start = parseInt(text) || 0;
+      if (start === target) return;
+      const startTime = performance.now();
+      const tick = (now) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const val = Math.round(start + (target - start) * eased);
+        el.innerHTML = `${val}${suffix}`;
+        if (progress < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
     async function pollComputeTime() {
-      if(!gh_pat) return;
-      
+      if (!gh_pat) return;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId  = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs?per_page=100`, {
-          headers: {"Authorization": `token ${gh_pat}`},
-          signal: controller.signal
-        });
-        
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs?per_page=100`,
+          { headers: { "Authorization": `token ${gh_pat}` }, signal: controller.signal }
+        );
         if (!res.ok) return;
         const data = await res.json();
-        
-        let totalMs = 0;
-        let lastRunMs = null;
-        
+
+        let totalMs = 0, lastRunMs = null;
         if (data.workflow_runs && data.workflow_runs.length > 0) {
           data.workflow_runs.forEach(r => {
-            if (r.status === 'completed' && r.created_at && r.updated_at) {
-              const c = new Date(r.created_at).getTime();
-              const u = new Date(r.updated_at).getTime();
-              const duration = u - c;
-              if (duration > 0) totalMs += duration;
-              
-              if (lastRunMs === null) {
-                lastRunMs = duration;
-              }
+            if (r.status === "completed" && r.created_at && r.updated_at) {
+              const dur = new Date(r.updated_at).getTime() - new Date(r.created_at).getTime();
+              if (dur > 0) totalMs += dur;
+              if (lastRunMs === null) lastRunMs = dur;
             }
           });
         }
-        
+
         if (totalMs > 0) {
-          const totalMin = Math.round(totalMs / 60000);
-          $("total-time-text").innerHTML = `${totalMin}<span>m</span>`;
+          const totalMin = Math.round(totalMs/60000);
+          animateCount($("total-time-text"), totalMin, '<span>m</span>');
         }
         if (lastRunMs !== null) {
-          const lastMin = Math.floor(lastRunMs / 60000);
-          const lastSec = Math.round((lastRunMs % 60000) / 1000);
-          if (lastMin > 0) {
-            $("last-run-text").innerHTML = `${lastMin}<span>m</span> ${lastSec}<span>s</span>`;
+          const lm = Math.floor(lastRunMs / 60000);
+          const ls = Math.round((lastRunMs % 60000) / 1000);
+          const lastEl = $("last-run-text");
+          if (lm > 0) {
+            animateCount(lastEl, lm * 60 + ls, `<span>s total</span>`);
+            // Show as Xm Ys after animation
+            setTimeout(() => {
+              lastEl.innerHTML = `${lm}<span>m</span> ${ls}<span>s</span>`;
+            }, 650);
           } else {
-            $("last-run-text").innerHTML = `${lastSec}<span>s</span>`;
+            animateCount(lastEl, ls, '<span>s</span>');
           }
         }
-      } catch(e){} finally {
+      } catch(e) {
+      } finally {
         clearTimeout(timeoutId);
       }
     }
+
+    // ── WebAuthn helpers ──────────────────────────────────────────
+    function b64ToBytes(b64) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+    function bytesToB64(uint8) {
+      let bin = "";
+      for (let i = 0; i < uint8.length; i++) bin += String.fromCharCode(uint8[i]);
+      return btoa(bin);
+    }
+
+    async function registerBiometric() {
+      if (!navigator.credentials || localStorage.getItem("webauthn_registered") === "true") return;
+      try {
+        const cred = await navigator.credentials.create({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rp: { name: "TeamsLeech" },
+            user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "owner", displayName: "Owner" },
+            pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+            authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "discouraged" },
+            timeout: 60000
+          }
+        });
+        localStorage.setItem("webauthn_registered", "true");
+        localStorage.setItem("webauthn_cred_id", bytesToB64(new Uint8Array(cred.rawId)));
+      } catch(e) {}
+    }
+
+    async function verifyBiometric() {
+      const storedId = localStorage.getItem("webauthn_cred_id");
+      if (!storedId) return false;
+      try {
+        await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            allowCredentials: [{ id: b64ToBytes(storedId), type: "public-key" }],
+            userVerification: "required",
+            timeout: 60000
+          }
+        });
+        return true;
+      } catch(e) { return false; }
+    }
+
+    // ── Unlock ────────────────────────────────────────────────────
+    unlockBtn.addEventListener("click", handleUnlock);
+    passwordInput.addEventListener("keydown", e => { if (e.key === "Enter") handleUnlock(); });
+
+    async function handleUnlock() {
+      const pwd = passwordInput.value;
+      if (!pwd) return;
+
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = "Authenticating...";
+      unlockError.style.display = "none";
+
+      if (navigator.credentials && localStorage.getItem("webauthn_registered") === "true") {
+        biometricStatus.textContent = "Tap sensor to proceed";
+        biometricStatus.style.display = "block";
+        const ok = await verifyBiometric();
+        biometricStatus.style.display = "none";
+        if (!ok) {
+          unlockError.textContent = "Biometric required";
+          unlockError.style.display = "block";
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = "Access Console";
+          return;
+        }
+      }
+
+      try {
+        let res;
+        try { res = await fetch(`https://api.github.com/gists/${GIST_ID}`, { headers: { "Authorization": `token ${GIST_READ_TOKEN}` } }); }
+        catch(e) { throw new Error("Network"); }
+        if (!res.ok) throw new Error("HTTP" + res.status);
+
+        const data  = await res.json();
+        const creds = JSON.parse(data.files["teamsleech_credentials.json"].content);
+        const salt   = b64ToBytes(creds.salt);
+        const iv     = b64ToBytes(creds.iv);
+        const cipher = b64ToBytes(creds.ciphertext);
+        const keyMat = await crypto.subtle.importKey("raw", new TextEncoder().encode(pwd), "PBKDF2", false, ["deriveKey"]);
+        const aesKey = await crypto.subtle.deriveKey({ name: "PBKDF2", hash: "sha-256", salt, iterations: 310000 }, keyMat, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+        const dec    = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, cipher);
+        const dict   = JSON.parse(new TextDecoder().decode(dec));
+
+        gh_pat     = dict.gh_pat;
+        bot_token  = dict.bot_token;
+        chat_id    = dict.chat_id;
+
+        await registerBiometric();
+        unlockScreen.style.display = "none";
+        dashboard.style.display    = "block";
+        passwordInput.value        = "";
+        unlockBtn.disabled         = false;
+        unlockBtn.textContent      = "Access Console";
+
+        pollStatus();
+        pollComputeTime();
+        statusInterval = setInterval(pollStatus, 10000);
+        usageInterval  = setInterval(pollComputeTime, 300000);
+      } catch(err) {
+        unlockError.textContent    = "Access Denied";
+        unlockError.style.display  = "block";
+        passwordInput.value        = "";
+        unlockBtn.disabled         = false;
+        unlockBtn.textContent      = "Access Console";
+      }
+    }
+
+    // ── Lock ──────────────────────────────────────────────────────
+    $("lock-btn").addEventListener("click", () => {
+      gh_pat = null; bot_token = null; chat_id = null;
+      dispatchedAt = null;
+      cancelLocked = false;
+      clearInterval(statusInterval);
+      clearInterval(usageInterval);
+      stopFastPoll();
+      stopStepPoll();
+      hideStepTracker();
+      dashboard.style.display    = "none";
+      unlockScreen.style.display = "flex";
+      passwordInput.value        = "";
+      passwordInput.focus();
+    });
   </script>
 </body>
 </html>

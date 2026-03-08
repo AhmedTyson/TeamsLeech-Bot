@@ -28,13 +28,13 @@ from typing import Any
 
 import requests
 
-# ───────────────────────── constants ──────────────────────────
+# ───────────────────────── constants ──────────────────────────────
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 log = logging.getLogger("fetcher")
 
-# ───────────────────────── exceptions ────────────────────────────
+# ───────────────────────── exceptions ─────────────────────────────
 
 class FetcherError(Exception):
     """Base exception for fetcher failures."""
@@ -42,7 +42,7 @@ class FetcherError(Exception):
 class GraphAPIError(FetcherError):
     """Raised when a Graph API call returns an unexpected error."""
 
-# ───────────────────────── config loading ─────────────────────
+# ───────────────────────── config loading ─────────────────────────
 
 def load_subjects(path: str = "subjects_config.json") -> list[dict]:
     """Load subject definitions from JSON config.
@@ -56,7 +56,7 @@ def load_subjects(path: str = "subjects_config.json") -> list[dict]:
         raise FetcherError(f"No subjects found in {path}")
     return subjects
 
-# ───────────────────────── state management ───────────────────
+# ───────────────────────── state management ───────────────────────
 
 def _state_file(state_dir: str, subject_name: str) -> str:
     """Return path to per-subject last_run file."""
@@ -90,9 +90,9 @@ def save_last_run(
     path = _state_file(state_dir, subject_name)
     with open(path, "w", encoding="utf-8") as f:
         f.write(ts.isoformat())
-    log.info("Saved last_run for '%s' \u2192 %s", subj_name, ts.isoformat())
+    log.info("Saved last_run for '%s' → %s", subject_name, ts.isoformat())
 
-# ───────────────────────── Graph API helpers ──────────────────
+# ───────────────────────── Graph API helpers ──────────────────────
 
 def _graph_get(
     url: str, access_token: str, params: dict | None = None
@@ -184,7 +184,7 @@ def _search_drive_for_mp4(
         if item.get("name", "").lower().endswith(".mp4")
     ]
 
-# ───────────────────────── main entry point ───────────────────
+# ───────────────────────── main entry point ───────────────────────
 
 def fetch_recordings(
     access_token: str,

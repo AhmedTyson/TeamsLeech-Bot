@@ -37,25 +37,25 @@ from pyrogram import Client
 
 
 def _pass(label: str) -> None:
-    print(f"  \u2705  {label}")
+    print(f"  ✅  {label}")
 
 
 def _fail(label: str, err: Exception) -> None:
-    print(f"  \u274c  {label}: {err}")
+    print(f"  ❌  {label}: {err}")
     sys.exit(1)
 
 
 async def run_test() -> None:
     print()
     print("=" * 60)
-    print("  Phase 4 \u2014 uploader verification")
+    print("  Phase 4 — uploader verification")
     print("=" * 60)
 
-    # \u2500\u2500 Step 0: Get access token \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ── Step 0: Get access token ─────────────────────────────────
     print("\n[0/5] Getting access_token via token_manager...")
     rt = os.environ.get("TEAMS_REFRESH_TOKEN", "")
     if not rt:
-        print("  \u274c  TEAMS_REFRESH_TOKEN not set in .env")
+        print("  ❌  TEAMS_REFRESH_TOKEN not set in .env")
         sys.exit(1)
     try:
         access_token, _ = exchange_refresh_token(rt)
@@ -63,7 +63,7 @@ async def run_test() -> None:
     except Exception as e:
         _fail("Could not get access_token", e)
 
-    # \u2500\u2500 Step 1: Fetch a real recording \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ── Step 1: Fetch a real recording ───────────────────────────
     print("\n[1/5] Fetching recordings to find smallest file...")
     try:
         results = fetch_recordings(
@@ -77,9 +77,9 @@ async def run_test() -> None:
             all_recs.extend(recs)
 
         if not all_recs:
-            print("  \u26a0\ufe0f  No recordings found. Cannot test upload.")
+            print("  ⚠️  No recordings found. Cannot test upload.")
             print("      This could be normal if all recordings are old.")
-            print("      Phase 4 code is correct \u2014 try again when new recordings exist.")
+            print("      Phase 4 code is correct — try again when new recordings exist.")
             sys.exit(0)
 
         smallest = min(all_recs, key=lambda r: r["size_mb"])
@@ -90,7 +90,7 @@ async def run_test() -> None:
     except Exception as e:
         _fail("Fetch failed", e)
 
-    # \u2500\u2500 Step 2: Create Pyrogram client \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ── Step 2: Create Pyrogram client ───────────────────────────
     print("\n[2/5] Creating Pyrogram client...")
     try:
         session = os.environ.get("TELEGRAM_SESSION", "")
@@ -111,7 +111,7 @@ async def run_test() -> None:
     except Exception as e:
         _fail("Pyrogram client creation failed", e)
 
-    # \u2500\u2500 Step 3: Upload the smallest recording \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ── Step 3: Upload the smallest recording ────────────────────
     print(f"\n[3/5] Uploading: {smallest['name']} ({smallest['size_mb']}MB)...")
     print("      This may take a few minutes depending on file size...")
 
@@ -127,7 +127,7 @@ async def run_test() -> None:
         except Exception as e:
             _fail("upload_recordings failed", e)
 
-    # \u2500\u2500 Step 4: Check results \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ── Step 4: Check results ────────────────────────────────────
     print("\n[4/5] Checking results...")
     try:
         assert len(upload_results) == 1
@@ -135,25 +135,25 @@ async def run_test() -> None:
         assert result["name"] == smallest["name"]
         assert result["success"] is True
         assert result["error"] is None
-        _pass(f"Result: {result['name']} \u2014 success={result['success']}")
+        _pass(f"Result: {result['name']} — success={result['success']}")
     except AssertionError as e:
         _fail("Result validation failed", e)
 
-    # \u2500\u2500 Step 5: Manual check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ── Step 5: Manual check ─────────────────────────────────────
     print("\n[5/5] Manual check:")
-    print("      \u2192 Open Telegram \u2192 Saved Messages")
-    print(f"      \u2192 Verify '{smallest['name']}' is there and playable")
+    print("      → Open Telegram → Saved Messages")
+    print(f"      → Verify '{smallest['name']}' is there and playable")
     print()
     _pass("Upload pipeline complete")
 
-    # \u2500\u2500 Cleanup \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # ── Cleanup ──────────────────────────────────────────────────
     import shutil
     if os.path.exists(".state_test_upload"):
         shutil.rmtree(".state_test_upload")
 
     print()
     print("=" * 60)
-    print("  All 5 checks passed \u2705  \u2014 Phase 4 is DONE")
+    print("  All 5 checks passed ✅  — Phase 4 is DONE")
     print("=" * 60)
     print()
 

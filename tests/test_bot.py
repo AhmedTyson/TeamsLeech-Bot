@@ -109,7 +109,8 @@ def mock_upload(recordings: list[dict]) -> None:
     """Mock uploader that just prints what would be uploaded."""
     print(f"\n  [mock] on_upload called with {len(recordings)} recording(s):")
     for rec in recordings:
-        print(f"    📤 {rec['name']} — {rec['size_mb']}MB (drive={rec['drive_id']}, item={rec['item_id']})")
+        print(f"    📤 {rec['name']} — {rec['size_mb']}MB — {rec['created']}\n")
+        print(f"     Team: {rec['team_name']}")
     print()
 
 

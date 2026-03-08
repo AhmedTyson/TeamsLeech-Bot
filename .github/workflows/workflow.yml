@@ -1,11 +1,18 @@
 # TeamsLeech Bot — GitHub Actions Workflow
 #
-# Trigger: Manual only (workflow_dispatch from GitHub UI)
-# Runner:  ubuntu-latest (free tier)
-# Purpose: Run main.py → authenticate → fetch → bot → upload
+# Trigger:  Manual only (workflow_dispatch from GitHub UI)
+# Runner:   ubuntu-latest (free tier)
+# Purpose:  Run main.py → authenticate → fetch → bot → upload
 #
-# State persistence: The .state/ directory (per-subject last_run timestamps)
-# is saved/restored via GitHub Actions artifacts between runs.
+# Caching strategy:
+#   We cache the entire .venv/ directory (not just pip wheels).
+#   cache: "pip" in setup-python only caches downloaded wheels — pip
+#   still has to resolve, unzip, and compile on every run.
+#   Caching .venv/ skips all of that. Cache key is requirements.txt hash.
+#
+# State persistence:
+#   The .state/ directory (per-subject last_run timestamps) is saved
+#   and restored via GitHub Actions artifacts between runs.
 
 name: TeamsLeech Bot
 
@@ -28,48 +35,80 @@ jobs:
     timeout-minutes: 30
 
     env:
-      TEAMS_REFRESH_TOKEN: ${{ secrets.TEAMS_REFRESH_TOKEN }}
-      GH_PAT: ${{ secrets.GH_PAT }}
-      GITHUB_REPOSITORY: ${{ github.repository }}
-      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TEAMS_REFRESH_TOKEN:  ${{ secrets.TEAMS_REFRESH_TOKEN }}
+      GH_PAT:               ${{ secrets.GH_PAT }}
+      GITHUB_REPOSITORY:    ${{ github.repository }}
+      TELEGRAM_API_ID:      ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH:    ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
+      # Point Python at the cached venv so sub-processes inherit it
+      VIRTUAL_ENV:          ${{ github.workspace }}/.venv
+      PATH:                 ${{ github.workspace }}/.venv/bin:$PATH
 
     steps:
       # ── 1. Checkout code ──────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python ──────────────────────────────────────
+      # ── 2. Set up Python (no pip cache — we cache the whole venv) ──
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          # Do NOT use cache: "pip" here.
+          # That only caches downloaded wheels, not the installed venv.
+          # We get true skip-install via the venv cache below.
 
-      # ── 3. Install dependencies ───────────────────────────────
+      # ── 3. Restore cached .venv ───────────────────────────────
+      - name: Restore cached virtualenv
+        id: venv-cache
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          # Cache key = Python version + hash of requirements.txt
+          # Any change to requirements.txt busts the cache automatically.
+          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('requirements.txt') }}
+
+      # ── 4. Install dependencies (only on cache miss) ──────────
       - name: Install dependencies
+        if: steps.venv-cache.outputs.cache-hit != 'true'
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
 
-      # ── 4. Restore .state/ from previous run ──────────────────
+      # ── 5. Restore .state/ from previous run ──────────────────
       - name: Restore state (last_run timestamps)
         uses: actions/download-artifact@v4
         with:
           name: teamsleech-state
           path: .state/
-        continue-on-error: true # first run has no artifact yet
+        continue-on-error: true   # first run has no artifact yet
 
-      # ── 5. Run the bot ────────────────────────────────────────
+      # ── 6. Validate secrets before running ────────────────────
+      # Catches an expired TEAMS_REFRESH_TOKEN early so the dashboard
+      # can show "Token Expired" instead of a generic failure.
+      - name: Validate secrets present
+        run: |
+          if [ -z "$TEAMS_REFRESH_TOKEN" ]; then
+            echo "::error title=Secret Missing::TEAMS_REFRESH_TOKEN is empty or not set."
+            exit 1
+          fi
+          if [ -z "$GH_PAT" ]; then
+            echo "::warning title=Secret Warning::GH_PAT is not set — token auto-rotation will be disabled."
+          fi
+          echo "Secret presence check passed."
+
+      # ── 7. Run the bot ────────────────────────────────────────
       - name: Run TeamsLeech Bot
-        run: python src/main.py
+        id: run-bot
+        run: .venv/bin/python src/main.py
         timeout-minutes: 25
 
-      # ── 6. Save .state/ for next run ──────────────────────────
+      # ── 8. Save .state/ for next run ──────────────────────────
       - name: Save state (last_run timestamps)
-        if: always() # save even on failure so partial progress isn't lost
+        if: always()   # save even on failure so partial progress isn't lost
         uses: actions/upload-artifact@v4
         with:
           name: teamsleech-state
