@@ -1,4 +1,4 @@
-""" 
+"""
 Phase 1 — token_manager
 
 Exchanges a Microsoft OAuth2 refresh_token for a Graph API access_token,
@@ -19,18 +19,17 @@ from nacl import encoding, public
 
 # ───────────────────────── configuration ──────────────────────────
 
-TENANT_ID  = "7b35586a-d18d-405c-8e29-5713862937a9"
-CLIENT_ID  = "5e3ce6c0-2b1f-4285-8d4b-75ee78787346"   # Teams Web Client
+TENANT_ID  = "common"
+CLIENT_ID  = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"   # Azure CLI
 TOKEN_URL  = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
 SCOPE      = "https://graph.microsoft.com/.default offline_access"
-ORIGIN     = "https://teams.cloud.microsoft"
 
 GITHUB_API = "https://api.github.com"
 SECRET_NAME = "TEAMS_REFRESH_TOKEN"
 
 log = logging.getLogger("token_manager")
 
-# ───────────────────────── exceptions ────────────────────────────
+# ───────────────────────── exceptions ─────────────────────────────
 
 class TokenManagerError(Exception):
     """Base exception for all token_manager failures."""
@@ -67,7 +66,6 @@ def exchange_refresh_token(refresh_token: str) -> tuple[str, str]:
         "scope":         SCOPE,
     }
     headers = {
-        "Origin": ORIGIN,
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
@@ -172,7 +170,7 @@ def rotate_github_secret(
     log.info("Refresh token rotated → GitHub secret '%s' updated.", SECRET_NAME)
 
 
-# ───────────────────────── convenience ───────────────────────────
+# ───────────────────────── convenience ────────────────────────────
 
 def get_access_token() -> str:
     """All-in-one entry point: exchange → rotate → return access_token.
