@@ -454,7 +454,7 @@
     }
 
     function showControlInfo(msg) {
-      controlInfo.textContent = msg;
+      controlInfo.innerHTML = msg;
       controlInfo.style.display = "block";
     }
 
@@ -473,7 +473,7 @@
       fastPollTimeout = setTimeout(() => {
         stopFastPoll();
         if (mode === 'start') {
-          controlError.textContent = "⚠️ Run may not have started — check GitHub Actions tab";
+          controlError.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="margin-right: 4px;"></i> Run may not have started — check GitHub Actions tab';
           controlError.style.display = "block";
           setTimeout(() => { controlError.style.display = "none"; }, 5000);
         }
@@ -587,10 +587,9 @@
         
         const data = await res.json();
         
-        // Clear network error if we had one
-        if (logMsg.textContent.includes("⚠️ Connection issue")) {
+        if (logMsg.innerHTML.includes("fa-triangle-exclamation")) {
           setStatusVisual(lastKnownStatus.dot, lastKnownStatus.text);
-          logMsg.textContent = "Connection restored.";
+          logMsg.innerHTML = '<i class="fa-solid fa-satellite-dish" style="color: var(--success);"></i> Connection restored.';
         }
         
         if(!data.workflow_runs || data.workflow_runs.length===0) {
@@ -626,8 +625,7 @@
 
       } catch(e) {
         clearTimeout(timeoutId);
-        // On network error: do not clear status, just add a small indicator
-        logMsg.textContent = "⚠️ Connection issue — retrying...";
+        logMsg.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: var(--warning);"></i> Connection issue — retrying...';
       }
     }
 
@@ -649,8 +647,7 @@
       b.disabled = true; 
       b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Starting...'; 
       controlError.style.display = "none";
-      setStatusVisual("dot-yellow", "Dispatching workflow...");
-      showControlInfo("⏳ Waiting for GitHub to queue the run...");
+      showControlInfo('<i class="fa-solid fa-spinner fa-spin" style="margin-right: 4px;"></i> Waiting for GitHub to queue the run...');
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -669,9 +666,8 @@
           throw new Error(`API returned status ${res.status}`);
         }
       } catch(err) {
-        // Step 1 fallback on error
         const msg = err.name === 'AbortError' ? 'Request timed out' : err.message;
-        controlError.textContent = "❌ Failed to start: " + msg;
+        controlError.innerHTML = '<i class="fa-solid fa-circle-xmark" style="margin-right: 4px;"></i> Failed to start: ' + msg;
         controlError.style.display = "block";
         setTimeout(() => { controlError.style.display = "none"; }, 5000);
         
@@ -711,7 +707,7 @@
         }
       } catch(err) {
         const msg = err.name === 'AbortError' ? 'Request timed out' : err.message;
-        controlError.textContent = "❌ Failed to cancel: " + msg;
+        controlError.innerHTML = '<i class="fa-solid fa-circle-xmark" style="margin-right: 4px;"></i> Failed to cancel: ' + msg;
         controlError.style.display = "block";
         setTimeout(() => { controlError.style.display = "none"; }, 5000);
         
@@ -731,7 +727,7 @@
 
       try {
         let u=null;
-        const bRes=await fetch(`https://api.github.com/repos/${REPO}/actions/billing`,{
+        const bRes=await fetch(`https://api.github.com/users/AhmedTyson/settings/billing/actions`,{
           headers:{"Authorization":`token ${gh_pat}`},
           signal: controller.signal
         });
