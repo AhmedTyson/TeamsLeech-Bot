@@ -58,31 +58,20 @@
     }
 
     .unlock-logo {
-      font-size: 32px;
-      color: var(--accent);
-      margin-bottom: 16px;
+      width: 120px;
+      height: 120px;
+      margin-bottom: 24px;
       position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 72px;
-      height: 72px;
-      background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.05) 100%);
-      border: 1px solid rgba(168, 85, 247, 0.3);
-      border-radius: 16px;
-      box-shadow: 0 0 20px rgba(168, 85, 247, 0.1), inset 0 0 15px rgba(168, 85, 247, 0.1);
+      border-radius: 20px;
+      overflow: hidden;
     }
-
-    .unlock-logo::after {
-      content: "";
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 100%; height: 100%;
-      background: var(--accent);
-      filter: blur(40px);
-      z-index: -1;
-      opacity: 0.2;
+    .unlock-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .unlock-form {
@@ -200,17 +189,14 @@
     }
 
     .brand-icon {
-      font-size: 16px;
       color: var(--accent);
       display: flex;
       align-items: center;
       justify-content: center;
       width: 32px;
       height: 32px;
-      background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.05) 100%);
-      border: 1px solid rgba(168, 85, 247, 0.3);
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(168, 85, 247, 0.1);
+      overflow: hidden;
     }
 
     .brand-name { 
@@ -353,7 +339,9 @@
 
   <!-- ── Unlock Screen ── -->
   <div id="unlock-screen">
-    <div class="unlock-logo"><i class="fa-solid fa-satellite-dish"></i></div>
+    <div class="unlock-logo">
+      <img src="logo_small.png" alt="TeamLeech Logo" style="width:100%; height:100%;">
+    </div>
     <div class="brand-name" style="font-size: 26px; margin-bottom: 32px;">TeamLeech</div>
     <div class="unlock-form">
       <div class="input-wrapper">
@@ -370,7 +358,9 @@
   <div id="dashboard">
     <div class="top-bar">
       <div class="brand">
-        <div class="brand-icon"><i class="fa-solid fa-satellite-dish"></i></div>
+        <div class="brand-icon">
+          <img src="logo_small.png" alt="TeamLeech Logo" style="width:100%; height:100%;">
+        </div>
         <div class="brand-name">TeamLeech</div>
         <div class="brand-badge">PROD</div>
       </div>
