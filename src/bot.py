@@ -13,7 +13,6 @@ Public API
 ----------
 create_bot()       → pyrogram.Client  (configured, not started)
 register_handlers(app, on_fetch, on_upload) → None
-send_startup_warnings(client, chat_id) → None
 """
 
 import os
@@ -43,7 +42,7 @@ REPLY_KEYBOARD = ReplyKeyboardMarkup(
 
 log = logging.getLogger("bot")
 
-# ───────────────────────── constants ──────────────────────────
+# ───────────────────────── constants ──────────────────────────────
 
 DIVIDER = "─────────────────────────────"
 
@@ -73,7 +72,6 @@ def _load_subjects(path: str = "subjects_config.json") -> list[dict]:
 # ───────────────────────── bot factory ────────────────────────────
 
 def create_bot(
-    session_string: str | None = None,
     api_id: int | None = None,
     api_hash: str | None = None,
     bot_token: str | None = None,
@@ -81,19 +79,16 @@ def create_bot(
     """Create a Pyrogram Client configured from env vars or arguments.
 
     Environment variables (fallbacks):
-        TELEGRAM_SESSION   – Pyrogram session string
         TELEGRAM_API_ID    – from my.telegram.org
         TELEGRAM_API_HASH  – from my.telegram.org
         TELEGRAM_BOT_TOKEN – from @BotFather
     """
-    session = session_string or os.environ.get("TELEGRAM_SESSION", "")
     aid = api_id or int(os.environ.get("TELEGRAM_API_ID", "0"))
     ahash = api_hash or os.environ.get("TELEGRAM_API_HASH", "")
     token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
-    if not all([session, aid, ahash, token]):
+    if not all([aid, ahash, token]):
         missing = []
-        if not session: missing.append("TELEGRAM_SESSION")
         if not aid: missing.append("TELEGRAM_API_ID")
         if not ahash: missing.append("TELEGRAM_API_HASH")
         if not token: missing.append("TELEGRAM_BOT_TOKEN")
@@ -104,7 +99,6 @@ def create_bot(
         api_id=aid,
         api_hash=ahash,
         bot_token=token,
-        session_string=session,
         in_memory=True,
     )
     log.info("Pyrogram bot client created.")
@@ -643,7 +637,7 @@ def _store_results(chat_id: int, results: dict[str, list[dict]]) -> None:
     _flat_recordings[chat_id] = flat
 
 
-# ───────────────────────── startup warnings ─────────────────────
+# ───────────────────────── startup warnings ───────────────────────
 
 async def send_startup_warnings(client: Client, chat_id: int) -> None:
     """Send one-time startup warnings to the owner.
@@ -662,3 +656,4 @@ async def send_startup_warnings(client: Client, chat_id: int) -> None:
             log.warning("GH_PAT not set — startup warning sent to Telegram.")
         except Exception as e:
             log.warning("Failed to send GH_PAT warning: %s", e)
+
