@@ -35,7 +35,7 @@ from fetcher import fetch_recordings, save_last_run, load_subjects
 from bot import create_bot, register_handlers, send_startup_warnings
 from uploader import upload_recordings
 
-# ───────────────────────── logging ──────────────────────────────
+# ───────────────────────── logging ────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,14 +49,13 @@ log = logging.getLogger("main")
 SUBJECTS_PATH = os.environ.get("SUBJECTS_PATH", "subjects_config.json")
 STATE_DIR = os.environ.get("STATE_DIR", ".state")
 
-# ───────────────────────── env validation ───────────────────────
+# ───────────────────────── env validation ─────────────────────────
 
 REQUIRED_ENV = [
     "TEAMS_REFRESH_TOKEN",
     "TELEGRAM_API_ID",
     "TELEGRAM_API_HASH",
     "TELEGRAM_BOT_TOKEN",
-    "TELEGRAM_SESSION",
     "TELEGRAM_CHAT_ID",
 ]
 
