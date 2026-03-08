@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TeamsLeech</title>
+  <meta name="description" content="TeamsLeech Bot — Personal Control Dashboard">
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --accent: #8A2BE2;
+      --accent-hover: #7B27C1;
+      --text: #e5e5e5;
+      --text-muted: #888888;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Unlock Screen ─────────────────────────────── */
+
+    #unlock-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .unlock-logo {
+      font-size: 64px;
+      margin-bottom: 8px;
+    }
+
+    .unlock-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 32px;
+    }
+
+    .unlock-form {
+      width: 100%;
+      max-width: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #master-password {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 15px;
+      font-family: inherit;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    #master-password:focus {
+      border-color: var(--accent);
+    }
+
+    #master-password::placeholder {
+      color: var(--text-muted);
+    }
+
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:active { opacity: 0.7; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-accent {
+      background: var(--accent);
+      color: #fff;
+      width: 100%;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+      width: 100%;
+    }
+
+    #unlock-error {
+      display: none;
+      color: var(--danger);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* ── Dashboard ─────────────────────────────────── */
+
+    #dashboard {
+      display: none;
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+
+    .dash-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding: 0 4px;
+    }
+
+    .dash-brand {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .lock-btn {
+      background: none;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+
+    .lock-btn:hover { background: var(--surface); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+    }
+
+    /* Status card */
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-grey   { background: #555; }
+    .dot-yellow { background: var(--warning); }
+    .dot-green  { background: var(--success); }
+    .dot-red    { background: var(--danger); }
+
+    .status-text {
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .status-time {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .auth-error-note {
+      display: none;
+      font-size: 12px;
+      color: var(--danger);
+      margin-top: 6px;
+    }
+
+    /* Control card */
+
+    .control-error {
+      display: none;
+      font-size: 12px;
+      color: var(--danger);
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    /* Usage card */
+
+    .usage-text {
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.4s ease, background-color 0.4s ease;
+    }
+
+    .usage-warning {
+      display: none;
+      font-size: 13px;
+      color: var(--warning);
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Unlock Screen ──────────────────────────── -->
+  <div id="unlock-screen">
+    <div class="unlock-logo">📡</div>
+    <div class="unlock-title">TeamsLeech</div>
+    <div class="unlock-form">
+      <input
+        type="password"
+        id="master-password"
+        autocomplete="current-password"
+        placeholder="Master password"
+      >
+      <button class="btn btn-accent" id="unlock-btn" type="button">Unlock</button>
+      <div id="unlock-error">Incorrect password — try again</div>
+    </div>
+  </div>
+
+  <!-- ── Dashboard ──────────────────────────────── -->
+  <div id="dashboard">
+    <div class="dash-header">
+      <span class="dash-brand">📡 TeamsLeech</span>
+      <button class="lock-btn" id="lock-btn" title="Lock">🔒</button>
+    </div>
+
+    <!-- CARD 1 — Status -->
+    <div class="card">
+      <div class="card-title">Workflow Status</div>
+      <div class="status-row">
+        <span class="status-dot dot-grey" id="status-dot"></span>
+        <span class="status-text" id="status-text">Checking...</span>
+      </div>
+      <div class="status-time" id="status-time"></div>
+      <div class="auth-error-note" id="status-auth-error">Auth error</div>
+    </div>
+
+    <!-- CARD 2 — Run Control -->
+    <div class="card">
+      <div class="card-title">Workflow Control</div>
+      <div id="control-area">
+        <button class="btn btn-accent" id="run-btn" type="button">▶ Run Workflow</button>
+      </div>
+      <div class="control-error" id="control-error"></div>
+      <div class="auth-error-note" id="control-auth-error">Auth error</div>
+    </div>
+
+    <!-- CARD 3 — Usage Meter -->
+    <div class="card">
+      <div class="card-title">Actions Usage This Month</div>
+      <div class="usage-text" id="usage-text">Loading...</div>
+      <div class="progress-track">
+        <div class="progress-fill" id="usage-bar"></div>
+      </div>
+      <div class="usage-warning" id="usage-warning">⚠️ Approaching monthly limit</div>
+      <div class="auth-error-note" id="usage-auth-error">Auth error</div>
+    </div>
+  </div>
+
+  <script>
+    // ── PASTE YOUR VALUES FROM setup_gist.py OUTPUT HERE ──
+    const GIST_ID = "PASTE_GIST_ID_HERE";
+    const GIST_READ_TOKEN = "PASTE_GIST_READ_TOKEN_HERE";
+    // ────────────────────────────────────────────────────────
+    const REPO = "AhmedTyson/TeamsLeech-Bot";
+    const WORKFLOW_FILE = "workflow.yml";
+
+    // ── Credential store (memory only) ──
+    let gh_pat = null;
+    let bot_token = null;
+    let chat_id = null;
+    let currentRunId = null;
+    let statusInterval = null;
+    let usageInterval = null;
+
+    // ── DOM refs ──
+    const $ = (id) => document.getElementById(id);
+    const unlockScreen   = $("unlock-screen");
+    const dashboard      = $("dashboard");
+    const passwordInput  = $("master-password");
+    const unlockBtn      = $("unlock-btn");
+    const unlockError    = $("unlock-error");
+    const lockBtn        = $("lock-btn");
+    const statusDot      = $("status-dot");
+    const statusText     = $("status-text");
+    const statusTime     = $("status-time");
+    const statusAuthErr  = $("status-auth-error");
+    const controlArea    = $("control-area");
+    const controlError   = $("control-error");
+    const controlAuthErr = $("control-auth-error");
+    const runBtn         = $("run-btn");
+    const usageText      = $("usage-text");
+    const usageBar       = $("usage-bar");
+    const usageWarning   = $("usage-warning");
+    const usageAuthErr   = $("usage-auth-error");
+
+    // ── Helpers ──
+
+    function b64ToBytes(b64) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    // ── Unlock / Decrypt ──
+
+    unlockBtn.addEventListener("click", handleUnlock);
+    passwordInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") handleUnlock();
+    });
+
+    async function handleUnlock() {
+      const password = passwordInput.value;
+      if (!password) return;
+
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = "Unlocking...";
+      unlockError.style.display = "none";
+
+      try {
+        // Step A — Fetch the Gist
+        let gistRes;
+        try {
+          gistRes = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+            headers: { "Authorization": `token ${GIST_READ_TOKEN}` }
+          });
+        } catch (fetchErr) {
+          console.error("Gist fetch network error:", fetchErr);
+          unlockError.textContent = "Network error — check CORS or internet connection";
+          unlockError.style.display = "block";
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = "Unlock";
+          return;
+        }
+
+        if (!gistRes.ok) {
+          console.error("Gist fetch HTTP error:", gistRes.status);
+          unlockError.textContent = `Gist fetch failed (HTTP ${gistRes.status}) — check GIST_ID and GIST_READ_TOKEN`;
+          unlockError.style.display = "block";
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = "Unlock";
+          return;
+        }
+
+        const gistData = await gistRes.json();
+        const raw = gistData.files["teamsleech_credentials.json"].content;
+        const creds = JSON.parse(raw);
+
+        const salt       = b64ToBytes(creds.salt);
+        const iv         = b64ToBytes(creds.iv);
+        const ciphertext = b64ToBytes(creds.ciphertext);
+
+        // Step B — Derive AES key via WebCrypto PBKDF2
+        const enc = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey(
+          "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
+        );
+
+        const aesKey = await crypto.subtle.deriveKey(
+          {
+            name: "PBKDF2",
+            hash: "SHA-256",
+            salt: salt,
+            iterations: 310000
+          },
+          keyMaterial,
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["decrypt"]
+        );
+
+        // Step C — Decrypt with AES-GCM
+        const decrypted = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv },
+          aesKey,
+          ciphertext
+        );
+
+        const decoded = JSON.parse(new TextDecoder().decode(decrypted));
+
+        // Store in memory only
+        gh_pat    = decoded.gh_pat;
+        bot_token = decoded.bot_token;
+        chat_id   = decoded.chat_id;
+
+        showDashboard();
+
+      } catch (err) {
+        console.error("Decryption error:", err);
+        // If we got here, the Gist fetched fine but decryption failed = wrong password
+        unlockError.textContent = "Incorrect password — try again";
+        unlockError.style.display = "block";
+        passwordInput.value = "";
+        unlockBtn.disabled = false;
+        unlockBtn.textContent = "Unlock";
+      }
+    }
+
+    // ── Dashboard show / hide ──
+
+    function showDashboard() {
+      unlockScreen.style.display = "none";
+      dashboard.style.display = "block";
+      passwordInput.value = "";
+      unlockBtn.disabled = false;
+      unlockBtn.textContent = "Unlock";
+      unlockError.style.display = "none";
+
+      // Immediately poll, then set intervals
+      pollStatus();
+      pollUsage();
+      statusInterval = setInterval(pollStatus, 10000);
+      usageInterval  = setInterval(pollUsage, 300000);
+    }
+
+    function lockDashboard() {
+      // Clear credentials from memory
+      gh_pat = null;
+      bot_token = null;
+      chat_id = null;
+      currentRunId = null;
+
+      // Clear intervals
+      if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
+      if (usageInterval)  { clearInterval(usageInterval);  usageInterval = null; }
+
+      // Reset UI
+      dashboard.style.display = "none";
+      unlockScreen.style.display = "flex";
+      passwordInput.value = "";
+      passwordInput.focus();
+
+      // Reset card states
+      statusDot.className = "status-dot dot-grey";
+      statusText.textContent = "Checking...";
+      statusTime.textContent = "";
+      statusAuthErr.style.display = "none";
+      controlAuthErr.style.display = "none";
+      controlError.style.display = "none";
+      usageText.textContent = "Loading...";
+      usageBar.style.width = "0%";
+      usageWarning.style.display = "none";
+      usageAuthErr.style.display = "none";
+      renderControlButton(false);
+    }
+
+    lockBtn.addEventListener("click", lockDashboard);
+
+    // ── Status Polling ──
+
+    async function pollStatus() {
+      if (!gh_pat) return;
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/runs?per_page=1`,
+          { headers: { "Authorization": `token ${gh_pat}` } }
+        );
+
+        if (res.status === 401) {
+          statusAuthErr.style.display = "block";
+          return;
+        }
+        statusAuthErr.style.display = "none";
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        if (!data.workflow_runs || data.workflow_runs.length === 0) {
+          statusDot.className = "status-dot dot-grey";
+          statusText.textContent = "Idle — no recent runs";
+          statusTime.textContent = "No runs found";
+          currentRunId = null;
+          renderControlButton(false);
+          return;
+        }
+
+        const run = data.workflow_runs[0];
+        currentRunId = run.id;
+        const isActive = (run.status === "in_progress" || run.status === "queued");
+
+        if (isActive) {
+          statusDot.className = "status-dot dot-yellow";
+          statusText.textContent = "Running...";
+        } else if (run.conclusion === "success") {
+          statusDot.className = "status-dot dot-green";
+          statusText.textContent = "Last run succeeded";
+        } else if (run.conclusion === "failure" || run.conclusion === "cancelled") {
+          statusDot.className = "status-dot dot-red";
+          statusText.textContent = "Last run failed";
+        } else {
+          statusDot.className = "status-dot dot-grey";
+          statusText.textContent = "Idle — no recent runs";
+        }
+
+        // Timestamp
+        const ts = new Date(run.updated_at || run.created_at);
+        statusTime.textContent = "Last run: " + ts.toLocaleString();
+
+        renderControlButton(isActive);
+
+      } catch (err) {
+        // Network error — keep last known state
+      }
+    }
+
+    // ── Control Button ──
+
+    function renderControlButton(isActive) {
+      if (isActive) {
+        controlArea.innerHTML =
+          `<button class="btn btn-danger" id="cancel-btn" type="button">⏹ Cancel Run</button>`;
+        $("cancel-btn").addEventListener("click", cancelRun);
+      } else {
+        controlArea.innerHTML =
+          `<button class="btn btn-accent" id="run-btn" type="button">▶ Run Workflow</button>`;
+        $("run-btn").addEventListener("click", startRun);
+      }
+      controlError.style.display = "none";
+    }
+
+    async function startRun() {
+      const btn = $("run-btn");
+      if (!btn || !gh_pat) return;
+
+      btn.disabled = true;
+      btn.textContent = "Starting...";
+      controlError.style.display = "none";
+      controlAuthErr.style.display = "none";
+
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `token ${gh_pat}`,
+              "Accept": "application/vnd.github.v3+json"
+            },
+            body: JSON.stringify({ ref: "main", inputs: { mode: "normal" } })
+          }
+        );
+
+        if (res.status === 401) {
+          controlAuthErr.style.display = "block";
+          btn.disabled = false;
+          btn.textContent = "▶ Run Workflow";
+          return;
+        }
+
+        if (!res.ok) {
+          const errText = await res.text();
+          controlError.textContent = `Error: ${res.status}`;
+          controlError.style.display = "block";
+          btn.disabled = false;
+          btn.textContent = "▶ Run Workflow";
+          return;
+        }
+
+        // Success — show "Starting..." for 3 seconds then let status poll update
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = "▶ Run Workflow";
+          pollStatus();
+        }, 3000);
+
+      } catch (err) {
+        controlError.textContent = "Network error";
+        controlError.style.display = "block";
+        btn.disabled = false;
+        btn.textContent = "▶ Run Workflow";
+      }
+    }
+
+    async function cancelRun() {
+      const btn = $("cancel-btn");
+      if (!btn || !gh_pat || !currentRunId) return;
+
+      btn.disabled = true;
+      btn.textContent = "Cancelling...";
+      controlError.style.display = "none";
+      controlAuthErr.style.display = "none";
+
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `token ${gh_pat}`,
+              "Accept": "application/vnd.github.v3+json"
+            }
+          }
+        );
+
+        if (res.status === 401) {
+          controlAuthErr.style.display = "block";
+          btn.disabled = false;
+          btn.textContent = "⏹ Cancel Run";
+          return;
+        }
+
+        // Let status poll pick up the change
+        setTimeout(pollStatus, 3000);
+
+      } catch (err) {
+        controlError.textContent = "Network error";
+        controlError.style.display = "block";
+        btn.disabled = false;
+        btn.textContent = "⏹ Cancel Run";
+      }
+    }
+
+    // ── Usage Polling ──
+
+    async function pollUsage() {
+      if (!gh_pat) return;
+
+      try {
+        // Try billing endpoint first
+        let used = null;
+
+        const billingRes = await fetch(
+          `https://api.github.com/repos/${REPO}/actions/billing`,
+          { headers: { "Authorization": `token ${gh_pat}` } }
+        );
+
+        if (billingRes.status === 401) {
+          usageAuthErr.style.display = "block";
+          return;
+        }
+        usageAuthErr.style.display = "none";
+
+        if (billingRes.ok) {
+          const billingData = await billingRes.json();
+          if (billingData.total_minutes_used !== undefined) {
+            used = Math.round(billingData.total_minutes_used);
+          }
+        }
+
+        // Fallback: calculate from recent run durations
+        if (used === null) {
+          const runsRes = await fetch(
+            `https://api.github.com/repos/${REPO}/actions/runs?per_page=100&status=completed`,
+            { headers: { "Authorization": `token ${gh_pat}` } }
+          );
+
+          if (runsRes.ok) {
+            const runsData = await runsRes.json();
+            let totalMs = 0;
+            const now = new Date();
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+            for (const run of (runsData.workflow_runs || [])) {
+              const created = new Date(run.created_at);
+              if (created < monthStart) continue;
+              const updated = new Date(run.updated_at);
+              totalMs += (updated - created);
+            }
+            used = Math.round(totalMs / 60000);
+          }
+        }
+
+        if (used !== null) {
+          usageText.textContent = `${used} / 2000 min used`;
+
+          const pct = Math.min((used / 2000) * 100, 100);
+          usageBar.style.width = pct + "%";
+
+          if (used > 1800) {
+            usageBar.style.backgroundColor = "var(--danger)";
+            usageWarning.style.display = "block";
+          } else if (used >= 1500) {
+            usageBar.style.backgroundColor = "var(--warning)";
+            usageWarning.style.display = "none";
+          } else {
+            usageBar.style.backgroundColor = "var(--success)";
+            usageWarning.style.display = "none";
+          }
+        }
+
+      } catch (err) {
+        // Network error — keep last known state
+      }
+    }
+  </script>
+</body>
+</html>
