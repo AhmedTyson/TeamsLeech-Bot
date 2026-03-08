@@ -120,6 +120,30 @@
       margin-top: 4px;
     }
 
+    #biometric-status {
+      display: none;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 2px;
+      min-height: 18px;
+    }
+
+    #reset-biometric {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      text-decoration: none;
+      margin-top: 4px;
+      cursor: pointer;
+      transition: color 0.15s;
+      display: block;
+    }
+
+    #reset-biometric:hover {
+      color: var(--text);
+    }
+
     /* ── Dashboard ─────────────────────────────────── */
 
     #dashboard {
@@ -265,8 +289,10 @@
         autocomplete="current-password"
         placeholder="Master password"
       >
+      <p id="biometric-status"></p>
       <button class="btn btn-accent" id="unlock-btn" type="button">Unlock</button>
       <div id="unlock-error">Incorrect password — try again</div>
+      <a id="reset-biometric" href="#">Reset biometric</a>
     </div>
   </div>
 
@@ -356,6 +382,89 @@
       return arr;
     }
 
+    function bytesToB64(uint8) {
+      let bin = "";
+      for (let i = 0; i < uint8.length; i++) bin += String.fromCharCode(uint8[i]);
+      return btoa(bin);
+    }
+
+    // ── DOM refs (biometric) ──
+    const biometricStatus = $("biometric-status");
+    const resetBiometricLink = $("reset-biometric");
+
+    // ── WebAuthn Biometric ──
+
+    async function registerBiometric() {
+      if (!navigator.credentials) return;
+      if (localStorage.getItem("webauthn_registered") === "true") return;
+
+      try {
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rp: { name: "TeamsLeech" },
+            user: {
+              id: crypto.getRandomValues(new Uint8Array(16)),
+              name: "owner",
+              displayName: "Owner"
+            },
+            pubKeyCredParams: [
+              { type: "public-key", alg: -7 },
+              { type: "public-key", alg: -257 }
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: "platform",
+              userVerification: "required",
+              residentKey: "discouraged"
+            },
+            timeout: 60000
+          }
+        });
+
+        localStorage.setItem("webauthn_registered", "true");
+        localStorage.setItem("webauthn_cred_id", bytesToB64(new Uint8Array(credential.rawId)));
+
+        biometricStatus.textContent = "🔐 Fingerprint registered — required on next unlock";
+        biometricStatus.style.display = "block";
+        setTimeout(() => { biometricStatus.style.display = "none"; biometricStatus.textContent = ""; }, 4000);
+      } catch (err) {
+        // User cancelled or not supported — skip silently
+      }
+    }
+
+    async function verifyBiometric() {
+      try {
+        const storedId = localStorage.getItem("webauthn_cred_id");
+        if (!storedId) return false;
+        const credIdBytes = b64ToBytes(storedId);
+
+        await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            allowCredentials: [{
+              id: credIdBytes,
+              type: "public-key"
+            }],
+            userVerification: "required",
+            timeout: 60000
+          }
+        });
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    // ── Reset biometric ──
+    resetBiometricLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      localStorage.removeItem("webauthn_registered");
+      localStorage.removeItem("webauthn_cred_id");
+      biometricStatus.textContent = "Biometric reset — will re-register on next unlock";
+      biometricStatus.style.display = "block";
+      setTimeout(() => { biometricStatus.style.display = "none"; biometricStatus.textContent = ""; }, 4000);
+    });
+
     // ── Unlock / Decrypt ──
 
     unlockBtn.addEventListener("click", handleUnlock);
@@ -370,6 +479,22 @@
       unlockBtn.disabled = true;
       unlockBtn.textContent = "Unlocking...";
       unlockError.style.display = "none";
+
+      // ── WebAuthn gate (runs on every unlock after first registration) ──
+      if (navigator.credentials && localStorage.getItem("webauthn_registered") === "true") {
+        biometricStatus.textContent = "👆 Touch the fingerprint sensor...";
+        biometricStatus.style.display = "block";
+        const bioOk = await verifyBiometric();
+        biometricStatus.style.display = "none";
+        biometricStatus.textContent = "";
+        if (!bioOk) {
+          unlockError.textContent = "Biometric verification failed — try again";
+          unlockError.style.display = "block";
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = "Unlock";
+          return;
+        }
+      }
 
       try {
         // Step A — Fetch the Gist
@@ -436,6 +561,9 @@
         gh_pat    = decoded.gh_pat;
         bot_token = decoded.bot_token;
         chat_id   = decoded.chat_id;
+
+        // Register biometric on first successful unlock
+        await registerBiometric();
 
         showDashboard();
 
