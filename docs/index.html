@@ -409,7 +409,7 @@
     <div class="section">
       <div class="section-title"><i class="fa-solid fa-server"></i> Compute Quota</div>
       <div class="metric-group">
-        <div class="metric-val" id="usage-text">--<span>/ 2000m</span></div>
+        <div class="metric-val" id="usage-text">--<span>/ 3000m</span></div>
       </div>
       <div class="track"><div class="fill" id="usage-bar"></div></div>
       <div class="error-toast" id="usage-auth-error">Quota endpoint unreachable.</div>
@@ -733,9 +733,9 @@
         });
         if(bRes.ok) { let dat=await bRes.json(); if(dat.total_minutes_used!==undefined) u=Math.round(dat.total_minutes_used); }
         if(u!==null) {
-          usageText.innerHTML = `${u}<span>/ 2000m</span>`;
-          const p = Math.min((u/2000)*100,100); usageBar.style.width=p+"%";
-          usageBar.className = "fill" + (u>1800?" danger": u>1500?" warn":"");
+          usageText.innerHTML = `${u}<span>/ 3000m</span>`;
+          const p = Math.min((u/3000)*100,100); usageBar.style.width=p+"%";
+          usageBar.className = "fill" + (u>2700?" danger": u>2250?" warn":"");
         }
       } catch(e){} finally {
         clearTimeout(timeoutId);
