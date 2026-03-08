@@ -3,40 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TeamsLeech | Console</title>
-  <meta name="description" content="TeamsLeech Bot — Personal Control Dashboard">
+  <title>TeamsLeech | Terminal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     :root {
-      --bg-app: #050505;
-      --bg-panel: #0f0f0f;
-      --bg-hover: #1a1a1a;
-      --bg-active: #262626;
-      --border: #262626;
+      --bg: #000000;
+      --bg-panel: #0a0a0a;
+      --border: #1f1f1f;
+      --border-highlight: #333333;
       --accent: #a855f7;
-      --accent-hover: #9333ea;
-      --accent-bg: rgba(168, 85, 247, 0.1);
-      --text-main: #ededed;
+      --accent-glow: rgba(168, 85, 247, 0.15);
+      --text: #f4f4f5;
       --text-muted: #a1a1aa;
       --text-dim: #52525b;
       --success: #10b981;
       --warning: #f59e0b;
       --danger: #ef4444;
-      --font-ui: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-ui: "Inter", -apple-system, sans-serif;
       --font-mono: "JetBrains Mono", monospace;
     }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: var(--font-ui);
-      background: var(--bg-app);
-      color: var(--text-main);
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       -webkit-font-smoothing: antialiased;
+      background-image: radial-gradient(circle at 50% -20%, var(--accent-glow) 0%, transparent 50%);
     }
 
     /* ── Unlock Screen ── */
@@ -46,81 +47,79 @@
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      width: 100%;
       padding: 24px;
-      animation: fadeIn 0.5s ease-out;
+      animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    .brand-logo-unlock {
-      font-size: 56px;
-      color: var(--accent);
-      filter: drop-shadow(0 0 20px var(--accent-bg));
-      margin-bottom: 16px;
+    .unlock-logo {
+      font-size: 40px;
+      color: var(--text);
+      margin-bottom: 24px;
+      position: relative;
     }
 
-    .unlock-title {
-      font-size: 28px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      margin-bottom: 32px;
-      color: var(--text-main);
+    .unlock-logo::after {
+      content: "";
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px; height: 60px;
+      background: var(--accent);
+      filter: blur(40px);
+      z-index: -1;
+      opacity: 0.3;
     }
 
     .unlock-form {
       width: 100%;
-      max-width: 320px;
+      max-width: 300px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 12px;
     }
 
-    .input-wrapper {
-      position: relative;
-    }
+    .input-wrapper { position: relative; }
 
     .input-icon {
       position: absolute;
-      left: 16px;
-      top: 50%;
+      left: 14px; top: 50%;
       transform: translateY(-50%);
       color: var(--text-dim);
-      font-size: 14px;
-      transition: color 0.2s;
+      font-size: 13px;
     }
 
     #master-password {
       width: 100%;
-      padding: 14px 16px 14px 44px;
+      padding: 12px 14px 12px 38px;
       font-family: var(--font-mono);
-      font-size: 14px;
-      background: var(--bg-panel);
+      font-size: 13px;
+      background: rgba(255,255,255,0.03);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      color: var(--text-main);
+      border-radius: 8px;
+      color: var(--text);
       outline: none;
       transition: all 0.2s;
-      letter-spacing: 2px;
     }
 
     #master-password:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-bg);
+      background: rgba(168, 85, 247, 0.05);
     }
 
-    #master-password:focus + .input-icon {
-      color: var(--accent);
-    }
+    #master-password:focus + .input-icon { color: var(--accent); }
 
     .btn {
-      border: none;
-      border-radius: 10px;
-      padding: 14px 20px;
-      font-size: 15px;
-      font-weight: 600;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 500;
       font-family: var(--font-ui);
       cursor: pointer;
       display: flex;
@@ -131,815 +130,419 @@
     }
 
     .btn:active { transform: scale(0.98); }
-    .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn:disabled { opacity: 0.5; pointer-events: none; }
 
-    .btn-accent {
-      background: linear-gradient(135deg, var(--accent), #7e22ce);
-      color: #fff;
-      width: 100%;
-      box-shadow: 0 4px 14px var(--accent-bg);
-    }
-
-    .btn-accent:hover:not(:disabled) {
-      box-shadow: 0 6px 20px rgba(168, 85, 247, 0.2);
-      filter: brightness(1.1);
-    }
-
-    .btn-danger {
-      background: var(--bg-hover);
-      border: 1px solid var(--border);
-      color: var(--danger);
+    .btn-submit {
+      background: var(--text);
+      color: var(--bg);
       width: 100%;
     }
 
-    .btn-danger:hover:not(:disabled) {
-      background: rgba(239, 68, 68, 0.1);
-      border-color: var(--danger);
-    }
+    .btn-submit:hover { background: #d4d4d8; }
 
-    #unlock-error {
-      display: none;
+    .btn-outline {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .btn-outline:hover { background: var(--bg-panel); border-color: var(--border-highlight); }
+
+    .btn-danger-outline {
+      background: transparent;
+      border-color: rgba(239, 68, 68, 0.3);
       color: var(--danger);
-      font-size: 13px;
-      text-align: center;
-      margin-top: 4px;
-      font-weight: 500;
     }
+    .btn-danger-outline:hover { background: rgba(239, 68, 68, 0.1); border-color: var(--danger); }
 
-    #biometric-status {
-      display: none;
-      font-size: 13px;
-      color: var(--text-muted);
+    #unlock-error, #biometric-status {
+      font-size: 12px;
       text-align: center;
-      margin-top: -4px;
-      min-height: 18px;
     }
+    #unlock-error { color: var(--danger); display: none; }
+    #biometric-status { color: var(--text-muted); display: none; margin-top: -4px; min-height: 16px; }
 
-    /* ── Dashboard ── */
+    /* ── Dashboard (Bespoke layout) ── */
     #dashboard {
       display: none;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 40px 24px 60px;
-      animation: fadeIn 0.4s ease-out;
+      width: 100%;
+      max-width: 540px;
+      padding: 40px 24px 80px;
+      animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .dash-header {
+    .top-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 32px;
-      padding-bottom: 24px;
-      border-bottom: 1px solid var(--border);
+      margin-bottom: 40px;
     }
 
     .brand {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
     }
 
-    .dash-logo {
-      color: var(--accent);
-      font-size: 28px;
-      filter: drop-shadow(0 0 10px var(--accent-bg));
-    }
-
-    .dash-title {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-    }
-
-    .dash-subtitle {
-      font-size: 13px;
-      color: var(--accent);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .brand-text {
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* User preferred look based on arabic.html .print-btn */
-    .lock-btn {
-      background: var(--bg-hover);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.2s;
-      font-family: var(--font-ui);
-    }
-
-    .lock-btn:hover {
-      background: var(--bg-active);
-      border-color: var(--accent);
-      color: var(--text-main);
-    }
-
-    .card {
+    .brand i { color: var(--text); font-size: 20px; }
+    .brand-name { font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+    .brand-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 2px 6px;
       background: var(--bg-panel);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-      position: relative;
-      overflow: hidden;
-      transition: border-color 0.2s;
-    }
-
-    .card:hover {
-      border-color: #333;
-    }
-
-    .card::before {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      width: 4px;
-    }
-
-    .card-status::before { background: var(--accent); }
-    .card-control::before { background: var(--success); }
-    .card-usage::before { background: var(--warning); }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-
-    .card-icon {
-      color: var(--accent);
-      font-size: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-    }
-
-    .card-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-main);
-      letter-spacing: 0.02em;
-    }
-
-    /* Status card */
-    .status-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-
-    .status-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      box-shadow: 0 0 0 4px rgba(255,255,255,0.05);
-    }
-
-    .dot-grey   { background: var(--text-dim); }
-    .dot-yellow { background: var(--warning); animation: pulse-warn 2s infinite; }
-    .dot-green  { background: var(--success); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2); }
-    .dot-red    { background: var(--danger); box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2); }
-
-    @keyframes pulse-warn {
-      0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
-      70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
-    }
-
-    .status-text {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--text-main);
-    }
-
-    .status-time {
-      font-size: 13px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      margin-left: 22px;
-    }
-
-    .auth-error-note {
-      display: none;
-      font-size: 13px;
-      color: var(--danger);
-      margin-top: 12px;
-      background: rgba(239, 68, 68, 0.1);
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(239, 68, 68, 0.2);
-    }
-
-    /* Control card */
-    .control-error {
-      display: none;
-      font-size: 13px;
-      color: var(--danger);
-      margin-top: 12px;
-      padding: 8px;
-      background: rgba(239, 68, 68, 0.1);
-      border-radius: 8px;
-      text-align: center;
-    }
-
-    /* Usage card */
-    .usage-text {
-      font-size: 20px;
-      font-weight: 700;
-      font-family: var(--font-mono);
-      margin-bottom: 16px;
-      color: var(--text-main);
-    }
-
-    .usage-text span {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text-muted);
-      font-family: var(--font-ui);
-    }
-
-    .progress-track {
-      width: 100%;
-      height: 8px;
-      background: var(--border);
       border-radius: 4px;
-      overflow: hidden;
+      color: var(--text-muted);
     }
 
-    .progress-fill {
-      height: 100%;
-      border-radius: 4px;
-      width: 0%;
-      background: linear-gradient(90deg, var(--success), #34d399);
-      transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1), background 0.4s ease;
+    .lock-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 14px;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .lock-btn:hover { color: var(--text); }
+
+    /* Layout Sections */
+    .section {
+      margin-bottom: 32px;
     }
 
-    .usage-warning {
-      display: none;
-      font-size: 13px;
-      color: var(--warning);
-      margin-top: 12px;
+    .section-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
       align-items: center;
       gap: 8px;
     }
+
+    /* Terminal-style status block */
+    .status-block {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      font-family: var(--font-mono);
+    }
+
+    .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pulse-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+    }
+    .dot-grey { background: var(--text-dim); }
+    .dot-green { background: var(--success); box-shadow: 0 0 10px rgba(16,185,129,0.4); }
+    .dot-yellow { background: var(--warning); box-shadow: 0 0 10px rgba(245,158,11,0.4); animation: blink 1.5s infinite; }
+    .dot-red { background: var(--danger); box-shadow: 0 0 10px rgba(239,68,68,0.4); }
+    
+    @keyframes blink { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+
+    .status-label { font-size: 13px; color: var(--text); }
+    .status-time { font-size: 11px; color: var(--text-dim); }
+
+    .status-logs {
+      font-size: 12px;
+      color: var(--text-muted);
+      border-top: 1px dashed var(--border);
+      padding-top: 16px;
+      line-height: 1.6;
+    }
+
+    .log-line { display: flex; gap: 12px; }
+    .log-prefix { color: var(--accent); user-select: none; }
+
+    /* Action block (Execution) */
+    .action-block {
+      display: flex;
+      gap: 12px;
+    }
+
+    #control-area { flex: 1; }
+
+    /* Resource tracking (Usage) */
+    .metric-group {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 12px;
+    }
+
+    .metric-val {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      color: var(--text);
+      line-height: 1;
+    }
+    .metric-val span { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+
+    .track { width: 100%; height: 4px; background: var(--bg-panel); border-radius: 2px; overflow: hidden; }
+    .fill { height: 100%; width: 0%; background: var(--text); transition: width 0.8s ease; }
+    .fill.warn { background: var(--warning); }
+    .fill.danger { background: var(--danger); }
+
+    .error-toast {
+      display: none;
+      font-size: 12px;
+      color: var(--danger);
+      background: rgba(239, 68, 68, 0.1);
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      margin-top: 12px;
+    }
+
   </style>
 </head>
 <body>
 
   <!-- ── Unlock Screen ── -->
   <div id="unlock-screen">
-    <div class="brand-logo-unlock"><i class="fa-solid fa-code-branch"></i></div>
-    <div class="unlock-title">Control Panel</div>
+    <div class="unlock-logo"><i class="fa-solid fa-code-branch"></i></div>
     <div class="unlock-form">
       <div class="input-wrapper">
-        <input
-          type="password"
-          id="master-password"
-          autocomplete="current-password"
-          placeholder="Master password"
-        >
+        <input type="password" id="master-password" autocomplete="current-password" placeholder="Enter master key">
         <i class="fa-solid fa-key input-icon"></i>
       </div>
       <p id="biometric-status"></p>
-      <button class="btn btn-accent" id="unlock-btn" type="button">
-        <i class="fa-solid fa-unlock-keyhole"></i> Unlock Console
-      </button>
-      <div id="unlock-error">Incorrect password — try again</div>
+      <button class="btn btn-submit" id="unlock-btn" type="button">Access Console</button>
+      <div id="unlock-error">Authentication failed</div>
     </div>
   </div>
 
   <!-- ── Dashboard ── -->
   <div id="dashboard">
-    <div class="dash-header">
+    <div class="top-bar">
       <div class="brand">
-        <div class="dash-logo"><i class="fa-solid fa-code-branch"></i></div>
-        <div class="brand-text">
-          <span class="dash-title">TeamsLeech</span>
-          <span class="dash-subtitle">Automation Engine</span>
+        <i class="fa-solid fa-code-branch"></i>
+        <div class="brand-name">TeamsLeech</div>
+        <div class="brand-badge">PROD</div>
+      </div>
+      <button class="lock-btn" id="lock-btn" title="Lock Session"><i class="fa-solid fa-power-off"></i></button>
+    </div>
+
+    <!-- Section: Telemetry -->
+    <div class="section">
+      <div class="section-title"><i class="fa-solid fa-satellite-dish"></i> Telemetry</div>
+      <div class="status-block">
+        <div class="status-header">
+          <div class="status-indicator">
+            <div class="pulse-dot dot-grey" id="status-dot"></div>
+            <span class="status-label" id="status-text">Connecting...</span>
+          </div>
+          <span class="status-time" id="status-time"></span>
+        </div>
+        <div class="status-logs">
+          <div class="log-line"><span class="log-prefix">~</span><span id="log-msg">Awaiting workflow heartbeat.</span></div>
+        </div>
+        <div class="error-toast" id="status-auth-error">Authentication rejected by GitHub endpoint.</div>
+      </div>
+    </div>
+
+    <!-- Section: Execution -->
+    <div class="section">
+      <div class="section-title"><i class="fa-solid fa-terminal"></i> Workflow Control</div>
+      <div class="action-block">
+        <div id="control-area" style="width: 100%;">
+          <button class="btn btn-outline" style="width: 100%;" id="run-btn" type="button"><i class="fa-solid fa-play"></i> Initialize Run</button>
         </div>
       </div>
-      <button class="lock-btn" id="lock-btn" title="Lock">
-        <i class="fa-solid fa-lock"></i> Lock
-      </button>
+      <div class="error-toast" id="control-error"></div>
     </div>
 
-    <!-- CARD 1 — Status -->
-    <div class="card card-status">
-      <div class="card-header">
-        <i class="fa-solid fa-satellite-dish card-icon"></i>
-        <div class="card-title">System Status</div>
+    <!-- Section: Quota -->
+    <div class="section">
+      <div class="section-title"><i class="fa-solid fa-server"></i> Compute Quota</div>
+      <div class="metric-group">
+        <div class="metric-val" id="usage-text">--<span>/ 2000m</span></div>
       </div>
-      <div class="status-row">
-        <span class="status-dot dot-grey" id="status-dot"></span>
-        <span class="status-text" id="status-text">Checking connection...</span>
-      </div>
-      <div class="status-time" id="status-time"></div>
-      <div class="auth-error-note" id="status-auth-error"><i class="fa-solid fa-triangle-exclamation"></i> Authentication error (Check GitHub token)</div>
-    </div>
-
-    <!-- CARD 2 — Run Control -->
-    <div class="card card-control">
-      <div class="card-header">
-        <i class="fa-solid fa-terminal card-icon"></i>
-        <div class="card-title">Workflow Execution</div>
-      </div>
-      <div id="control-area">
-        <button class="btn btn-accent" id="run-btn" type="button"><i class="fa-solid fa-play"></i> Run Workflow</button>
-      </div>
-      <div class="control-error" id="control-error"></div>
-      <div class="auth-error-note" id="control-auth-error"><i class="fa-solid fa-triangle-exclamation"></i> Authentication error</div>
-    </div>
-
-    <!-- CARD 3 — Usage Meter -->
-    <div class="card card-usage">
-      <div class="card-header">
-        <i class="fa-solid fa-chart-line card-icon"></i>
-        <div class="card-title">Compute Resource Quota</div>
-      </div>
-      <div class="usage-text" id="usage-text">-- <span>/ 2000 min</span></div>
-      <div class="progress-track">
-        <div class="progress-fill" id="usage-bar"></div>
-      </div>
-      <div class="usage-warning" id="usage-warning"><i class="fa-solid fa-triangle-exclamation"></i> Approaching monthly limit</div>
-      <div class="auth-error-note" id="usage-auth-error"><i class="fa-solid fa-triangle-exclamation"></i> Authentication error</div>
+      <div class="track"><div class="fill" id="usage-bar"></div></div>
+      <div class="error-toast" id="usage-auth-error">Quota endpoint unreachable.</div>
     </div>
   </div>
 
   <script>
-    // ── PASTE YOUR VALUES FROM setup_gist.py OUTPUT HERE ──
     const GIST_ID = "32d9c1c37fd6140aa65e6d8c55401bf5";
     const GIST_READ_TOKEN = "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";
-    // ────────────────────────────────────────────────────────
     const REPO = "AhmedTyson/TeamsLeech-Bot";
     const WORKFLOW_FILE = "workflow.yml";
 
-    // ── Credential store (memory only) ──
-    let gh_pat = null;
-    let bot_token = null;
-    let chat_id = null;
-    let currentRunId = null;
-    let statusInterval = null;
-    let usageInterval = null;
+    let gh_pat = null, bot_token = null, chat_id = null;
+    let currentRunId = null, statusInterval = null, usageInterval = null;
 
-    // ── DOM refs ──
-    const $ = (id) => document.getElementById(id);
-    const unlockScreen   = $("unlock-screen");
-    const dashboard      = $("dashboard");
-    const passwordInput  = $("master-password");
-    const unlockBtn      = $("unlock-btn");
-    const unlockError    = $("unlock-error");
-    const lockBtn        = $("lock-btn");
-    const statusDot      = $("status-dot");
-    const statusText     = $("status-text");
-    const statusTime     = $("status-time");
-    const statusAuthErr  = $("status-auth-error");
-    const controlArea    = $("control-area");
-    const controlError   = $("control-error");
-    const controlAuthErr = $("control-auth-error");
-    const runBtn         = $("run-btn");
-    const usageText      = $("usage-text");
-    const usageBar       = $("usage-bar");
-    const usageWarning   = $("usage-warning");
-    const usageAuthErr   = $("usage-auth-error");
-    const biometricStatus = $("biometric-status");
+    const $ = id => document.getElementById(id);
+    const unlockScreen = $("unlock-screen"), dashboard = $("dashboard");
+    const passwordInput = $("master-password"), unlockBtn = $("unlock-btn");
+    const unlockError = $("unlock-error"), biometricStatus = $("biometric-status");
+    
+    // UI elements
+    const statusDot = $("status-dot"), statusText = $("status-text");
+    const statusTime = $("status-time"), logMsg = $("log-msg");
+    const statusAuthErr = $("status-auth-error");
+    const controlArea = $("control-area"), controlError = $("control-error");
+    const usageText = $("usage-text"), usageBar = $("usage-bar"), usageAuthErr = $("usage-auth-error");
 
-    // ── Helpers ──
-
-    function b64ToBytes(b64) {
-      const bin = atob(b64);
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      return arr;
-    }
-
-    function bytesToB64(uint8) {
-      let bin = "";
-      for (let i = 0; i < uint8.length; i++) bin += String.fromCharCode(uint8[i]);
-      return btoa(bin);
-    }
-
-    // ── WebAuthn Biometric ──
+    function b64ToBytes(b64) { const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr; }
+    function bytesToB64(uint8) { let bin=""; for(let i=0;i<uint8.length;i++) bin+=String.fromCharCode(uint8[i]); return btoa(bin); }
 
     async function registerBiometric() {
-      if (!navigator.credentials) return;
-      if (localStorage.getItem("webauthn_registered") === "true") return;
-
+      if(!navigator.credentials || localStorage.getItem("webauthn_registered")==="true") return;
       try {
-        const credential = await navigator.credentials.create({
-          publicKey: {
-            challenge: crypto.getRandomValues(new Uint8Array(32)),
-            rp: { name: "TeamsLeech" },
-            user: {
-              id: crypto.getRandomValues(new Uint8Array(16)),
-              name: "owner",
-              displayName: "Owner"
-            },
-            pubKeyCredParams: [
-              { type: "public-key", alg: -7 },
-              { type: "public-key", alg: -257 }
-            ],
-            authenticatorSelection: {
-              authenticatorAttachment: "platform",
-              userVerification: "required",
-              residentKey: "discouraged"
-            },
-            timeout: 60000
-          }
+        const cred = await navigator.credentials.create({
+          publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rp: {name:"TeamsLeech"}, user: {id:crypto.getRandomValues(new Uint8Array(16)),name:"owner",displayName:"Owner"}, pubKeyCredParams: [{type:"public-key",alg:-7},{type:"public-key",alg:-257}], authenticatorSelection: {authenticatorAttachment:"platform",userVerification:"required",residentKey:"discouraged"}, timeout: 60000}
         });
-
-        localStorage.setItem("webauthn_registered", "true");
-        localStorage.setItem("webauthn_cred_id", bytesToB64(new Uint8Array(credential.rawId)));
-
-        biometricStatus.textContent = "🔐 Fingerprint registered for next unlock";
-        biometricStatus.style.display = "block";
-        setTimeout(() => { biometricStatus.style.display = "none"; biometricStatus.textContent = ""; }, 4000);
-      } catch (err) {
-        console.warn("User cancelled or biometrics not supported", err);
-      }
+        localStorage.setItem("webauthn_registered","true");
+        localStorage.setItem("webauthn_cred_id",bytesToB64(new Uint8Array(cred.rawId)));
+      } catch(e) {}
     }
 
     async function verifyBiometric() {
+      const storedId = localStorage.getItem("webauthn_cred_id");
+      if(!storedId) return false;
       try {
-        const storedId = localStorage.getItem("webauthn_cred_id");
-        if (!storedId) return false;
-        const credIdBytes = b64ToBytes(storedId);
-
-        await navigator.credentials.get({
-          publicKey: {
-            challenge: crypto.getRandomValues(new Uint8Array(32)),
-            allowCredentials: [{
-              id: credIdBytes,
-              type: "public-key"
-            }],
-            userVerification: "required",
-            timeout: 60000
-          }
-        });
+        await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), allowCredentials: [{id:b64ToBytes(storedId),type:"public-key"}], userVerification:"required", timeout:60000 } });
         return true;
-      } catch (err) {
-        return false;
-      }
+      } catch(e) { return false; }
     }
-
-    // ── Unlock / Decrypt ──
 
     unlockBtn.addEventListener("click", handleUnlock);
-    passwordInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") handleUnlock();
-    });
+    passwordInput.addEventListener("keydown", e => { if (e.key === "Enter") handleUnlock(); });
 
     async function handleUnlock() {
-      const password = passwordInput.value;
-      if (!password) return;
+      const pwd = passwordInput.value;
+      if (!pwd) return;
 
-      unlockBtn.disabled = true;
-      unlockBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Unlocking...';
-      unlockError.style.display = "none";
+      unlockBtn.disabled = true; unlockBtn.textContent = "Authenticating..."; unlockError.style.display = "none";
 
-      // ── WebAuthn gate ──
       if (navigator.credentials && localStorage.getItem("webauthn_registered") === "true") {
-        biometricStatus.innerHTML = '<i class="fa-solid fa-fingerprint"></i> Touch the fingerprint sensor...';
-        biometricStatus.style.display = "block";
-        const bioOk = await verifyBiometric();
+        biometricStatus.textContent = "Tap sensor to proceed"; biometricStatus.style.display = "block";
+        const ok = await verifyBiometric();
         biometricStatus.style.display = "none";
-        biometricStatus.innerHTML = "";
-        
-        if (!bioOk) {
-          unlockError.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Biometric verification failed';
-          unlockError.style.display = "block";
-          unlockBtn.disabled = false;
-          unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
-          return;
-        }
+        if (!ok) { unlockError.textContent = "Biometric required"; unlockError.style.display="block"; unlockBtn.disabled=false; unlockBtn.textContent="Access Console"; return; }
       }
 
       try {
-        let gistRes;
-        try {
-          gistRes = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-            headers: { "Authorization": `token ${GIST_READ_TOKEN}` }
-          });
-        } catch (fetchErr) {
-          unlockError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Network error';
-          unlockError.style.display = "block";
-          unlockBtn.disabled = false;
-          unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
-          return;
-        }
+        let res;
+        try { res = await fetch(`https://api.github.com/gists/${GIST_ID}`, { headers: {"Authorization": `token ${GIST_READ_TOKEN}`} }); } 
+        catch(e) { throw new Error("Network"); }
+        if(!res.ok) throw new Error("HTTP"+res.status);
+        
+        const data = await res.json();
+        const creds = JSON.parse(data.files["teamsleech_credentials.json"].content);
+        const salt=b64ToBytes(creds.salt), iv=b64ToBytes(creds.iv), cipher=b64ToBytes(creds.ciphertext);
+        const keyMat = await crypto.subtle.importKey("raw", new TextEncoder().encode(pwd), "PBKDF2", false, ["deriveKey"]);
+        const aesKey = await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:310000}, keyMat, {name:"AES-GCM",length:256}, false, ["decrypt"]);
+        const dec = await crypto.subtle.decrypt({name:"AES-GCM",iv}, aesKey, cipher);
+        const dict = JSON.parse(new TextDecoder().decode(dec));
 
-        if (!gistRes.ok) {
-          unlockError.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Gist fetch failed (HTTP ${gistRes.status})`;
-          unlockError.style.display = "block";
-          unlockBtn.disabled = false;
-          unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
-          return;
-        }
-
-        const gistData = await gistRes.json();
-        const raw = gistData.files["teamsleech_credentials.json"].content;
-        const creds = JSON.parse(raw);
-
-        const salt       = b64ToBytes(creds.salt);
-        const iv         = b64ToBytes(creds.iv);
-        const ciphertext = b64ToBytes(creds.ciphertext);
-
-        const enc = new TextEncoder();
-        const keyMaterial = await crypto.subtle.importKey(
-          "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
-        );
-
-        const aesKey = await crypto.subtle.deriveKey(
-          { name: "PBKDF2", hash: "SHA-256", salt: salt, iterations: 310000 },
-          keyMaterial,
-          { name: "AES-GCM", length: 256 },
-          false,
-          ["decrypt"]
-        );
-
-        const decrypted = await crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: iv },
-          aesKey,
-          ciphertext
-        );
-
-        const decoded = JSON.parse(new TextDecoder().decode(decrypted));
-
-        gh_pat    = decoded.gh_pat;
-        bot_token = decoded.bot_token;
-        chat_id   = decoded.chat_id;
-
+        gh_pat = dict.gh_pat; bot_token = dict.bot_token; chat_id = dict.chat_id;
+        
         await registerBiometric();
-        showDashboard();
-
-      } catch (err) {
-        unlockError.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Incorrect password';
-        unlockError.style.display = "block";
-        passwordInput.value = "";
-        unlockBtn.disabled = false;
-        unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
+        unlockScreen.style.display="none"; dashboard.style.display="block";
+        passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
+        
+        pollStatus(); pollUsage();
+        statusInterval = setInterval(pollStatus, 10000); usageInterval = setInterval(pollUsage, 300000);
+      } catch(err) {
+        unlockError.textContent = "Access Denied"; unlockError.style.display="block";
+        passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
       }
     }
 
-    // ── Dashboard show / hide ──
-
-    function showDashboard() {
-      unlockScreen.style.display = "none";
-      dashboard.style.display = "block";
-      passwordInput.value = "";
-      unlockBtn.disabled = false;
-      unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
-      unlockError.style.display = "none";
-
-      pollStatus();
-      pollUsage();
-      statusInterval = setInterval(pollStatus, 10000);
-      usageInterval  = setInterval(pollUsage, 300000);
-    }
-
-    function lockDashboard() {
-      gh_pat = null; bot_token = null; chat_id = null; currentRunId = null;
-      if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
-      if (usageInterval)  { clearInterval(usageInterval);  usageInterval = null; }
-
-      dashboard.style.display = "none";
-      unlockScreen.style.display = "flex";
-      passwordInput.value = "";
-      passwordInput.focus();
-
-      statusDot.className = "status-dot dot-grey";
-      statusText.textContent = "Checking...";
-      statusTime.textContent = "";
-      statusAuthErr.style.display = "none";
-      controlAuthErr.style.display = "none";
-      controlError.style.display = "none";
-      usageText.innerHTML = "-- <span>/ 2000 min</span>";
-      usageBar.style.width = "0%";
-      usageWarning.style.display = "none";
-      usageAuthErr.style.display = "none";
-      renderControlButton(false);
-    }
-
-    lockBtn.addEventListener("click", lockDashboard);
-
-    // ── Status Polling ──
+    $("lock-btn").addEventListener("click", () => {
+      gh_pat=null; bot_token=null; chat_id=null;
+      clearInterval(statusInterval); clearInterval(usageInterval);
+      dashboard.style.display="none"; unlockScreen.style.display="flex";
+      passwordInput.value=""; passwordInput.focus();
+    });
 
     async function pollStatus() {
-      if (!gh_pat) return;
+      if(!gh_pat) return;
       try {
-        const res = await fetch(
-          `https://api.github.com/repos/${REPO}/actions/runs?per_page=1`,
-          { headers: { "Authorization": `token ${gh_pat}` } }
-        );
-
-        if (res.status === 401) { statusAuthErr.style.display = "block"; return; }
-        statusAuthErr.style.display = "none";
-        if (!res.ok) return;
-
+        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1`, { headers: {"Authorization": `token ${gh_pat}`} });
+        if(res.status===401) { statusAuthErr.style.display="block"; return; }
+        if(!res.ok) return;
         const data = await res.json();
-        if (!data.workflow_runs || data.workflow_runs.length === 0) {
-          statusDot.className = "status-dot dot-grey";
-          statusText.textContent = "Idle — no recent runs";
-          statusTime.textContent = "";
-          currentRunId = null;
-          renderControlButton(false);
-          return;
+        if(!data.workflow_runs || data.workflow_runs.length===0) {
+          statusDot.className="pulse-dot dot-grey"; statusText.textContent="SYSTEM IDLE";
+          logMsg.textContent = "No workflow history found.";
+          renderBtn(false); return;
         }
 
-        const run = data.workflow_runs[0];
-        currentRunId = run.id;
-        const isActive = (run.status === "in_progress" || run.status === "queued");
+        const run = data.workflow_runs[0]; currentRunId = run.id;
+        const active = (run.status==="in_progress" || run.status==="queued");
 
-        if (isActive) {
-          statusDot.className = "status-dot dot-yellow";
-          statusText.textContent = "Running workflow...";
-        } else if (run.conclusion === "success") {
-          statusDot.className = "status-dot dot-green";
-          statusText.textContent = "Last run succeeded";
-        } else if (run.conclusion === "failure" || run.conclusion === "cancelled") {
-          statusDot.className = "status-dot dot-red";
-          statusText.textContent = "Last run failed";
-        } else {
-          statusDot.className = "status-dot dot-grey";
-          statusText.textContent = "Idle";
-        }
-
-        const ts = new Date(run.updated_at || run.created_at);
-        statusTime.textContent = ts.toLocaleString();
-
-        renderControlButton(isActive);
-      } catch (err) {}
+        if(active) { statusDot.className="pulse-dot dot-yellow"; statusText.textContent="EXECUTING"; logMsg.textContent="Workflow is actively running in Github Actions."; }
+        else if(run.conclusion==="success") { statusDot.className="pulse-dot dot-green"; statusText.textContent="COMPLETED"; logMsg.textContent="Last execution finished successfully."; }
+        // THE FIX YOU ASKED FOR: Separate "cancelled" from "failure"
+        else if(run.conclusion==="cancelled") { statusDot.className="pulse-dot dot-grey"; statusText.textContent="CANCELLED"; logMsg.textContent="Last execution was manually aborted."; }
+        else { statusDot.className="pulse-dot dot-red"; statusText.textContent="FAILED"; logMsg.textContent=`Workflow terminated with error state: ${run.conclusion}`; }
+        
+        statusTime.textContent = new Date(run.updated_at||run.created_at).toLocaleTimeString();
+        renderBtn(active);
+      } catch(e){}
     }
 
-    // ── Control Button ──
-
-    function renderControlButton(isActive) {
-      if (isActive) {
-        controlArea.innerHTML = `<button class="btn btn-danger" id="cancel-btn" type="button"><i class="fa-solid fa-stop"></i> Cancel Run</button>`;
+    function renderBtn(active) {
+      if(active) {
+        controlArea.innerHTML = `<button class="btn btn-danger-outline" style="width: 100%;" id="cancel-btn" type="button"><i class="fa-solid fa-stop"></i> Abort Execution</button>`;
         $("cancel-btn").addEventListener("click", cancelRun);
       } else {
-        controlArea.innerHTML = `<button class="btn btn-accent" id="run-btn" type="button"><i class="fa-solid fa-play"></i> Run Workflow</button>`;
+        controlArea.innerHTML = `<button class="btn btn-outline" style="width: 100%;" id="run-btn" type="button"><i class="fa-solid fa-terminal"></i> Initialize Run</button>`;
         $("run-btn").addEventListener("click", startRun);
       }
-      controlError.style.display = "none";
+      controlError.style.display="none";
     }
 
     async function startRun() {
-      const btn = $("run-btn");
-      if (!btn || !gh_pat) return;
-
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Starting...';
-      controlError.style.display = "none";
-      controlAuthErr.style.display = "none";
-
+      const b=$("run-btn"); if(!b||!gh_pat) return;
+      b.disabled=true; b.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Triggering...'; controlError.style.display="none";
       try {
-        const res = await fetch(
-          `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
-          {
-            method: "POST",
-            headers: { "Authorization": `token ${gh_pat}`, "Accept": "application/vnd.github.v3+json" },
-            body: JSON.stringify({ ref: "main", inputs: { mode: "normal" } })
-          }
-        );
-
-        if (res.status === 401) {
-          controlAuthErr.style.display = "block";
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
-          return;
-        }
-        if (!res.ok) {
-          controlError.textContent = `Error API returned HTTP ${res.status}`;
-          controlError.style.display = "block";
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
-          return;
-        }
-
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
-          pollStatus();
-        }, 3000);
-      } catch (err) {
-        controlError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Network error';
-        controlError.style.display = "block";
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
-      }
+        const res=await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`, {method:"POST",headers:{"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"},body:JSON.stringify({ref:"main",inputs:{mode:"normal"}})});
+        if(!res.ok) throw new Error("API Error");
+        setTimeout(()=>{ b.disabled=false; b.innerHTML='<i class="fa-solid fa-terminal"></i> Initialize Run'; pollStatus(); }, 3000);
+      } catch(e) { controlError.textContent="Failed to trigger remote dispatch."; controlError.style.display="block"; b.disabled=false; b.innerHTML='<i class="fa-solid fa-terminal"></i> Initialize Run'; }
     }
 
     async function cancelRun() {
-      const btn = $("cancel-btn");
-      if (!btn || !gh_pat || !currentRunId) return;
-
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cancelling...';
-      controlError.style.display = "none";
-      controlAuthErr.style.display = "none";
-
+      const b=$("cancel-btn"); if(!b||!gh_pat||!currentRunId) return;
+      b.disabled=true; b.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Aborting...'; controlError.style.display="none";
       try {
-        const res = await fetch(
-          `https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`,
-          { method: "POST", headers: { "Authorization": `token ${gh_pat}`, "Accept": "application/vnd.github.v3+json" } }
-        );
-
-        if (res.status === 401) {
-          controlAuthErr.style.display = "block";
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-stop"></i> Cancel Run';
-          return;
-        }
-
+        const res=await fetch(`https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`, {method:"POST",headers:{"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"}});
+        if(!res.ok) throw new Error("API");
         setTimeout(pollStatus, 3000);
-      } catch (err) {
-        controlError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Network error';
-        controlError.style.display = "block";
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-stop"></i> Cancel Run';
-      }
+      } catch(e) { controlError.textContent="Failed to send abort signal."; controlError.style.display="block"; b.disabled=false; b.innerHTML='<i class="fa-solid fa-stop"></i> Abort Execution'; }
     }
 
-    // ── Usage Polling ──
-
     async function pollUsage() {
-      if (!gh_pat) return;
+      if(!gh_pat) return;
       try {
-        let used = null;
-        const billingRes = await fetch(
-          `https://api.github.com/repos/${REPO}/actions/billing`,
-          { headers: { "Authorization": `token ${gh_pat}` } }
-        );
-
-        if (billingRes.status === 401) { usageAuthErr.style.display = "block"; return; }
-        usageAuthErr.style.display = "none";
-
-        if (billingRes.ok) {
-          const billingData = await billingRes.json();
-          if (billingData.total_minutes_used !== undefined) {
-            used = Math.round(billingData.total_minutes_used);
-          }
+        let u=null;
+        const bRes=await fetch(`https://api.github.com/repos/${REPO}/actions/billing`,{headers:{"Authorization":`token ${gh_pat}`}});
+        if(bRes.ok) { let dat=await bRes.json(); if(dat.total_minutes_used!==undefined) u=Math.round(dat.total_minutes_used); }
+        if(u!==null) {
+          usageText.innerHTML = `${u}<span>/ 2000m</span>`;
+          const p = Math.min((u/2000)*100,100); usageBar.style.width=p+"%";
+          usageBar.className = "fill" + (u>1800?" danger": u>1500?" warn":"");
         }
-
-        if (used === null) {
-          const runsRes = await fetch(
-            `https://api.github.com/repos/${REPO}/actions/runs?per_page=100&status=completed`,
-            { headers: { "Authorization": `token ${gh_pat}` } }
-          );
-
-          if (runsRes.ok) {
-            const runsData = await runsRes.json();
-            let totalMs = 0;
-            const now = new Date();
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-            for (const run of (runsData.workflow_runs || [])) {
-              const created = new Date(run.created_at);
-              if (created < monthStart) continue;
-              const updated = new Date(run.updated_at);
-              totalMs += (updated - created);
-            }
-            used = Math.round(totalMs / 60000);
-          }
-        }
-
-        if (used !== null) {
-          usageText.innerHTML = `${used} <span>/ 2000 min computed</span>`;
-          const pct = Math.min((used / 2000) * 100, 100);
-          usageBar.style.width = pct + "%";
-
-          if (used > 1800) {
-            usageBar.style.background = "var(--danger)";
-            usageWarning.style.display = "flex";
-          } else if (used >= 1500) {
-            usageBar.style.background = "var(--warning)";
-            usageWarning.style.display = "none";
-          } else {
-            usageBar.style.background = "linear-gradient(90deg, var(--success), #34d399)";
-            usageWarning.style.display = "none";
-          }
-        }
-      } catch (err) {}
+      } catch(e){}
     }
   </script>
 </body>
