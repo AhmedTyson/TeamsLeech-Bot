@@ -333,6 +333,14 @@
       margin-top: 12px;
     }
 
+    #control-info {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      text-align: center;
+      display: none;
+    }
+
   </style>
 </head>
 <body>
@@ -394,6 +402,7 @@
         </div>
       </div>
       <div class="error-toast" id="control-error"></div>
+      <p id="control-info"></p>
     </div>
 
     <!-- Section: Quota -->
@@ -414,7 +423,10 @@
     const WORKFLOW_FILE = "workflow.yml";
 
     let gh_pat = null, bot_token = null, chat_id = null;
-    let currentRunId = null, statusInterval = null, usageInterval = null;
+    let currentRunId = null, previousRunId = null;
+    let statusInterval = null, usageInterval = null;
+    let fastPollInterval = null, fastPollTimeout = null;
+    let lastKnownStatus = { dot: "dot-grey", text: "SYSTEM IDLE" };
 
     const $ = id => document.getElementById(id);
     const unlockScreen = $("unlock-screen"), dashboard = $("dashboard");
@@ -426,7 +438,62 @@
     const statusTime = $("status-time"), logMsg = $("log-msg");
     const statusAuthErr = $("status-auth-error");
     const controlArea = $("control-area"), controlError = $("control-error");
+    const controlInfo = $("control-info");
     const usageText = $("usage-text"), usageBar = $("usage-bar"), usageAuthErr = $("usage-auth-error");
+
+    function setStatusVisual(dotClass, text) {
+      statusDot.className = "pulse-dot " + dotClass;
+      statusText.textContent = text;
+    }
+
+    function saveLastKnownStatus() {
+      lastKnownStatus = {
+        dot: statusDot.className.replace("pulse-dot ", ""),
+        text: statusText.textContent
+      };
+    }
+
+    function showControlInfo(msg) {
+      controlInfo.textContent = msg;
+      controlInfo.style.display = "block";
+    }
+
+    function hideControlInfo() {
+      controlInfo.style.display = "none";
+    }
+
+    function startFastPoll(mode) {
+      clearInterval(statusInterval);
+      clearInterval(fastPollInterval);
+      clearTimeout(fastPollTimeout);
+      
+      fastPollInterval = setInterval(() => pollStatus(mode), 2000);
+      
+      // Auto-fallback to normal poll after 30s
+      fastPollTimeout = setTimeout(() => {
+        stopFastPoll();
+        if (mode === 'start') {
+          controlError.textContent = "⚠️ Run may not have started — check GitHub Actions tab";
+          controlError.style.display = "block";
+          setTimeout(() => { controlError.style.display = "none"; }, 5000);
+        }
+        renderBtn(false); 
+      }, 30000);
+    }
+
+    function stopFastPoll() {
+      clearInterval(fastPollInterval);
+      clearTimeout(fastPollTimeout);
+      fastPollInterval = null;
+      hideControlInfo();
+      clearInterval(statusInterval);
+      statusInterval = setInterval(pollStatus, 10000);
+    }
+
+    function onNewRunDetected() {
+      stopFastPoll();
+      renderBtn(true);
+    }
 
     function b64ToBytes(b64) { const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr; }
     function bytesToB64(uint8) { let bin=""; for(let i=0;i<uint8.length;i++) bin+=String.fromCharCode(uint8[i]); return btoa(bin); }
@@ -477,7 +544,7 @@
         const creds = JSON.parse(data.files["teamsleech_credentials.json"].content);
         const salt=b64ToBytes(creds.salt), iv=b64ToBytes(creds.iv), cipher=b64ToBytes(creds.ciphertext);
         const keyMat = await crypto.subtle.importKey("raw", new TextEncoder().encode(pwd), "PBKDF2", false, ["deriveKey"]);
-        const aesKey = await crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt,iterations:310000}, keyMat, {name:"AES-GCM",length:256}, false, ["decrypt"]);
+        const aesKey = await crypto.subtle.deriveKey({name:"PBKDF2",hash:"sha-256",salt,iterations:310000}, keyMat, {name:"AES-GCM",length:256}, false, ["decrypt"]);
         const dec = await crypto.subtle.decrypt({name:"AES-GCM",iv}, aesKey, cipher);
         const dict = JSON.parse(new TextDecoder().decode(dec));
 
@@ -498,35 +565,70 @@
     $("lock-btn").addEventListener("click", () => {
       gh_pat=null; bot_token=null; chat_id=null;
       clearInterval(statusInterval); clearInterval(usageInterval);
+      stopFastPoll();
       dashboard.style.display="none"; unlockScreen.style.display="flex";
       passwordInput.value=""; passwordInput.focus();
     });
 
-    async function pollStatus() {
+    async function pollStatus(mode) {
       if(!gh_pat) return;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
       try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1`, { headers: {"Authorization": `token ${gh_pat}`} });
+        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1`, { 
+          headers: {"Authorization": `token ${gh_pat}`},
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         if(res.status===401) { statusAuthErr.style.display="block"; return; }
-        if(!res.ok) return;
+        if(!res.ok) throw new Error("API status " + res.status);
+        
         const data = await res.json();
+        
+        // Clear network error if we had one
+        if (logMsg.textContent.includes("⚠️ Connection issue")) {
+          setStatusVisual(lastKnownStatus.dot, lastKnownStatus.text);
+          logMsg.textContent = "Connection restored.";
+        }
+        
         if(!data.workflow_runs || data.workflow_runs.length===0) {
-          statusDot.className="pulse-dot dot-grey"; statusText.textContent="SYSTEM IDLE";
+          setStatusVisual("dot-grey", "SYSTEM IDLE");
           logMsg.textContent = "No workflow history found.";
-          renderBtn(false); return;
+          saveLastKnownStatus();
+          if(!fastPollInterval) renderBtn(false); 
+          return;
         }
 
-        const run = data.workflow_runs[0]; currentRunId = run.id;
+        const run = data.workflow_runs[0]; 
+        currentRunId = run.id;
         const active = (run.status==="in_progress" || run.status==="queued");
 
-        if(active) { statusDot.className="pulse-dot dot-yellow"; statusText.textContent="EXECUTING"; logMsg.textContent="Workflow is actively running in Github Actions."; }
-        else if(run.conclusion==="success") { statusDot.className="pulse-dot dot-green"; statusText.textContent="COMPLETED"; logMsg.textContent="Last execution finished successfully."; }
-        // THE FIX YOU ASKED FOR: Separate "cancelled" from "failure"
-        else if(run.conclusion==="cancelled") { statusDot.className="pulse-dot dot-grey"; statusText.textContent="CANCELLED"; logMsg.textContent="Last execution was manually aborted."; }
-        else { statusDot.className="pulse-dot dot-red"; statusText.textContent="FAILED"; logMsg.textContent=`Workflow terminated with error state: ${run.conclusion}`; }
+        if(active) { setStatusVisual("dot-yellow", "EXECUTING"); logMsg.textContent="Workflow is actively running in Github Actions."; }
+        else if(run.conclusion==="success") { setStatusVisual("dot-green", "COMPLETED"); logMsg.textContent="Last execution finished successfully."; }
+        else if(run.conclusion==="cancelled") { setStatusVisual("dot-grey", "CANCELLED"); logMsg.textContent="Last execution was manually aborted."; }
+        else { setStatusVisual("dot-red", "FAILED"); logMsg.textContent=`Workflow terminated with error state: ${run.conclusion}`; }
         
         statusTime.textContent = new Date(run.updated_at||run.created_at).toLocaleTimeString();
-        renderBtn(active);
-      } catch(e){}
+        saveLastKnownStatus();
+
+        if (fastPollInterval) {
+          if (mode === 'start' && active && currentRunId !== previousRunId) {
+            onNewRunDetected();
+          } else if (mode === 'cancel' && run.conclusion === "cancelled") {
+            stopFastPoll();
+            renderBtn(false);
+          }
+        } else {
+          renderBtn(active);
+        }
+
+      } catch(e) {
+        clearTimeout(timeoutId);
+        // On network error: do not clear status, just add a small indicator
+        logMsg.textContent = "⚠️ Connection issue — retrying...";
+      }
     }
 
     function renderBtn(active) {
@@ -537,41 +639,111 @@
         controlArea.innerHTML = `<button class="btn btn-outline" style="width: 100%;" id="run-btn" type="button"><i class="fa-solid fa-terminal"></i> Initialize Run</button>`;
         $("run-btn").addEventListener("click", startRun);
       }
-      controlError.style.display="none";
     }
 
     async function startRun() {
-      const b=$("run-btn"); if(!b||!gh_pat) return;
-      b.disabled=true; b.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Triggering...'; controlError.style.display="none";
+      const b = $("run-btn"); if(!b||!gh_pat) return;
+      
+      // Step 1: Optimistic UI immediately
+      previousRunId = currentRunId;
+      b.disabled = true; 
+      b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Starting...'; 
+      controlError.style.display = "none";
+      setStatusVisual("dot-yellow", "Dispatching workflow...");
+      showControlInfo("⏳ Waiting for GitHub to queue the run...");
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       try {
-        const res=await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`, {method:"POST",headers:{"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"},body:JSON.stringify({ref:"main",inputs:{mode:"normal"}})});
-        if(!res.ok) throw new Error("API Error");
-        setTimeout(()=>{ b.disabled=false; b.innerHTML='<i class="fa-solid fa-terminal"></i> Initialize Run'; pollStatus(); }, 3000);
-      } catch(e) { controlError.textContent="Failed to trigger remote dispatch."; controlError.style.display="block"; b.disabled=false; b.innerHTML='<i class="fa-solid fa-terminal"></i> Initialize Run'; }
+        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`, {
+          method: "POST",
+          headers: {"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"},
+          body: JSON.stringify({ref:"main",inputs:{mode:"normal"}}),
+          signal: controller.signal
+        });
+        
+        if(res.status === 204) {
+          startFastPoll('start');
+        } else {
+          throw new Error(`API returned status ${res.status}`);
+        }
+      } catch(err) {
+        // Step 1 fallback on error
+        const msg = err.name === 'AbortError' ? 'Request timed out' : err.message;
+        controlError.textContent = "❌ Failed to start: " + msg;
+        controlError.style.display = "block";
+        setTimeout(() => { controlError.style.display = "none"; }, 5000);
+        
+        b.disabled = false;
+        b.innerHTML = '<i class="fa-solid fa-terminal"></i> Initialize Run';
+        setStatusVisual(lastKnownStatus.dot, lastKnownStatus.text);
+        hideControlInfo();
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
 
     async function cancelRun() {
-      const b=$("cancel-btn"); if(!b||!gh_pat||!currentRunId) return;
-      b.disabled=true; b.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Aborting...'; controlError.style.display="none";
+      const b = $("cancel-btn"); if(!b||!gh_pat||!currentRunId) return;
+      
+      // Optimistic UI immediately
+      b.disabled = true; 
+      b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cancelling...'; 
+      controlError.style.display = "none";
+      setStatusVisual("dot-grey", "Cancelling workflow...");
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       try {
-        const res=await fetch(`https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`, {method:"POST",headers:{"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"}});
-        if(!res.ok) throw new Error("API");
-        setTimeout(pollStatus, 3000);
-      } catch(e) { controlError.textContent="Failed to send abort signal."; controlError.style.display="block"; b.disabled=false; b.innerHTML='<i class="fa-solid fa-stop"></i> Abort Execution'; }
+        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`, {
+          method: "POST",
+          headers: {"Authorization":`token ${gh_pat}`,"Accept":"application/vnd.github.v3+json"},
+          signal: controller.signal
+        });
+        
+        if (res.status === 202) {
+          b.innerHTML = '<i class="fa-solid fa-check"></i> Cancelled';
+          startFastPoll('cancel');
+        } else {
+          throw new Error(`API returned status ${res.status}`);
+        }
+      } catch(err) {
+        const msg = err.name === 'AbortError' ? 'Request timed out' : err.message;
+        controlError.textContent = "❌ Failed to cancel: " + msg;
+        controlError.style.display = "block";
+        setTimeout(() => { controlError.style.display = "none"; }, 5000);
+        
+        b.disabled = false;
+        b.innerHTML = '<i class="fa-solid fa-stop"></i> Abort Execution';
+        setStatusVisual("dot-yellow", "EXECUTING"); // Revert
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
 
     async function pollUsage() {
       if(!gh_pat) return;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       try {
         let u=null;
-        const bRes=await fetch(`https://api.github.com/repos/${REPO}/actions/billing`,{headers:{"Authorization":`token ${gh_pat}`}});
+        const bRes=await fetch(`https://api.github.com/repos/${REPO}/actions/billing`,{
+          headers:{"Authorization":`token ${gh_pat}`},
+          signal: controller.signal
+        });
         if(bRes.ok) { let dat=await bRes.json(); if(dat.total_minutes_used!==undefined) u=Math.round(dat.total_minutes_used); }
         if(u!==null) {
           usageText.innerHTML = `${u}<span>/ 2000m</span>`;
           const p = Math.min((u/2000)*100,100); usageBar.style.width=p+"%";
           usageBar.className = "fill" + (u>1800?" danger": u>1500?" warn":"");
         }
-      } catch(e){}
+      } catch(e){} finally {
+        clearTimeout(timeoutId);
+      }
     }
   </script>
 </body>
