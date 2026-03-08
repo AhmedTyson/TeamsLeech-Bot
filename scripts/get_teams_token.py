@@ -1,8 +1,8 @@
 import time
 import requests
 
-TENANT_ID = "7b35586a-d18d-405c-8e29-5713862937a9"
-CLIENT_ID = "5e3ce6c0-2b1f-4285-8d4b-75ee78787346"  # Official Teams Web Client
+TENANT_ID = "common"
+CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"  # Azure CLI
 SCOPE = "offline_access https://graph.microsoft.com/.default"
 
 def get_ms_token():
