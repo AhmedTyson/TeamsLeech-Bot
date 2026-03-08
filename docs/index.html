@@ -3,38 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TeamsLeech</title>
+  <title>TeamsLeech | Console</title>
   <meta name="description" content="TeamsLeech Bot — Personal Control Dashboard">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     :root {
-      --bg: #0d0d0d;
-      --surface: #1a1a1a;
-      --border: #2a2a2a;
-      --accent: #8A2BE2;
-      --accent-hover: #7B27C1;
-      --text: #e5e5e5;
-      --text-muted: #888888;
-      --success: #22c55e;
+      --bg-app: #050505;
+      --bg-panel: #0f0f0f;
+      --bg-hover: #1a1a1a;
+      --bg-active: #262626;
+      --border: #262626;
+      --accent: #a855f7;
+      --accent-hover: #9333ea;
+      --accent-bg: rgba(168, 85, 247, 0.1);
+      --text-main: #ededed;
+      --text-muted: #a1a1aa;
+      --text-dim: #52525b;
+      --success: #10b981;
       --warning: #f59e0b;
       --danger: #ef4444;
+      --font-ui: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
     }
 
-    *, *::before, *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 15px;
-      background: var(--bg);
-      color: var(--text);
+      font-family: var(--font-ui);
+      background: var(--bg-app);
+      color: var(--text-main);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Unlock Screen ─────────────────────────────── */
-
+    /* ── Unlock Screen ── */
     #unlock-screen {
       display: flex;
       flex-direction: column;
@@ -42,74 +47,114 @@
       justify-content: center;
       min-height: 100vh;
       padding: 24px;
+      animation: fadeIn 0.5s ease-out;
     }
 
-    .unlock-logo {
-      font-size: 64px;
-      margin-bottom: 8px;
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .brand-logo-unlock {
+      font-size: 56px;
+      color: var(--accent);
+      filter: drop-shadow(0 0 20px var(--accent-bg));
+      margin-bottom: 16px;
     }
 
     .unlock-title {
       font-size: 28px;
       font-weight: 700;
-      color: var(--accent);
+      letter-spacing: -0.02em;
       margin-bottom: 32px;
+      color: var(--text-main);
     }
 
     .unlock-form {
       width: 100%;
-      max-width: 340px;
+      max-width: 320px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 16px;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      font-size: 14px;
+      transition: color 0.2s;
     }
 
     #master-password {
       width: 100%;
-      padding: 14px 16px;
-      font-size: 15px;
-      font-family: inherit;
-      background: var(--surface);
+      padding: 14px 16px 14px 44px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      background: var(--bg-panel);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
+      border-radius: 12px;
+      color: var(--text-main);
       outline: none;
-      transition: border-color 0.15s;
+      transition: all 0.2s;
+      letter-spacing: 2px;
     }
 
     #master-password:focus {
       border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-bg);
     }
 
-    #master-password::placeholder {
-      color: var(--text-muted);
+    #master-password:focus + .input-icon {
+      color: var(--accent);
     }
 
     .btn {
       border: none;
-      border-radius: 8px;
-      padding: 12px 20px;
+      border-radius: 10px;
+      padding: 14px 20px;
       font-size: 15px;
       font-weight: 600;
-      font-family: inherit;
+      font-family: var(--font-ui);
       cursor: pointer;
-      transition: opacity 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
     }
 
-    .btn:hover { opacity: 0.85; }
-    .btn:active { opacity: 0.7; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
     .btn-accent {
-      background: var(--accent);
+      background: linear-gradient(135deg, var(--accent), #7e22ce);
       color: #fff;
       width: 100%;
+      box-shadow: 0 4px 14px var(--accent-bg);
+    }
+
+    .btn-accent:hover:not(:disabled) {
+      box-shadow: 0 6px 20px rgba(168, 85, 247, 0.2);
+      filter: brightness(1.1);
     }
 
     .btn-danger {
-      background: var(--danger);
-      color: #fff;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--danger);
       width: 100%;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: var(--danger);
     }
 
     #unlock-error {
@@ -118,6 +163,7 @@
       font-size: 13px;
       text-align: center;
       margin-top: 4px;
+      font-weight: 500;
     }
 
     #biometric-status {
@@ -125,83 +171,138 @@
       font-size: 13px;
       color: var(--text-muted);
       text-align: center;
-      margin-top: 2px;
+      margin-top: -4px;
       min-height: 18px;
     }
 
-    #reset-biometric {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-align: center;
-      text-decoration: none;
-      margin-top: 4px;
-      cursor: pointer;
-      transition: color 0.15s;
-      display: block;
-    }
-
-    #reset-biometric:hover {
-      color: var(--text);
-    }
-
-    /* ── Dashboard ─────────────────────────────────── */
-
+    /* ── Dashboard ── */
     #dashboard {
       display: none;
-      max-width: 480px;
+      max-width: 600px;
       margin: 0 auto;
-      padding: 20px 16px 40px;
+      padding: 40px 24px 60px;
+      animation: fadeIn 0.4s ease-out;
     }
 
     .dash-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 20px;
-      padding: 0 4px;
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .dash-brand {
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .dash-logo {
+      color: var(--accent);
+      font-size: 28px;
+      filter: drop-shadow(0 0 10px var(--accent-bg));
+    }
+
+    .dash-title {
       font-size: 20px;
       font-weight: 700;
-      color: var(--accent);
+      letter-spacing: -0.01em;
     }
 
-    .lock-btn {
-      background: none;
-      border: none;
-      font-size: 22px;
-      cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 6px;
-      transition: background 0.15s;
-    }
-
-    .lock-btn:hover { background: var(--surface); }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 16px;
-    }
-
-    .card-title {
+    .dash-subtitle {
       font-size: 13px;
+      color: var(--accent);
       font-weight: 600;
-      color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 14px;
+      letter-spacing: 0.05em;
     }
 
-    /* Status card */
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+    }
 
-    .status-row {
+    /* User preferred look based on arabic.html .print-btn */
+    .lock-btn {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
       display: flex;
       align-items: center;
       gap: 8px;
+      transition: all 0.2s;
+      font-family: var(--font-ui);
+    }
+
+    .lock-btn:hover {
+      background: var(--bg-active);
+      border-color: var(--accent);
+      color: var(--text-main);
+    }
+
+    .card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .card:hover {
+      border-color: #333;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 4px;
+    }
+
+    .card-status::before { background: var(--accent); }
+    .card-control::before { background: var(--success); }
+    .card-usage::before { background: var(--warning); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .card-icon {
+      color: var(--accent);
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+      letter-spacing: 0.02em;
+    }
+
+    /* Status card */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       margin-bottom: 8px;
     }
 
@@ -211,46 +312,70 @@
       height: 10px;
       border-radius: 50%;
       flex-shrink: 0;
+      box-shadow: 0 0 0 4px rgba(255,255,255,0.05);
     }
 
-    .dot-grey   { background: #555; }
-    .dot-yellow { background: var(--warning); }
-    .dot-green  { background: var(--success); }
-    .dot-red    { background: var(--danger); }
+    .dot-grey   { background: var(--text-dim); }
+    .dot-yellow { background: var(--warning); animation: pulse-warn 2s infinite; }
+    .dot-green  { background: var(--success); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2); }
+    .dot-red    { background: var(--danger); box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2); }
+
+    @keyframes pulse-warn {
+      0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+      70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
 
     .status-text {
-      font-size: 15px;
-      font-weight: 500;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-main);
     }
 
     .status-time {
       font-size: 13px;
       color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-left: 22px;
     }
 
     .auth-error-note {
       display: none;
-      font-size: 12px;
+      font-size: 13px;
       color: var(--danger);
-      margin-top: 6px;
+      margin-top: 12px;
+      background: rgba(239, 68, 68, 0.1);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(239, 68, 68, 0.2);
     }
 
     /* Control card */
-
     .control-error {
       display: none;
-      font-size: 12px;
+      font-size: 13px;
       color: var(--danger);
-      margin-top: 8px;
+      margin-top: 12px;
+      padding: 8px;
+      background: rgba(239, 68, 68, 0.1);
+      border-radius: 8px;
       text-align: center;
     }
 
     /* Usage card */
-
     .usage-text {
-      font-size: 15px;
+      font-size: 20px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      margin-bottom: 16px;
+      color: var(--text-main);
+    }
+
+    .usage-text span {
+      font-size: 14px;
       font-weight: 500;
-      margin-bottom: 10px;
+      color: var(--text-muted);
+      font-family: var(--font-ui);
     }
 
     .progress-track {
@@ -265,74 +390,98 @@
       height: 100%;
       border-radius: 4px;
       width: 0%;
-      transition: width 0.4s ease, background-color 0.4s ease;
+      background: linear-gradient(90deg, var(--success), #34d399);
+      transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1), background 0.4s ease;
     }
 
     .usage-warning {
       display: none;
       font-size: 13px;
       color: var(--warning);
-      margin-top: 8px;
+      margin-top: 12px;
+      align-items: center;
+      gap: 8px;
     }
   </style>
 </head>
 <body>
 
-  <!-- ── Unlock Screen ──────────────────────────── -->
+  <!-- ── Unlock Screen ── -->
   <div id="unlock-screen">
-    <div class="unlock-logo">📡</div>
-    <div class="unlock-title">TeamsLeech</div>
+    <div class="brand-logo-unlock"><i class="fa-solid fa-code-branch"></i></div>
+    <div class="unlock-title">Control Panel</div>
     <div class="unlock-form">
-      <input
-        type="password"
-        id="master-password"
-        autocomplete="current-password"
-        placeholder="Master password"
-      >
+      <div class="input-wrapper">
+        <input
+          type="password"
+          id="master-password"
+          autocomplete="current-password"
+          placeholder="Master password"
+        >
+        <i class="fa-solid fa-key input-icon"></i>
+      </div>
       <p id="biometric-status"></p>
-      <button class="btn btn-accent" id="unlock-btn" type="button">Unlock</button>
+      <button class="btn btn-accent" id="unlock-btn" type="button">
+        <i class="fa-solid fa-unlock-keyhole"></i> Unlock Console
+      </button>
       <div id="unlock-error">Incorrect password — try again</div>
-      <a id="reset-biometric" href="#">Reset biometric</a>
     </div>
   </div>
 
-  <!-- ── Dashboard ──────────────────────────────── -->
+  <!-- ── Dashboard ── -->
   <div id="dashboard">
     <div class="dash-header">
-      <span class="dash-brand">📡 TeamsLeech</span>
-      <button class="lock-btn" id="lock-btn" title="Lock">🔒</button>
+      <div class="brand">
+        <div class="dash-logo"><i class="fa-solid fa-code-branch"></i></div>
+        <div class="brand-text">
+          <span class="dash-title">TeamsLeech</span>
+          <span class="dash-subtitle">Automation Engine</span>
+        </div>
+      </div>
+      <button class="lock-btn" id="lock-btn" title="Lock">
+        <i class="fa-solid fa-lock"></i> Lock
+      </button>
     </div>
 
     <!-- CARD 1 — Status -->
-    <div class="card">
-      <div class="card-title">Workflow Status</div>
+    <div class="card card-status">
+      <div class="card-header">
+        <i class="fa-solid fa-satellite-dish card-icon"></i>
+        <div class="card-title">System Status</div>
+      </div>
       <div class="status-row">
         <span class="status-dot dot-grey" id="status-dot"></span>
-        <span class="status-text" id="status-text">Checking...</span>
+        <span class="status-text" id="status-text">Checking connection...</span>
       </div>
       <div class="status-time" id="status-time"></div>
-      <div class="auth-error-note" id="status-auth-error">Auth error</div>
+      <div class="auth-error-note" id="status-auth-error"><i class="fa-solid fa-triangle-exclamation"></i> Authentication error (Check GitHub token)</div>
     </div>
 
     <!-- CARD 2 — Run Control -->
-    <div class="card">
-      <div class="card-title">Workflow Control</div>
+    <div class="card card-control">
+      <div class="card-header">
+        <i class="fa-solid fa-terminal card-icon"></i>
+        <div class="card-title">Workflow Execution</div>
+      </div>
       <div id="control-area">
-        <button class="btn btn-accent" id="run-btn" type="button">▶ Run Workflow</button>
+        <button class="btn btn-accent" id="run-btn" type="button"><i class="fa-solid fa-play"></i> Run Workflow</button>
       </div>
       <div class="control-error" id="control-error"></div>
-      <div class="auth-error-note" id="control-auth-error">Auth error</div>
+      <div class="auth-error-note" id="control-auth-error"><i class="fa-solid fa-triangle-exclamation"></i> Authentication error</div>
     </div>
 
     <!-- CARD 3 — Usage Meter -->
-    <div class="card">
-      <div class="card-title">Actions Usage This Month</div>
-      <div class="usage-text" id="usage-text">Loading...</div>
+    <div class="card card-usage">
+      <div class="card-header">
+        <i class="fa-solid fa-chart-line card-icon"></i>
+        <div class="card-title">Compute Resource Quota</div>
+      </div>
+      <div class="usage-text" id="usage-text">-- <span>/ 2000 min</span></div>
       <div class="progress-track">
         <div class="progress-fill" id="usage-bar"></div>
       </div>
-      <div class="usage-warning" id="usage-warning">⚠️ Approaching monthly limit</div>
-      <div class="auth-error-note" id="usage-auth-error">Auth error</div>
+      <div class="usage-warning" id="usage-warning"><i class="fa-solid fa-triangle-exclamation"></i> Approaching monthly limit</div>
+      <div class="auth-error-note" id="usage-auth-error"><i class="fa-solid fa-triangle-exclamation"></i> Authentication error</div>
     </div>
   </div>
 
@@ -372,6 +521,7 @@
     const usageBar       = $("usage-bar");
     const usageWarning   = $("usage-warning");
     const usageAuthErr   = $("usage-auth-error");
+    const biometricStatus = $("biometric-status");
 
     // ── Helpers ──
 
@@ -387,10 +537,6 @@
       for (let i = 0; i < uint8.length; i++) bin += String.fromCharCode(uint8[i]);
       return btoa(bin);
     }
-
-    // ── DOM refs (biometric) ──
-    const biometricStatus = $("biometric-status");
-    const resetBiometricLink = $("reset-biometric");
 
     // ── WebAuthn Biometric ──
 
@@ -424,11 +570,11 @@
         localStorage.setItem("webauthn_registered", "true");
         localStorage.setItem("webauthn_cred_id", bytesToB64(new Uint8Array(credential.rawId)));
 
-        biometricStatus.textContent = "🔐 Fingerprint registered — required on next unlock";
+        biometricStatus.textContent = "🔐 Fingerprint registered for next unlock";
         biometricStatus.style.display = "block";
         setTimeout(() => { biometricStatus.style.display = "none"; biometricStatus.textContent = ""; }, 4000);
       } catch (err) {
-        // User cancelled or not supported — skip silently
+        console.warn("User cancelled or biometrics not supported", err);
       }
     }
 
@@ -455,16 +601,6 @@
       }
     }
 
-    // ── Reset biometric ──
-    resetBiometricLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      localStorage.removeItem("webauthn_registered");
-      localStorage.removeItem("webauthn_cred_id");
-      biometricStatus.textContent = "Biometric reset — will re-register on next unlock";
-      biometricStatus.style.display = "block";
-      setTimeout(() => { biometricStatus.style.display = "none"; biometricStatus.textContent = ""; }, 4000);
-    });
-
     // ── Unlock / Decrypt ──
 
     unlockBtn.addEventListener("click", handleUnlock);
@@ -477,47 +613,45 @@
       if (!password) return;
 
       unlockBtn.disabled = true;
-      unlockBtn.textContent = "Unlocking...";
+      unlockBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Unlocking...';
       unlockError.style.display = "none";
 
-      // ── WebAuthn gate (runs on every unlock after first registration) ──
+      // ── WebAuthn gate ──
       if (navigator.credentials && localStorage.getItem("webauthn_registered") === "true") {
-        biometricStatus.textContent = "👆 Touch the fingerprint sensor...";
+        biometricStatus.innerHTML = '<i class="fa-solid fa-fingerprint"></i> Touch the fingerprint sensor...';
         biometricStatus.style.display = "block";
         const bioOk = await verifyBiometric();
         biometricStatus.style.display = "none";
-        biometricStatus.textContent = "";
+        biometricStatus.innerHTML = "";
+        
         if (!bioOk) {
-          unlockError.textContent = "Biometric verification failed — try again";
+          unlockError.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Biometric verification failed';
           unlockError.style.display = "block";
           unlockBtn.disabled = false;
-          unlockBtn.textContent = "Unlock";
+          unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
           return;
         }
       }
 
       try {
-        // Step A — Fetch the Gist
         let gistRes;
         try {
           gistRes = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
             headers: { "Authorization": `token ${GIST_READ_TOKEN}` }
           });
         } catch (fetchErr) {
-          console.error("Gist fetch network error:", fetchErr);
-          unlockError.textContent = "Network error — check CORS or internet connection";
+          unlockError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Network error';
           unlockError.style.display = "block";
           unlockBtn.disabled = false;
-          unlockBtn.textContent = "Unlock";
+          unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
           return;
         }
 
         if (!gistRes.ok) {
-          console.error("Gist fetch HTTP error:", gistRes.status);
-          unlockError.textContent = `Gist fetch failed (HTTP ${gistRes.status}) — check GIST_ID and GIST_READ_TOKEN`;
+          unlockError.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Gist fetch failed (HTTP ${gistRes.status})`;
           unlockError.style.display = "block";
           unlockBtn.disabled = false;
-          unlockBtn.textContent = "Unlock";
+          unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
           return;
         }
 
@@ -529,26 +663,19 @@
         const iv         = b64ToBytes(creds.iv);
         const ciphertext = b64ToBytes(creds.ciphertext);
 
-        // Step B — Derive AES key via WebCrypto PBKDF2
         const enc = new TextEncoder();
         const keyMaterial = await crypto.subtle.importKey(
           "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
         );
 
         const aesKey = await crypto.subtle.deriveKey(
-          {
-            name: "PBKDF2",
-            hash: "SHA-256",
-            salt: salt,
-            iterations: 310000
-          },
+          { name: "PBKDF2", hash: "SHA-256", salt: salt, iterations: 310000 },
           keyMaterial,
           { name: "AES-GCM", length: 256 },
           false,
           ["decrypt"]
         );
 
-        // Step C — Decrypt with AES-GCM
         const decrypted = await crypto.subtle.decrypt(
           { name: "AES-GCM", iv: iv },
           aesKey,
@@ -557,24 +684,19 @@
 
         const decoded = JSON.parse(new TextDecoder().decode(decrypted));
 
-        // Store in memory only
         gh_pat    = decoded.gh_pat;
         bot_token = decoded.bot_token;
         chat_id   = decoded.chat_id;
 
-        // Register biometric on first successful unlock
         await registerBiometric();
-
         showDashboard();
 
       } catch (err) {
-        console.error("Decryption error:", err);
-        // If we got here, the Gist fetched fine but decryption failed = wrong password
-        unlockError.textContent = "Incorrect password — try again";
+        unlockError.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Incorrect password';
         unlockError.style.display = "block";
         passwordInput.value = "";
         unlockBtn.disabled = false;
-        unlockBtn.textContent = "Unlock";
+        unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
       }
     }
 
@@ -585,10 +707,9 @@
       dashboard.style.display = "block";
       passwordInput.value = "";
       unlockBtn.disabled = false;
-      unlockBtn.textContent = "Unlock";
+      unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> Unlock Console';
       unlockError.style.display = "none";
 
-      // Immediately poll, then set intervals
       pollStatus();
       pollUsage();
       statusInterval = setInterval(pollStatus, 10000);
@@ -596,30 +717,22 @@
     }
 
     function lockDashboard() {
-      // Clear credentials from memory
-      gh_pat = null;
-      bot_token = null;
-      chat_id = null;
-      currentRunId = null;
-
-      // Clear intervals
+      gh_pat = null; bot_token = null; chat_id = null; currentRunId = null;
       if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
       if (usageInterval)  { clearInterval(usageInterval);  usageInterval = null; }
 
-      // Reset UI
       dashboard.style.display = "none";
       unlockScreen.style.display = "flex";
       passwordInput.value = "";
       passwordInput.focus();
 
-      // Reset card states
       statusDot.className = "status-dot dot-grey";
       statusText.textContent = "Checking...";
       statusTime.textContent = "";
       statusAuthErr.style.display = "none";
       controlAuthErr.style.display = "none";
       controlError.style.display = "none";
-      usageText.textContent = "Loading...";
+      usageText.innerHTML = "-- <span>/ 2000 min</span>";
       usageBar.style.width = "0%";
       usageWarning.style.display = "none";
       usageAuthErr.style.display = "none";
@@ -638,20 +751,15 @@
           { headers: { "Authorization": `token ${gh_pat}` } }
         );
 
-        if (res.status === 401) {
-          statusAuthErr.style.display = "block";
-          return;
-        }
+        if (res.status === 401) { statusAuthErr.style.display = "block"; return; }
         statusAuthErr.style.display = "none";
-
         if (!res.ok) return;
 
         const data = await res.json();
-
         if (!data.workflow_runs || data.workflow_runs.length === 0) {
           statusDot.className = "status-dot dot-grey";
           statusText.textContent = "Idle — no recent runs";
-          statusTime.textContent = "No runs found";
+          statusTime.textContent = "";
           currentRunId = null;
           renderControlButton(false);
           return;
@@ -663,7 +771,7 @@
 
         if (isActive) {
           statusDot.className = "status-dot dot-yellow";
-          statusText.textContent = "Running...";
+          statusText.textContent = "Running workflow...";
         } else if (run.conclusion === "success") {
           statusDot.className = "status-dot dot-green";
           statusText.textContent = "Last run succeeded";
@@ -672,30 +780,24 @@
           statusText.textContent = "Last run failed";
         } else {
           statusDot.className = "status-dot dot-grey";
-          statusText.textContent = "Idle — no recent runs";
+          statusText.textContent = "Idle";
         }
 
-        // Timestamp
         const ts = new Date(run.updated_at || run.created_at);
-        statusTime.textContent = "Last run: " + ts.toLocaleString();
+        statusTime.textContent = ts.toLocaleString();
 
         renderControlButton(isActive);
-
-      } catch (err) {
-        // Network error — keep last known state
-      }
+      } catch (err) {}
     }
 
     // ── Control Button ──
 
     function renderControlButton(isActive) {
       if (isActive) {
-        controlArea.innerHTML =
-          `<button class="btn btn-danger" id="cancel-btn" type="button">⏹ Cancel Run</button>`;
+        controlArea.innerHTML = `<button class="btn btn-danger" id="cancel-btn" type="button"><i class="fa-solid fa-stop"></i> Cancel Run</button>`;
         $("cancel-btn").addEventListener("click", cancelRun);
       } else {
-        controlArea.innerHTML =
-          `<button class="btn btn-accent" id="run-btn" type="button">▶ Run Workflow</button>`;
+        controlArea.innerHTML = `<button class="btn btn-accent" id="run-btn" type="button"><i class="fa-solid fa-play"></i> Run Workflow</button>`;
         $("run-btn").addEventListener("click", startRun);
       }
       controlError.style.display = "none";
@@ -706,7 +808,7 @@
       if (!btn || !gh_pat) return;
 
       btn.disabled = true;
-      btn.textContent = "Starting...";
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Starting...';
       controlError.style.display = "none";
       controlAuthErr.style.display = "none";
 
@@ -715,10 +817,7 @@
           `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
           {
             method: "POST",
-            headers: {
-              "Authorization": `token ${gh_pat}`,
-              "Accept": "application/vnd.github.v3+json"
-            },
+            headers: { "Authorization": `token ${gh_pat}`, "Accept": "application/vnd.github.v3+json" },
             body: JSON.stringify({ ref: "main", inputs: { mode: "normal" } })
           }
         );
@@ -726,31 +825,27 @@
         if (res.status === 401) {
           controlAuthErr.style.display = "block";
           btn.disabled = false;
-          btn.textContent = "▶ Run Workflow";
+          btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
           return;
         }
-
         if (!res.ok) {
-          const errText = await res.text();
-          controlError.textContent = `Error: ${res.status}`;
+          controlError.textContent = `Error API returned HTTP ${res.status}`;
           controlError.style.display = "block";
           btn.disabled = false;
-          btn.textContent = "▶ Run Workflow";
+          btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
           return;
         }
 
-        // Success — show "Starting..." for 3 seconds then let status poll update
         setTimeout(() => {
           btn.disabled = false;
-          btn.textContent = "▶ Run Workflow";
+          btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
           pollStatus();
         }, 3000);
-
       } catch (err) {
-        controlError.textContent = "Network error";
+        controlError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Network error';
         controlError.style.display = "block";
         btn.disabled = false;
-        btn.textContent = "▶ Run Workflow";
+        btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Workflow';
       }
     }
 
@@ -759,37 +854,29 @@
       if (!btn || !gh_pat || !currentRunId) return;
 
       btn.disabled = true;
-      btn.textContent = "Cancelling...";
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cancelling...';
       controlError.style.display = "none";
       controlAuthErr.style.display = "none";
 
       try {
         const res = await fetch(
           `https://api.github.com/repos/${REPO}/actions/runs/${currentRunId}/cancel`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `token ${gh_pat}`,
-              "Accept": "application/vnd.github.v3+json"
-            }
-          }
+          { method: "POST", headers: { "Authorization": `token ${gh_pat}`, "Accept": "application/vnd.github.v3+json" } }
         );
 
         if (res.status === 401) {
           controlAuthErr.style.display = "block";
           btn.disabled = false;
-          btn.textContent = "⏹ Cancel Run";
+          btn.innerHTML = '<i class="fa-solid fa-stop"></i> Cancel Run';
           return;
         }
 
-        // Let status poll pick up the change
         setTimeout(pollStatus, 3000);
-
       } catch (err) {
-        controlError.textContent = "Network error";
+        controlError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Network error';
         controlError.style.display = "block";
         btn.disabled = false;
-        btn.textContent = "⏹ Cancel Run";
+        btn.innerHTML = '<i class="fa-solid fa-stop"></i> Cancel Run';
       }
     }
 
@@ -797,20 +884,14 @@
 
     async function pollUsage() {
       if (!gh_pat) return;
-
       try {
-        // Try billing endpoint first
         let used = null;
-
         const billingRes = await fetch(
           `https://api.github.com/repos/${REPO}/actions/billing`,
           { headers: { "Authorization": `token ${gh_pat}` } }
         );
 
-        if (billingRes.status === 401) {
-          usageAuthErr.style.display = "block";
-          return;
-        }
+        if (billingRes.status === 401) { usageAuthErr.style.display = "block"; return; }
         usageAuthErr.style.display = "none";
 
         if (billingRes.ok) {
@@ -820,7 +901,6 @@
           }
         }
 
-        // Fallback: calculate from recent run durations
         if (used === null) {
           const runsRes = await fetch(
             `https://api.github.com/repos/${REPO}/actions/runs?per_page=100&status=completed`,
@@ -844,26 +924,22 @@
         }
 
         if (used !== null) {
-          usageText.textContent = `${used} / 2000 min used`;
-
+          usageText.innerHTML = `${used} <span>/ 2000 min computed</span>`;
           const pct = Math.min((used / 2000) * 100, 100);
           usageBar.style.width = pct + "%";
 
           if (used > 1800) {
-            usageBar.style.backgroundColor = "var(--danger)";
-            usageWarning.style.display = "block";
+            usageBar.style.background = "var(--danger)";
+            usageWarning.style.display = "flex";
           } else if (used >= 1500) {
-            usageBar.style.backgroundColor = "var(--warning)";
+            usageBar.style.background = "var(--warning)";
             usageWarning.style.display = "none";
           } else {
-            usageBar.style.backgroundColor = "var(--success)";
+            usageBar.style.background = "linear-gradient(90deg, var(--success), #34d399)";
             usageWarning.style.display = "none";
           }
         }
-
-      } catch (err) {
-        // Network error — keep last known state
-      }
+      } catch (err) {}
     }
   </script>
 </body>
