@@ -405,14 +405,19 @@
       <p id="control-info"></p>
     </div>
 
-    <!-- Section: Health -->
+    <!-- Section: Compute Time -->
     <div class="section">
-      <div class="section-title"><i class="fa-solid fa-heart-pulse"></i> API Gateway Health</div>
-      <div class="metric-group">
-        <div class="metric-val" id="usage-text">--<span>/ 5000 reqs</span></div>
+      <div class="section-title"><i class="fa-solid fa-clock"></i> Workflow Compute Time</div>
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; font-family: var(--font-mono);">
+        <div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase;">Total (Last 100 Runs)</div>
+          <div class="metric-val" id="total-time-text">--<span>m</span></div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase;">Last Run Duration</div>
+          <div class="metric-val" id="last-run-text">--<span>s</span></div>
+        </div>
       </div>
-      <div class="track"><div class="fill" id="usage-bar"></div></div>
-      <div class="error-toast" id="usage-auth-error">Rate limit endpoint unreachable.</div>
     </div>
   </div>
 
@@ -554,8 +559,8 @@
         unlockScreen.style.display="none"; dashboard.style.display="block";
         passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
         
-        pollStatus(); pollRateLimit();
-        statusInterval = setInterval(pollStatus, 10000); usageInterval = setInterval(pollRateLimit, 300000);
+        pollStatus(); pollComputeTime();
+        statusInterval = setInterval(pollStatus, 10000); usageInterval = setInterval(pollComputeTime, 300000);
       } catch(err) {
         unlockError.textContent = "Access Denied"; unlockError.style.display="block";
         passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
@@ -719,29 +724,51 @@
       }
     }
 
-    async function pollRateLimit() {
+    async function pollComputeTime() {
       if(!gh_pat) return;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       try {
-        let u=null, limit=5000;
-        const bRes=await fetch(`https://api.github.com/rate_limit`,{
-          headers:{"Authorization":`token ${gh_pat}`},
+        const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs?per_page=100`, {
+          headers: {"Authorization": `token ${gh_pat}`},
           signal: controller.signal
         });
-        if(bRes.ok) { 
-          let dat=await bRes.json(); 
-          if(dat.rate) { 
-            limit = dat.rate.limit;
-            u = limit - dat.rate.remaining; 
-          } 
+        
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        let totalMs = 0;
+        let lastRunMs = null;
+        
+        if (data.workflow_runs && data.workflow_runs.length > 0) {
+          data.workflow_runs.forEach(r => {
+            if (r.status === 'completed' && r.created_at && r.updated_at) {
+              const c = new Date(r.created_at).getTime();
+              const u = new Date(r.updated_at).getTime();
+              const duration = u - c;
+              if (duration > 0) totalMs += duration;
+              
+              if (lastRunMs === null) {
+                lastRunMs = duration;
+              }
+            }
+          });
         }
-        if(u!==null) {
-          usageText.innerHTML = `${u}<span>/ ${limit} reqs</span>`;
-          const p = Math.min((u/limit)*100,100); usageBar.style.width=p+"%";
-          usageBar.className = "fill" + (u>(limit*0.95)?" danger": u>(limit*0.8)?" warn":"");
+        
+        if (totalMs > 0) {
+          const totalMin = Math.round(totalMs / 60000);
+          $("total-time-text").innerHTML = `${totalMin}<span>m</span>`;
+        }
+        if (lastRunMs !== null) {
+          const lastMin = Math.floor(lastRunMs / 60000);
+          const lastSec = Math.round((lastRunMs % 60000) / 1000);
+          if (lastMin > 0) {
+            $("last-run-text").innerHTML = `${lastMin}<span>m</span> ${lastSec}<span>s</span>`;
+          } else {
+            $("last-run-text").innerHTML = `${lastSec}<span>s</span>`;
+          }
         }
       } catch(e){} finally {
         clearTimeout(timeoutId);
