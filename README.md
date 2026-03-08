@@ -95,7 +95,7 @@ TeamsLeech-Bot/
 To deploy this project for your own university account:
 
 1. **Fork** this repository.
-2. **Capture `refresh_token`** via HAR analysis in your browser (see `docs/PRD.md` Section 5 for detailed instructions).
+2. **Capture initial `refresh_token`** by running `python scripts/get_teams_token.py` locally and following the Microsoft Device Login instructions.
 3. **Add all 6 GitHub Secrets** listed above to your forked repository.
 4. **Edit `subjects_config.json`** to define your own required subjects and their search keywords.
 5. **Run the workflow** manually via the Actions tab → Select "TeamsLeech Bot" → Click "Run workflow".
