@@ -405,14 +405,14 @@
       <p id="control-info"></p>
     </div>
 
-    <!-- Section: Quota -->
+    <!-- Section: Health -->
     <div class="section">
-      <div class="section-title"><i class="fa-solid fa-server"></i> Compute Quota</div>
+      <div class="section-title"><i class="fa-solid fa-heart-pulse"></i> API Gateway Health</div>
       <div class="metric-group">
-        <div class="metric-val" id="usage-text">--<span>/ 3000m</span></div>
+        <div class="metric-val" id="usage-text">--<span>/ 5000 reqs</span></div>
       </div>
       <div class="track"><div class="fill" id="usage-bar"></div></div>
-      <div class="error-toast" id="usage-auth-error">Quota endpoint unreachable.</div>
+      <div class="error-toast" id="usage-auth-error">Rate limit endpoint unreachable.</div>
     </div>
   </div>
 
@@ -554,8 +554,8 @@
         unlockScreen.style.display="none"; dashboard.style.display="block";
         passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
         
-        pollStatus(); pollUsage();
-        statusInterval = setInterval(pollStatus, 10000); usageInterval = setInterval(pollUsage, 300000);
+        pollStatus(); pollRateLimit();
+        statusInterval = setInterval(pollStatus, 10000); usageInterval = setInterval(pollRateLimit, 300000);
       } catch(err) {
         unlockError.textContent = "Access Denied"; unlockError.style.display="block";
         passwordInput.value=""; unlockBtn.disabled=false; unlockBtn.textContent="Access Console";
@@ -719,23 +719,29 @@
       }
     }
 
-    async function pollUsage() {
+    async function pollRateLimit() {
       if(!gh_pat) return;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       try {
-        let u=null;
-        const bRes=await fetch(`https://api.github.com/users/AhmedTyson/settings/billing/actions`,{
+        let u=null, limit=5000;
+        const bRes=await fetch(`https://api.github.com/rate_limit`,{
           headers:{"Authorization":`token ${gh_pat}`},
           signal: controller.signal
         });
-        if(bRes.ok) { let dat=await bRes.json(); if(dat.total_minutes_used!==undefined) u=Math.round(dat.total_minutes_used); }
+        if(bRes.ok) { 
+          let dat=await bRes.json(); 
+          if(dat.rate) { 
+            limit = dat.rate.limit;
+            u = limit - dat.rate.remaining; 
+          } 
+        }
         if(u!==null) {
-          usageText.innerHTML = `${u}<span>/ 3000m</span>`;
-          const p = Math.min((u/3000)*100,100); usageBar.style.width=p+"%";
-          usageBar.className = "fill" + (u>2700?" danger": u>2250?" warn":"");
+          usageText.innerHTML = `${u}<span>/ ${limit} reqs</span>`;
+          const p = Math.min((u/limit)*100,100); usageBar.style.width=p+"%";
+          usageBar.className = "fill" + (u>(limit*0.95)?" danger": u>(limit*0.8)?" warn":"");
         }
       } catch(e){} finally {
         clearTimeout(timeoutId);

@@ -264,15 +264,15 @@ REAUTH_MESSAGE = """⚠️ **Session Expired**
 
 Your Microsoft refresh token has expired. Follow these steps to recover:
 
-**Step 1:** Open Teams in your browser → Press F12 → Network tab → log in
+**Step 1:** Run `python scripts/get_teams_token.py` locally on your machine.
 
-**Step 2:** Find the `login.microsoftonline.com` POST request → copy `refresh_token` from the request body
+**Step 2:** Follow the prompt to open Microsoft Login and enter the device code.
 
-**Step 3:** Go to your GitHub repo → Settings → Secrets → Update `TEAMS_REFRESH_TOKEN` with the new token
+**Step 3:** Copy the outputted `refresh_token` and update the `TEAMS_REFRESH_TOKEN` GitHub Secret in your repository.
 
 **Step 4:** Come back here and send `/check` to verify it works
 
-_This takes less than 5 minutes._"""
+_This takes less than 2 minutes._"""
 
 # ───────────────────────── handler registration ───────────────────
 
