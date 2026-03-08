@@ -41,7 +41,7 @@ def get_ms_token():
             "client_id": CLIENT_ID,
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
             "device_code": device_code
-        })
+        }, headers={"Origin": "https://teams.cloud.microsoft"})
         
         token_data = token_res.json()
         
