@@ -1,18 +1,18 @@
 # 📡 TeamsLeech Bot
 
-## Product Requirements Document — Version 1.1
+## Product Requirements Document — Version 1.2
 
-**March 2026**
+**March 8, 2026**
 
 ---
 
 | Field               | Details                                                           |
 | ------------------- | ----------------------------------------------------------------- |
 | Owner               | Ahmed (Personal Project)                                          |
-| Version             | 1.1                                                               |
-| Status              | Live — Running on GitHub Actions                                  |
+| Version             | 1.2                                                               |
+| Status              | Live — Running on GitHub Actions + Dashboard                      |
 | Success Probability | 93%                                                               |
-| Last Confirmed Run  | March 7, 2026                                                     |
+| Last Confirmed Run  | March 8, 2026                                                     |
 | Auth Strategy       | OAuth2 refresh_token → access_token (auto-rotated)                |
 | Drive Discovery     | Dynamic via joinedTeams API — auto-grows as new groups are joined |
 | Subjects Monitored  | 6 fixed subjects                                                  |
@@ -275,6 +275,7 @@ What do you want to check?
 | Phase 5 | main.py                | Orchestrator — reads secrets, calls all modules in order     | ✅ Done — orchestrator running on GitHub Actions                    | High       |
 | Phase 6 | workflow.yml           | GitHub Actions workflow_dispatch + env injection             | ✅ Done — workflow_dispatch confirmed green                         | High       |
 | Phase 7 | End-to-End Test        | Live /check → subject select → upload → Saved Messages       | ✅ Done — live end-to-end run completed March 7, 2026               | Medium     |
+| Phase 8 | Personal Control Dashboard | docs/index.html — biometric-unlocked GitHub Pages dashboard for workflow control and live step tracking | ✅ Done | High |
 
 ---
 
@@ -290,6 +291,10 @@ What do you want to check?
 | Microsoft revokes Teams Web Client app token | Low        | High   | Requires fresh HAR capture + /reauth flow. No automated mitigation possible.                                          |
 | BytesIO RAM failure on GitHub Actions        | Low        | High   | Resolved — temp file approach implemented                                                                             |
 | GitHub Actions free minutes exhausted        | Low        | Low    | Confirmed: each run ~8 min, well within 2000 min/month                                                                |
+| GitHub Pages URL discovered by unauthorized user | Low | Low | Private repo hides source. WebAuthn + AES-256-GCM means URL alone is useless without fingerprint + master password. |
+| Gist read token exposed (baked into HTML source) | Very Low | Low | Token is read-only and only retrieves an encrypted blob. Useless without master password to decrypt. |
+| Master password forgotten | Low | Medium | Stored in phone password manager. If lost, re-run setup_gist.py with a new password to create a fresh Gist, then update GIST_ID in index.html. |
+| WebAuthn credential invalidated (OS update, new fingerprint) | Low | Low | "Reset biometric" link on unlock screen clears the stored credential. Re-registers automatically on next successful password unlock. |
 
 ---
 
@@ -306,6 +311,10 @@ The project is complete and successful when **all** of the following are true:
 - System runs without manual intervention for one full university semester
 - Session expiry triggers `/reauth` guide resolving in under 5 minutes
 - Total infrastructure cost remains **$0** throughout the entire semester
+- ✅ Dashboard accessible from any location via mobile with one biometric tap after initial setup
+- ✅ Workflow run triggered from dashboard without opening GitHub.com
+- ✅ Live step tracker updates every 2 seconds during active run with zero page refreshes
+- ✅ Run and Cancel operations reflect in UI within 20 seconds with no manual refresh required
 
 ---
 
@@ -322,7 +331,55 @@ The project is complete and successful when **all** of the following are true:
 | Known log warnings              | Unclosed <u> tag (cosmetic), MessageNotModified (cosmetic) |
 | Artifact error on first run     | Expected — continue-on-error handles it                    |
 | Run duration                    | ~8 minutes for full session                                |
+| Dashboard URL                   | ahmedtyson.github.io/TeamsLeech-Bot                        |
+| Dashboard hosting               | GitHub Pages (private repo, GitHub Pro)                    |
+| Credential encryption           | AES-256-GCM, PBKDF2 310k iterations                        |
+| Biometric auth                  | WebAuthn platform authenticator (Android fingerprint)      |
+| Step tracker polling            | 2s during active run, stops on completion                  |
+| Normal status polling           | 10s interval                                               |
+| Fast poll window                | 2s for max 30s after dispatch/cancel                       |
 
 ---
 
-_End of Document — TeamsLeech Bot PRD v1.1 — March 2026_
+## 16. Dashboard Architecture
+
+### Hosting
+
+- **Platform:** GitHub Pages on private repo (GitHub Pro)
+- **URL:** `ahmedtyson.github.io/TeamsLeech-Bot`
+- **File:** `docs/index.html` (single file)
+- **Deployment:** Auto-deploys on every push to main branch
+
+### Security Model
+
+- **Layer 1:** Private repo — source not publicly readable
+- **Layer 2:** AES-256-GCM encrypted credentials stored in a private GitHub Gist, decrypted in browser memory only using WebCrypto API + PBKDF2 (310,000 iterations). Credentials never written to disk or localStorage.
+- **Layer 3:** WebAuthn platform authenticator — OS-level fingerprint verification required before decryption on every unlock after first use. Registered once, resets cleanly if needed.
+
+### Credential Storage
+
+`setup_gist.py` encrypts `GH_PAT`, `BOT_TOKEN`, and `CHAT_ID` into a private Gist using AES-256-GCM. Two constants are baked into `index.html`: `GIST_ID` and a read-only `GIST_READ_TOKEN`. Neither is sufficient to access credentials without the master password.
+
+### Dashboard Panels
+
+- **Panel 1 — Workflow Status:** Live status dot (grey/yellow/green/red) + timestamp of last run. Polls GitHub API every 10 seconds.
+- **Panel 2 — Workflow Control:** Single Run Workflow button (triggers `workflow_dispatch`). Switches to Cancel Run button during active runs. Two-speed polling: 2-second fast poll after dispatch until new run detected, then returns to 10-second poll. Optimistic UI: dot turns yellow instantly on click.
+- **Panel 3 — Usage Meter:** Monthly Actions minutes used vs 2000 free tier. Progress bar: green → amber at 1500 → red at 1800. Polls once on load, then every 5 minutes.
+
+### Live Step Tracker
+
+Appears automatically when a run is active. Calls `GET /actions/runs/{id}/jobs` every 2 seconds. Displays each workflow step with icon, name, and live elapsed duration. Icons: ✅ ❌ ⏳ ⏩ ·
+In-progress step highlighted in accent purple. Disappears 3 seconds after run completes. Stops polling immediately when run ends or user locks.
+
+### Biometric Unlock Flow
+
+Open URL → Chrome autofills master password → fingerprint prompt (WebAuthn, OS-level) → Gist fetch → AES-GCM decrypt in WebCrypto → credentials in memory → dashboard operational.
+Total time from URL open to dashboard: ~3 seconds with saved password and enrolled fingerprint.
+
+### Mobile Access
+
+Tested on Android Chrome. Master password saved in Google Password Manager. Fingerprint autofill enabled via WebAuthn `residentKey: discouraged` setting which routes to biometric hardware over PIN fallback. Home screen shortcut added for app-like access.
+
+---
+
+_End of Document — TeamsLeech Bot PRD v1.2 — March 8, 2026_
