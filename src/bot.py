@@ -143,8 +143,8 @@ def _build_checklist_text(
 ) -> str:
     """Build the checklist message text with numbered, separated recordings.
 
-    If the full listing exceeds Telegram's 4096-char limit, falls back
-    to a compact format showing only subject counts.
+    If the full listing exceeds Telegram's 4096-char limit, progressively falls back
+    to more compact formats to try and keep titles visible.
     """
     total = sum(len(recs) for recs in results.values())
 
@@ -153,43 +153,68 @@ def _build_checklist_text(
         return f"No new recordings found for {subjects_checked} ✅"
 
     overrides = rename_overrides or {}
-    lines: list[str] = []
-    idx = 0
-
-    for subj_name, recs in results.items():
-        if not recs:
-            lines.append(f"\n📚 **{subj_name}** — No new recordings ✅")
-            continue
-
-        lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
-        lines.append(DIVIDER)
-
-        for rec_i, rec in enumerate(recs):
-            display_name = _clean_filename(overrides.get(idx, rec["name"]))
-            num = _num_label(rec_i + 1)
-
-            lines.append(
-                f"\n{num}  📅 {rec['created']}   💾 {rec['size_mb']}MB\n"
-                f"👥 {rec['team_name']}\n"
-                f"📄 {display_name}"
-            )
-            lines.append(f"\n{DIVIDER}")
-            idx += 1
-
-    full_text = "**New recordings found:**\n" + "\n".join(lines)
-
-    # Telegram message limit is 4096 chars — fall back to compact view
-    if len(full_text) > 4000:
-        compact: list[str] = [f"**{total} new recording(s) found:**"]
+    
+    # Try different compaction levels so we can keep file titles visible if possible
+    for level in range(4):
+        lines: list[str] = []
+        if level >= 2:
+            lines.append(f"**{total} new recording(s) found:**")
+        else:
+            lines.append("**New recordings found:**")
+            
+        idx = 0
         for subj_name, recs in results.items():
-            if recs:
-                compact.append(f"📚 **{subj_name}** — {len(recs)} file(s)")
-            else:
-                compact.append(f"📚 **{subj_name}** — ✅")
-        compact.append("\n_Use the buttons below to select & upload._")
-        return "\n".join(compact)
+            if not recs:
+                if level == 0:
+                    lines.append(f"\n📚 **{subj_name}** — No new recordings ✅")
+                continue
 
-    return full_text
+            if level == 0:
+                lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
+                lines.append(DIVIDER)
+            elif level == 1:
+                lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
+            elif level == 2:
+                lines.append(f"\n📚 **{subj_name}**")
+            elif level == 3:
+                # Level 3: just subjects, no individual files (last resort)
+                lines.append(f"📚 **{subj_name}** — {len(recs)} file(s)")
+                
+            for rec_i, rec in enumerate(recs):
+                if level == 3:
+                    idx += 1
+                    continue
+                    
+                display_name = _clean_filename(overrides.get(idx, rec["name"]))
+                num = _num_label(idx + 1)
+                
+                if level == 0:
+                    lines.append(
+                        f"\n{num}  📅 {rec['created']}   💾 {rec['size_mb']}MB\n"
+                        f"👥 {rec['team_name']}\n"
+                        f"📄 {display_name}"
+                    )
+                    lines.append(f"\n{DIVIDER}")
+                elif level == 1:
+                    lines.append(
+                        f"{num}  📅 {rec['created']}   💾 {rec['size_mb']}MB\n"
+                        f"📄 {display_name}\n"
+                    )
+                elif level == 2:
+                    if len(display_name) > 60:
+                        display_name = display_name[:57] + "..."
+                    lines.append(f"{num} {display_name}")
+                    
+                idx += 1
+                
+        if level == 3:
+            lines.append("\n_Use the buttons below to select & upload._")
+             
+        full_text = "\n".join(lines)
+        if len(full_text) <= 4000:
+            return full_text
+            
+    return "\n".join(lines[:100]) + "\n\n_...list truncated further due to Telegram limits._"
 
 
 def _build_checklist_keyboard(

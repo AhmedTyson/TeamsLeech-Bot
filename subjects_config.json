@@ -3,7 +3,7 @@
     {
       "name": "Advanced Database",
       "short": "Advanced DB",
-      "keywords": ["advanced database", "advanced db", "adv db", "adv database"]
+      "keywords": ["advanced database", "advanced db", "adv db", "adv database", "adb"]
     },
     {
       "name": "Auditing",
@@ -13,22 +13,22 @@
     {
       "name": "Economics of Information",
       "short": "Econ of Info",
-      "keywords": ["economics of information", "econ of info"]
+      "keywords": ["economics of information", "econ of info", "economics", "econ", "eoi"]
     },
     {
       "name": "Internet Applications",
       "short": "Internet Apps",
-      "keywords": ["internet applications", "internet app"]
+      "keywords": ["internet applications", "internet app", "internet", "ia"]
     },
     {
       "name": "Management Information Systems",
       "short": "MIS",
-      "keywords": ["management information system", "mis"]
+      "keywords": ["management information systems", "management information system", "mis", "management inoformation stsytems"]
     },
     {
       "name": "Operations Research",
       "short": "O.R.",
-      "keywords": ["operation research", "o.r", "o.r."]
+      "keywords": ["operations research", "operation research", "o.r", "o.r.", "or"]
     }
   ]
 }
