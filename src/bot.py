@@ -313,7 +313,7 @@ _checklist_msg_id: dict[int, int] = {}                    # chat_id → message 
 
 def register_handlers(
     app: Client,
-    on_fetch: Callable[[str | None], dict[str, list[dict]]],
+    on_fetch: Callable[[str | None, str | None], dict[str, list[dict]]],
     on_upload: Callable[[list[dict]], Any],
     owner_chat_id: int | None = None,
 ) -> None:
@@ -323,7 +323,7 @@ def register_handlers(
     ----------
     app : Client
         The Pyrogram client to register handlers on.
-    on_fetch : callable(subject_filter: str | None) → dict
+    on_fetch : callable(subject_filter: str | None, date_filter: str | None) → dict
         Called to fetch recordings. Returns {subject: [recording_dicts]}.
         Provided by the orchestrator (main.py) — wraps fetcher.fetch_recordings.
     on_upload : callable(recordings: list[dict]) → Any
@@ -353,7 +353,8 @@ def register_handlers(
         subjects = _load_subjects()
         keyboard = _build_subject_keyboard(subjects)
         await message.reply(
-            "**What do you want to check?**",
+            "**What do you want to check?**\n"
+            "_(You can also just type a date like YYYY-MM-DD to check a specific day)_",
             reply_markup=keyboard,
         )
         log.info("/check command received — subject keyboard sent.")
@@ -378,6 +379,7 @@ def register_handlers(
             "Available commands:\n"
             "/check   — 🔍 Scan for new lecture recordings\n"
             "/reauth  — 🔑 Renew your session if expired\n\n"
+            "💡 _Tip: Send a date (e.g. 2026-03-12) to check all recordings for that day._\n\n"
             "Tap /check to get started.",
             reply_markup=REPLY_KEYBOARD,
         )
@@ -448,6 +450,25 @@ def register_handlers(
             log.info("Renamed recording idx=%d to '%s'", idx, new_name)
             return
 
+        # ── Check for date string (YYYY-MM-DD) ──────────────────────
+        date_match = re.match(r"^(\d{4}-\d{2}-\d{2})$", text)
+        if date_match:
+            date_str = date_match.group(1)
+            await message.reply(f"🔍 Scanning all subjects for date **{date_str}**...")
+            try:
+                results = on_fetch(None, date_str)
+            except Exception as e:
+                await message.reply(f"❌ Fetch error: {e}")
+                log.error("Fetch failed for date '%s': %s", date_str, e)
+                return
+
+            text_reply, keyboard = _build_recording_checklist(results)
+            _store_results(chat_id, results)
+            sent = await message.reply(text_reply, reply_markup=keyboard)
+            if keyboard:
+                _checklist_msg_id[chat_id] = sent.id
+            return
+
         # ── Normal subject matching ──────────────────────────────
         subjects = _load_subjects()
         matched_subject = None
@@ -471,7 +492,7 @@ def register_handlers(
         await message.reply(f"🔍 Scanning **{matched_subject}**...")
 
         try:
-            results = on_fetch(matched_subject)
+            results = on_fetch(matched_subject, None)
         except Exception as e:
             await message.reply(f"❌ Fetch error: {e}")
             log.error("Fetch failed for '%s': %s", matched_subject, e)
@@ -499,7 +520,7 @@ def register_handlers(
             pass
 
         try:
-            results = on_fetch(subject_filter)
+            results = on_fetch(subject_filter, None)
         except Exception as e:
             try:
                 await cb.message.edit_text(f"❌ Fetch error: {e}")

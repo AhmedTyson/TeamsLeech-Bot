@@ -191,6 +191,7 @@ def fetch_recordings(
     subjects_path: str = "subjects_config.json",
     state_dir: str = ".state",
     subject_filter: str | None = None,
+    date_filter: str | None = None,
 ) -> dict[str, list[dict]]:
     """Scan Teams drives and return new recordings per subject.
 
@@ -205,6 +206,9 @@ def fetch_recordings(
     subject_filter : str | None
         If provided, only scan this one subject (by name or short name).
         If None, scan all 6 subjects ("Check All" mode).
+    date_filter : str | None
+        If provided (e.g. 'YYYY-MM-DD'), only returns recordings from
+        that specific date, completely bypassing the last_run state.
 
     Returns
     -------
@@ -243,8 +247,8 @@ def fetch_recordings(
         matched_teams = _match_teams_to_subject(all_teams, subject)
 
         log.info(
-            "Subject '%s': %d matching teams, last_run=%s",
-            subj_name, len(matched_teams), last_run.isoformat(),
+            "Subject '%s': %d matching teams, last_run=%s, date_filter=%s",
+            subj_name, len(matched_teams), last_run.isoformat(), date_filter
         )
 
         recordings: list[dict] = []
@@ -263,23 +267,30 @@ def fetch_recordings(
                         continue
                     seen_ids.add(item_id)
 
-                    # Parse creation date and apply date filter
                     created_str = item.get("createdDateTime", "")
-                    try:
-                        created_dt = datetime.fromisoformat(
-                            created_str.replace("Z", "+00:00")
-                        )
-                    except ValueError:
-                        continue  # skip items with unparseable dates
+                    created_date_only = created_str[:10]  # YYYY-MM-DD
+                    
+                    if date_filter:
+                        # Exact date match, skip last_run check entirely
+                        if created_date_only != date_filter:
+                            continue
+                    else:
+                        # Normal behavior: check against last_run
+                        try:
+                            created_dt = datetime.fromisoformat(
+                                created_str.replace("Z", "+00:00")
+                            )
+                        except ValueError:
+                            continue  # skip items with unparseable dates
 
-                    if created_dt <= last_run:
-                        continue  # already seen in a previous run
+                        if created_dt <= last_run:
+                            continue  # already seen in a previous run
 
                     size_bytes = item.get("size", 0)
                     recordings.append({
                         "name": item["name"],
                         "size_mb": round(size_bytes / (1024 * 1024), 1),
-                        "created": created_str[:10],  # YYYY-MM-DD
+                        "created": created_date_only,
                         "drive_id": drive["id"],
                         "item_id": item_id,
                         "team_name": team_name,
@@ -290,7 +301,7 @@ def fetch_recordings(
         results[subj_name] = recordings
 
         log.info(
-            "Subject '%s': found %d new recording(s).",
+            "Subject '%s': found %d matched recording(s).",
             subj_name, len(recordings),
         )
 

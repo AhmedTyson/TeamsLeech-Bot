@@ -111,14 +111,15 @@ def _authenticate(env: dict[str, str]) -> str:
 def _make_on_fetch(access_token: str):
     """Create the on_fetch callback for bot.register_handlers.
 
-    Signature: on_fetch(subject_filter: str | None) → dict
+    Signature: on_fetch(subject_filter: str | None, date_filter: str | None) → dict
     """
-    def on_fetch(subject_filter: str | None = None) -> dict[str, list[dict]]:
+    def on_fetch(subject_filter: str | None = None, date_filter: str | None = None) -> dict[str, list[dict]]:
         return fetch_recordings(
             access_token=access_token,
             subjects_path=SUBJECTS_PATH,
             state_dir=STATE_DIR,
             subject_filter=subject_filter,
+            date_filter=date_filter,
         )
     return on_fetch
 
