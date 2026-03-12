@@ -29,6 +29,21 @@
       "name": "Operations Research",
       "short": "O.R.",
       "keywords": ["operations research", "operation research", "o.r", "o.r.", "or"]
+    },
+    {
+      "name": "Sections",
+      "short": "Sections 👥",
+      "keywords": ["section", "sec", "سيكشن", "سكشن", "السكاشن", "sections"]
+    },
+    {
+      "name": "Dr. Gehad Magdy",
+      "short": "جهاد مجدي 👩‍🏫",
+      "keywords": ["جهاد", "جهاد مجدي", "gehad", "gehad magdy", "dr gehad", "dr. gehad", "د. جهاد"]
+    },
+    {
+      "name": "Dr. Rania Shehata",
+      "short": "رانيا شحاتة 👩‍🏫",
+      "keywords": ["رانيا", "رانيا شحاتة", "rania", "rania shehata", "dr rania", "dr. rania", "د. رانيا"]
     }
   ]
 }
