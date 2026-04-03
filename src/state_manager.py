@@ -52,8 +52,10 @@ class TelegramStateManager:
                 json_str = text.split("#TEAMSLEECH_STATE\n")[1].replace("⚠️ DO NOT DELETE THIS MESSAGE\nThis acts as the database for the bot.\n", "").strip()
             self._state_cache = json.loads(json_str)
         except (IndexError, AttributeError, json.JSONDecodeError) as e:
-            log.warning("Found state message but failed to parse JSON: %s. Resetting cache.", e)
+            log.warning("Found state message but failed to parse JSON (probably old format). Resetting cache and rewriting.")
             self._state_cache = {}
+            # Write the new clean format immediately so this error doesn't happen again
+            await self._push_to_telegram()
         self._initialized = True
         log.info("TelegramStateManager initialized. Loaded %d subjects.", len(self._state_cache))
 

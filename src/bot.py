@@ -64,15 +64,10 @@ log = logging.getLogger("bot")
 DIVIDER_THIN = "───────────────────"
 DIVIDER_THICK = "━━━━━━━━━━━━━━━━━━"
 
-_NUM_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-
 MAX_DATE_RANGE_DAYS = 30
 
-
 def _num_label(n: int) -> str:
-    if 1 <= n <= 10:
-        return _NUM_EMOJI[n - 1]
-    return f"**{n}.**"
+    return str(n)
 
 
 def _clean_filename(name: str) -> str:
@@ -226,16 +221,16 @@ def _build_checklist_text(
         subjects_checked = ", ".join(results.keys()) if results else "all subjects"
         header = "📡 **Scan Results**"
         if scan_label:
-            header += f"\n📅 {scan_label}"
+            header += f"\n{scan_label}"
         return f"{header}\n{DIVIDER_THICK}\n\n✅ No new recordings found\n_{subjects_checked}_"
 
     overrides = rename_overrides or {}
     is_multi = len(results) > 1
 
     lines: list[str] = []
-    lines.append("📡 **Scan Results**")
+    lines.append("Scan Results")
     if scan_label:
-        lines.append(f"📅 {scan_label}")
+        lines.append(f"{scan_label}")
     lines.append(DIVIDER_THICK)
 
     idx = 0
@@ -261,8 +256,8 @@ def _build_checklist_text(
             team_name = rec.get("team_name", "Unknown Team")
 
             lines.append(
-                f"\n{num} 👥 **{team_name}**"
-                f"\n   📅 {date_short}{time_display}  •  💾 {rec['size_mb']} MB{duration_str}"
+                f"\n{num}. 👥 **{team_name}**"
+                f"\n   {date_short}{time_display}  •  💾 {rec['size_mb']} MB{duration_str}"
                 f"\n   📄 {display_name}"
             )
             idx += 1
@@ -296,27 +291,24 @@ def _build_checklist_keyboard(
     overrides = rename_overrides or {}
     buttons: list[list[InlineKeyboardButton]] = []
 
+    current_row = []
     for i, rec in enumerate(flat):
         if i >= 45:
             # Telegram has a strict hard limit of 100 inline buttons per message.
-            # 45 recordings = 90 buttons, leaving 10 slots for the actions below.
             break
 
         mark = "☑" if i in selections else "☐"
-        num = _num_label(i + 1)
-        date_short = _format_date_short(rec["created"])
+        num = i + 1
         
-        time_str = rec.get("time", "")
-        duration_ms = rec.get("duration_ms", 0)
-        time_chip = f" {time_str}" if time_str else ""
-        dur_chip = f" • {_format_duration(duration_ms).replace('⏱️ ', '')}" if duration_ms else ""
+        current_row.append(InlineKeyboardButton(text=f"{mark} {num}", callback_data=f"sel:{i}"))
+        current_row.append(InlineKeyboardButton(text="✏️", callback_data=f"ren:{i}"))
         
-        label = f"{mark}  {num}  {rec['size_mb']}MB{dur_chip}  •  {date_short}{time_chip}"
-        
-        buttons.append([
-            InlineKeyboardButton(text=label, callback_data=f"sel:{i}"),
-            InlineKeyboardButton(text="✏️", callback_data=f"ren:{i}"),
-        ])
+        if len(current_row) >= 4:
+            buttons.append(current_row)
+            current_row = []
+            
+    if current_row:
+        buttons.append(current_row)
 
     # FIX 5: Show a clear "tap to select" hint when nothing is checked.
     if not selections:
