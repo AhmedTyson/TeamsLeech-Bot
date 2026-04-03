@@ -258,17 +258,21 @@ async def fetch_recordings_async(
     subjects = load_subjects(subjects_path)
 
     if subject_filter:
+        log.info("Applying subject filter: '%s'", subject_filter)
         filter_lower = subject_filter.lower()
         subjects = [
             s for s in subjects
             if s["name"].lower() == filter_lower
             or s.get("short", "").lower() == filter_lower
         ]
+        log.info("Filter matched %d subject(s) from config.", len(subjects))
         if not subjects:
             raise FetcherError(
                 f"No subject matches filter '{subject_filter}'. "
                 "Check subjects_config.json."
             )
+    else:
+        log.info("No subject filter provided. Scanning all %d subjects.", len(subjects))
 
     limits = httpx.Limits(max_connections=MAX_CONCURRENT, max_keepalive_connections=10)
     results: dict[str, list[dict]] = {}

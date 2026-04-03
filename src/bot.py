@@ -526,6 +526,8 @@ def register_handlers(
 
             ctx = _scan_context.get(chat_id, {})
             subject_filter = ctx.get("subject_filter")
+            
+            log.info("Handling date input for chat_id=%d. Pending subject: %s", chat_id, subject_filter)
 
             parsed = _parse_date_input(text)
             if parsed is None:
@@ -569,6 +571,7 @@ def register_handlers(
         # ── Shortcut keywords ────────────────────────────────────
         text_lower = text.lower().strip()
         if text_lower == "today":
+            # If we are NOT in special prompt mode, this is a GLOBAL search
             today_str = datetime.now(timezone.utc).date().isoformat()
             label = f"Today ({_format_date_short(today_str)})"
             await message.reply(f"🔍 Scanning **all subjects** — {label}...")
