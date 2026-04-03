@@ -15,7 +15,7 @@ import logging
 import tempfile
 import subprocess
 import json as _json
-from typing import Any
+from typing import Any, Callable
 
 import requests
 from pyrogram import Client
