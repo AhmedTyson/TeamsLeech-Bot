@@ -133,44 +133,9 @@ async def _upload_to_telegram(
     chat_id: int,
     file_path: str,
     filename: str,
-    file_size_bytes: int,
+    tg_progress_cb: Callable | None = None,
 ) -> Message:
-    """Upload a file to Telegram Saved Messages with 10%-step progress.
-
-    Sends a NEW message at every 10% milestone (never edits).
-    Final message: ✅ [filename] — [size]MB — Saved to Telegram
-    """
-    milestones_sent: set[int] = set()
-    all_progress_msgs: list[Message] = []
-
-    # Pre-send a 0% message
-    progress_text = f"📤 Uploading **{filename}**\n⏳ 0%"
-    initial_msg = await client.send_message(chat_id, progress_text)
-    all_progress_msgs.append(initial_msg)
-
-    async def progress_callback(current: int, total: int) -> None:
-        if total == 0:
-            return
-        pct = int((current / total) * 100)
-        # Round down to nearest 10
-        milestone = (pct // 10) * 10
-        if milestone > 0 and milestone not in milestones_sent:
-            milestones_sent.add(milestone)
-            bar_filled = milestone // 10
-            bar_empty = 10 - bar_filled
-            bar = "█" * bar_filled + "░" * bar_empty
-            progress_text = (
-                f"📤 **{filename}**\n"
-                f"{bar} {milestone}%"
-            )
-            try:
-                msg = await client.send_message(
-                    chat_id, progress_text
-                )
-                all_progress_msgs.append(msg)
-            except Exception as e:
-                log.warning("Progress message failed at %d%%: %s", milestone, e)
-
+    """Upload a file to Telegram Saved Messages."""
     # Extract video metadata for proper Telegram rendering
     duration, width, height = _probe_video(file_path)
 
@@ -185,7 +150,7 @@ async def _upload_to_telegram(
             duration=duration,
             width=width,
             height=height,
-            progress=progress_callback,
+            progress=tg_progress_cb,
         )
     except BadRequest:
         # Issue 2: codec incompatibility fallback → send as document
@@ -202,7 +167,7 @@ async def _upload_to_telegram(
                     f"🎥 {filename}\n"
                     "(⚠️ inline play unavailable — tap to download)"
                 ),
-                progress=progress_callback,
+                progress=tg_progress_cb,
             )
         except Exception as exc:
             raise TelegramUploadError(
@@ -212,20 +177,6 @@ async def _upload_to_telegram(
         raise TelegramUploadError(
             f"Telegram upload failed for {filename}: {exc}"
         ) from exc
-
-    # Final confirmation message
-    size_mb = round(file_size_bytes / (1024 * 1024), 1)
-    await client.send_message(
-        chat_id,
-        f"✅ **{filename}** — {size_mb}MB — Saved to Telegram"
-    )
-
-    # Delete all progress messages on success
-    for msg in all_progress_msgs:
-        try:
-            await msg.delete()
-        except Exception as e:
-            log.warning("Failed to delete progress message: %s", e)
 
     log.info("Uploaded %s to Telegram (chat_id=%d)", filename, chat_id)
     return sent_msg
@@ -237,62 +188,83 @@ async def upload_recordings(
     access_token: str,
     tg_client: Client,
     chat_id: int,
+    progress_cb: Callable | None = None,
 ) -> list[dict]:
-    """Download recordings from Graph and upload to Telegram.
-
-    Parameters
-    ----------
-    recordings : list[dict]
-        List of recording dicts from fetcher, each with:
-        name, size_mb, created, drive_id, item_id, team_name
-    access_token : str
-        Valid Graph API Bearer token.
-    tg_client : Client
-        An already-started Pyrogram client.
-    chat_id : int
-        Telegram chat ID for Saved Messages.
-
-    Returns
-    -------
-    list[dict] — results per recording:
-        - name: str
-        - success: bool
-        - error: str | None
-    """
-    # Issue 4: strip whitespace from access_token to prevent corruption
+    """Download recordings from Graph and upload to Telegram."""
     access_token = access_token.strip()
 
     results: list[dict] = []
+    start_time_all = asyncio.get_event_loop().time()
+    total_size_mb = sum(r.get("size_mb", 0) for r in recordings)
+
+    if progress_cb:
+        await progress_cb("start", {"total": len(recordings), "total_mb": total_size_mb})
 
     try:
-        for rec in recordings:
+        for i, rec in enumerate(recordings):
             filename = rec["name"]
             drive_id = rec["drive_id"]
             item_id = rec["item_id"]
+            file_size_mb_approx = rec.get("size_mb", 0.0)
 
+            start_time_file = asyncio.get_event_loop().time()
             log.info("Processing: %s (drive=%s, item=%s)", filename, drive_id, item_id)
 
-            # Use a named temp file for the download (no directory to clean)
             tmp_file = tempfile.NamedTemporaryFile(
                 suffix=".mp4", prefix="teamsleech_", delete=False
             )
             tmp_path = tmp_file.name
-            tmp_file.close()  # close handle so _download_recording can write
+            tmp_file.close()
+
+            last_progress_time = start_time_file
+            last_progress_bytes = 0
+
+            async def _tg_progress(current: int, total: int):
+                if total == 0:
+                    return
+                pct = int((current / total) * 100)
+                if pct % 5 == 0 and progress_cb:
+                    nonlocal last_progress_time, last_progress_bytes
+                    now = asyncio.get_event_loop().time()
+                    elapsed_chunk = now - last_progress_time
+                    speed_mbps = 0.0
+                    if elapsed_chunk > 0:
+                        speed_mbps = ((current - last_progress_bytes) / (1024*1024)) / elapsed_chunk
+                    
+                    last_progress_time = now
+                    last_progress_bytes = current
+                    
+                    await progress_cb("file_progress", {
+                        "index": i,
+                        "name": filename,
+                        "percent": pct,
+                        "speed_mbps": speed_mbps,
+                    })
 
             try:
-                # Step 1: Download from Graph API
-                await tg_client.send_message(
-                    chat_id,
-                    f"⬇️ Downloading **{filename}** from Teams..."
-                )
+                if progress_cb:
+                    await progress_cb("file_progress", {
+                        "index": i, "name": filename, "percent": 0, "speed_mbps": 0.0
+                    })
+                
+                # Step 1: Download from Graph API (blocking)
                 file_size = _download_recording(
                     drive_id, item_id, access_token, tmp_path
                 )
 
                 # Step 2: Upload to Telegram
                 await _upload_to_telegram(
-                    tg_client, chat_id, tmp_path, filename, file_size
+                    tg_client, chat_id, tmp_path, filename, _tg_progress
                 )
+
+                elapsed_file = asyncio.get_event_loop().time() - start_time_file
+                if progress_cb:
+                    await progress_cb("file_done", {
+                        "index": i,
+                        "name": filename,
+                        "size_mb": file_size / (1024*1024),
+                        "elapsed_s": elapsed_file,
+                    })
 
                 results.append({
                     "name": filename,
@@ -302,13 +274,8 @@ async def upload_recordings(
 
             except (DownloadError, TelegramUploadError) as exc:
                 log.error("Failed: %s — %s", filename, exc)
-                try:
-                    await tg_client.send_message(
-                        chat_id,
-                        f"❌ Failed: **{filename}**\n{exc}"
-                    )
-                except Exception:
-                    pass
+                if progress_cb:
+                    await progress_cb("error", {"index": i, "name": filename, "error": str(exc)})
                 results.append({
                     "name": filename,
                     "success": False,
@@ -317,39 +284,29 @@ async def upload_recordings(
 
             except Exception as exc:
                 log.error("Unexpected error for %s: %s", filename, exc)
-                # Issue 3: alert on unhandled exception
-                try:
-                    await tg_client.send_message(
-                        chat_id,
-                        f"❌ Upload failed: **{filename}**\n"
-                        f"Error: {type(exc).__name__}: {exc}\n"
-                        f"Phase: uploader.py"
-                    )
-                except Exception:
-                    pass
+                if progress_cb:
+                    await progress_cb("error", {"index": i, "name": filename, "error": f"{type(exc).__name__}: {exc}"})
                 results.append({
                     "name": filename,
                     "success": False,
                     "error": str(exc),
                 })
-                raise  # re-raise so main.py knows
+                raise
 
             finally:
-                # Clean up temp file — always runs
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
 
     except (DownloadError, TelegramUploadError, UploaderError):
-        pass  # already handled and appended to results above
+        pass
 
-    # Summary
-    success_count = sum(1 for r in results if r["success"])
-    fail_count = len(results) - success_count
-    summary = f"📊 **Upload complete:** {success_count} succeeded"
-    if fail_count:
-        summary += f", {fail_count} failed"
-    await tg_client.send_message(chat_id, summary)
+    if progress_cb:
+        await progress_cb("all_done", {
+            "total": len(recordings),
+            "total_mb": total_size_mb,
+            "elapsed_s": asyncio.get_event_loop().time() - start_time_all
+        })
 
     return results

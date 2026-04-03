@@ -867,7 +867,8 @@ def register_handlers(
                     name = _clean_filename(data.get("name", ""))
                     size = data.get("size_mb", 0)
                     elapsed = data.get("elapsed_s", 0)
-                    await cb.message.chat.send_message(
+                    await client.send_message(
+                        chat_id,
                         f"✅ **{name}** uploaded\n"
                         f"_{size:.0f} MB — {_fmt_duration(elapsed)}_"
                     )
@@ -884,8 +885,8 @@ def register_handlers(
                 elif event == "error":
                     name = _clean_filename(data.get("name", ""))
                     err = data.get("error", "unknown error")
-                    await cb.message.chat.send_message(
-                        f"❌ **{name}** failed: {err}"
+                    await client.send_message(
+                        chat_id, f"❌ **{name}** failed: {err}"
                     )
 
             except Exception as e:
@@ -895,9 +896,10 @@ def register_handlers(
         try:
             await on_upload(selected_recs, progress_cb)
         except Exception as e:
-            await cb.message.chat.send_message(f"❌ Upload error: {e}")
+            await client.send_message(chat_id, f"❌ Upload error: {e}")
             log.error("Upload failed: %s", e)
         finally:
+
             _clear_state(chat_id)
 
         try:

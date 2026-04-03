@@ -130,22 +130,17 @@ def _make_on_fetch(access_token: str):
 
 
 def _make_on_upload(access_token: str, tg_client, chat_id: int):
-    """Create the on_upload callback for bot.register_handlers.
+    """Create the async on_upload callback for bot.register_handlers.
 
-    bot.py calls on_upload(recordings) synchronously from an async
-    handler.  We schedule the async upload_recordings() on the
-    running event loop so it executes without blocking.
-
-    Signature: on_upload(recordings: list[dict]) → None
+    Signature: await on_upload(recordings: list[dict], progress_cb) → None
     """
-    def on_upload(recordings: list[dict]) -> None:
-        asyncio.ensure_future(
-            upload_recordings(
-                recordings=recordings,
-                access_token=access_token,
-                tg_client=tg_client,
-                chat_id=chat_id,
-            )
+    async def on_upload(recordings: list[dict], progress_cb) -> None:
+        await upload_recordings(
+            recordings=recordings,
+            access_token=access_token,
+            tg_client=tg_client,
+            chat_id=chat_id,
+            progress_cb=progress_cb,
         )
     return on_upload
 

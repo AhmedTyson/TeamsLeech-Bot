@@ -106,12 +106,18 @@ async def mock_fetch(subject_filter: str | None = None, date_start: str | None =
     return {subject_filter: []}
 
 
-def mock_upload(recordings: list[dict]) -> None:
-    """Mock uploader that just prints what would be uploaded."""
+async def mock_upload(recordings: list[dict], progress_cb) -> None:
+    """Mock uploader that just prints what would be uploaded and simulates progress."""
     print(f"\n  [mock] on_upload called with {len(recordings)} recording(s):")
-    for rec in recordings:
-        print(f"    📤 {rec['name']} — {rec['size_mb']}MB — {rec['created']}\n")
+    total_mb = sum(r.get("size_mb", 0) for r in recordings)
+    await progress_cb("start", {"total": len(recordings), "total_mb": total_mb})
+    for i, rec in enumerate(recordings):
+        name = rec['name']
+        print(f"    📤 {name} — {rec['size_mb']}MB — {rec['created']}")
         print(f"     Team: {rec['team_name']}")
+        await progress_cb("file_progress", {"index": i, "name": name, "percent": 50, "speed_mbps": 1.2})
+        await progress_cb("file_done", {"index": i, "name": name, "size_mb": rec['size_mb'], "elapsed_s": 2.5})
+    await progress_cb("all_done", {"total": len(recordings), "total_mb": total_mb, "elapsed_s": 5.0})
     print()
 
 
