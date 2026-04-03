@@ -42,13 +42,16 @@ class TelegramStateManager:
         self._msg_id = msg.id
         text = msg.text or ""
         try:
-            # Parse between JSON markdown blocks if possible
-            if "```json" in text:
+            # Parse using robust delimiter
+            if "=====JSON_START=====" in text:
+                json_str = text.split("=====JSON_START=====\n")[1].split("\n=====JSON_END=====")[0]
+            elif "```json" in text:
                 json_str = text.split("```json\n")[1].split("\n```")[0]
             else:
-                json_str = text.split("#TEAMSLEECH_STATE\n")[1]
+                # Old fallback that failed due to markdown stripping
+                json_str = text.split("#TEAMSLEECH_STATE\n")[1].replace("⚠️ DO NOT DELETE THIS MESSAGE\nThis acts as the database for the bot.\n", "").strip()
             self._state_cache = json.loads(json_str)
-        except (IndexError, json.JSONDecodeError) as e:
+        except (IndexError, AttributeError, json.JSONDecodeError) as e:
             log.warning("Found state message but failed to parse JSON: %s. Resetting cache.", e)
             self._state_cache = {}
         self._initialized = True
@@ -59,8 +62,10 @@ class TelegramStateManager:
         text = (
             "#TEAMSLEECH_STATE\n"
             "**⚠️ DO NOT DELETE THIS MESSAGE**\n"
-            "_This acts as the database for the bot._\n"
-            f"```json\n{json.dumps(self._state_cache, indent=2)}\n```"
+            "_This acts as the database for the bot._\n\n"
+            "=====JSON_START=====\n"
+            f"{json.dumps(self._state_cache, indent=2)}\n"
+            "=====JSON_END====="
         )
         try:
             if self._msg_id:
