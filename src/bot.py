@@ -176,11 +176,11 @@ def _build_checklist_text(
     scan_label: str = "",
     rename_overrides: dict[int, str] | None = None,
 ) -> str:
-    """Build the checklist message text with progressive compaction."""
+    """Build the checklist message text with detailed output only. No summarizing."""
     total = sum(len(recs) for recs in results.values())
 
     if total == 0:
-        subjects_checked = ", ".join(results.keys())
+        subjects_checked = ", ".join(results.keys()) if results else "all subjects"
         header = "📡 **Scan Results**"
         if scan_label:
             header += f"\n📅 {scan_label}"
@@ -189,68 +189,41 @@ def _build_checklist_text(
     overrides = rename_overrides or {}
     is_multi = len(results) > 1
 
-    for level in range(4):
-        lines: list[str] = []
+    lines: list[str] = []
+    lines.append("📡 **Scan Results**")
+    if scan_label:
+        lines.append(f"📅 {scan_label}")
+    lines.append(DIVIDER_THICK)
 
-        if level <= 1:
-            lines.append("📡 **Scan Results**")
-            if scan_label:
-                lines.append(f"📅 {scan_label}")
-            lines.append(DIVIDER_THICK)
-        else:
-            lines.append(f"📡 **{total} recording(s) found**")
-
-        idx = 0
-        for subj_name, recs in results.items():
-            if not recs:
-                if level <= 1:
-                    lines.append(f"\n📚 **{subj_name}** — ✅ No new recordings")
-                continue
-
+    idx = 0
+    for subj_name, recs in results.items():
+        if not recs:
             if is_multi:
-                if level <= 1:
-                    lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
-                elif level == 2:
-                    lines.append(f"\n📚 **{subj_name}**")
-                elif level == 3:
-                    lines.append(f"📚 **{subj_name}** — {len(recs)} file(s)")
+                lines.append(f"\n📚 **{subj_name}** — ✅ No new recordings")
+            continue
 
-            for rec in recs:
-                if level == 3:
-                    idx += 1
-                    continue
+        if is_multi:
+            lines.append(f"\n📚 **{subj_name}**")
 
-                display_name = _clean_filename(overrides.get(idx, rec["name"]))
-                num = _num_label(idx + 1)
-                date_short = _format_date_short(rec["created"])
+        for rec in recs:
+            display_name = _clean_filename(overrides.get(idx, rec["name"]))
+            num = _num_label(idx + 1)
+            date_short = _format_date_short(rec["created"])
 
-                if level == 0:
-                    lines.append(
-                        f"\n{num}  📅 {date_short}  •  💾 {rec['size_mb']} MB\n"
-                        f"    📄 {display_name}"
-                    )
-                elif level == 1:
-                    lines.append(
-                        f"{num} 📅 {date_short} • 💾 {rec['size_mb']} MB\n"
-                        f"📄 {display_name}"
-                    )
-                elif level == 2:
-                    short_name = display_name[:55] + "..." if len(display_name) > 58 else display_name
-                    lines.append(f"{num} {short_name}")
+            lines.append(
+                f"\n{num} 📅 {date_short}  •  💾 {rec['size_mb']} MB\n"
+                f"   📄 {display_name}"
+            )
+            idx += 1
 
-                idx += 1
+        if is_multi:
+            lines.append(f"\n{DIVIDER_THIN}")
 
-            if is_multi and level <= 1:
-                lines.append(DIVIDER_THIN)
+    lines.append(f"\n📊 **{total}** recording(s) found")
 
-        if level <= 1:
-            lines.append(f"\n📊 **{total}** recording(s) found")
-        if level == 3:
-            lines.append("\n_Use the buttons below to select & upload._")
-
-        full_text = "\n".join(lines)
-        if len(full_text) <= 4000:
-            return full_text
+    full_text = "\n".join(lines)
+    if len(full_text) <= 4000:
+        return full_text
 
     return "\n".join(lines[:100]) + "\n\n_...list truncated due to Telegram limits._"
 
@@ -625,22 +598,20 @@ def register_handlers(
         if not matched_subject:
             return
 
-        mon, sun = _get_current_week_range()
-        label = f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
-        await message.reply(f"🔍 Scanning **{matched_subject}** — {label}...")
-
-        try:
-            results = await on_fetch(matched_subject, mon, sun)
-        except Exception as e:
-            await message.reply(f"❌ Fetch error: {e}")
-            log.error("Fetch failed for '%s': %s", matched_subject, e)
-            return
-
-        text_reply, keyboard = _build_recording_checklist(results, label)
-        _store_results(chat_id, results, matched_subject, label)
-        sent = await message.reply(text_reply, reply_markup=keyboard)
-        if keyboard:
-            _checklist_msg_id[chat_id] = sent.id
+        _date_input_pending[chat_id] = True
+        _scan_context[chat_id] = {"subject_filter": matched_subject, "label": ""}
+        
+        prompt = (
+            f"📚 **{matched_subject}** selected.\n\n"
+            "📅 **Select Date Range**\n"
+            "Send one of:\n"
+            "• `2026-04-01` — single date\n"
+            "• `2026-04-01 to 2026-04-07` — date range\n"
+            "• `today` — today only\n"
+            "• `this week` — current week\n\n"
+            "_Type your choice below:_"
+        )
+        await message.reply(prompt)
 
     # ── Subject button callback ──────────────────────────────────
     @app.on_callback_query(filters.regex(r"^subj:"))
@@ -656,44 +627,57 @@ def register_handlers(
             # FIX 3: surface the "Since Last Run" label explicitly upfront.
             label = "Since Last Run"
             display = "all subjects"
-        else:
-            subject_filter = subject_key
-            mon, sun = _get_current_week_range()
-            label = f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
-            display = subject_filter
-
-        # FIX 3: user sees label before results arrive.
-        try:
-            await cb.message.edit_text(f"🔍 Scanning **{display}** — {label}...")
-        except MessageNotModified:
-            pass
-
-        try:
-            if subject_filter:
-                mon, sun = _get_current_week_range()
-                results = await on_fetch(subject_filter, mon, sun)
-            else:
-                results = await on_fetch(None, None, None)
-        except Exception as e:
+            
             try:
-                await cb.message.edit_text(f"❌ Fetch error: {e}")
+                await cb.message.edit_text(f"🔍 Scanning **{display}** — {label}...")
             except MessageNotModified:
                 pass
-            log.error("Fetch failed: %s", e)
-            return
 
-        text, keyboard = _build_recording_checklist(results, label)
-        _store_results(chat_id, results, subject_filter, label)
-        try:
-            await cb.message.edit_text(text, reply_markup=keyboard)
-        except MessageNotModified:
-            pass
-        if keyboard:
-            _checklist_msg_id[chat_id] = cb.message.id
-        try:
-            await cb.answer()
-        except Exception:
-            pass
+            try:
+                results = await on_fetch(None, None, None)
+            except Exception as e:
+                try:
+                    await cb.message.edit_text(f"❌ Fetch error: {e}")
+                except MessageNotModified:
+                    pass
+                log.error("Fetch failed: %s", e)
+                return
+
+            text, keyboard = _build_recording_checklist(results, label)
+            _store_results(chat_id, results, subject_filter, label)
+            try:
+                await cb.message.edit_text(text, reply_markup=keyboard)
+            except MessageNotModified:
+                pass
+            if keyboard:
+                _checklist_msg_id[chat_id] = cb.message.id
+            try:
+                await cb.answer()
+            except Exception:
+                pass
+        else:
+            # Single subject -> Prompt for date instead of auto-fetching
+            _date_input_pending[chat_id] = True
+            _scan_context[chat_id] = {"subject_filter": subject_key, "label": ""}
+            
+            prompt = (
+                f"📚 **{subject_key}** selected.\n\n"
+                "📅 **Select Date Range**\n"
+                "Send one of:\n"
+                "• `2026-04-01` — single date\n"
+                "• `2026-04-01 to 2026-04-07` — date range\n"
+                "• `today` — today only\n"
+                "• `this week` — current week\n\n"
+                "_Type your choice below:_"
+            )
+            try:
+                await cb.message.edit_text(prompt)
+            except MessageNotModified:
+                pass
+            try:
+                await cb.answer()
+            except Exception:
+                pass
 
     # ── Checkbox toggle ──────────────────────────────────────────
     @app.on_callback_query(filters.regex(r"^sel:"))
