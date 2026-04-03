@@ -26,6 +26,7 @@ import os
 import json
 import logging
 import asyncio
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
@@ -105,8 +106,17 @@ def _match_teams_to_subject(
     keywords = [kw.lower() for kw in subject.get("keywords", [])]
     for team in teams:
         name_lower = team.get("displayName", "").lower()
-        if any(kw in name_lower for kw in keywords):
-            matched.append(team)
+        for kw in keywords:
+            # If it's a short/alphabet keyword, use word boundaries to avoid false positives 
+            # (e.g. "or" matching "information", "mis" matching "promise")
+            if kw.isalpha():
+                if re.search(rf"\b{re.escape(kw)}\b", name_lower):
+                    matched.append(team)
+                    break
+            else:
+                if kw in name_lower:
+                    matched.append(team)
+                    break
     return matched
 
 # ───────────────────────── concurrent team processor ──────────────
