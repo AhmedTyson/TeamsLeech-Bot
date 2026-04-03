@@ -26,20 +26,13 @@ class TelegramStateManager:
             return
             
         try:
-            # 1. First, check if it's the currently pinned message (optimization)
+            # 1. First, check if it's the currently pinned message
             chat = await self.client.get_chat(self.chat_id)
             if chat.pinned_message and chat.pinned_message.text and "#TEAMSLEECH_STATE" in chat.pinned_message.text:
                 await self._parse_and_load(chat.pinned_message)
                 return
 
-            # 2. If not pinned (or not the latest pin), scan recent history (bots cannot use search_messages)
-            log.info("Scanning recent chat history for state message...")
-            async for msg in self.client.get_chat_history(self.chat_id, limit=1000):
-                if msg.text and "#TEAMSLEECH_STATE" in msg.text:
-                    await self._parse_and_load(msg)
-                    return
-                
-            log.info("No #TEAMSLEECH_STATE message found globally. Creating a new one.")
+            log.info("No pinned #TEAMSLEECH_STATE message found. Creating a new empty database message.")
             self._initialized = True
         except Exception as e:
             log.error(f"Failed to fetch telegram state: {e}")
