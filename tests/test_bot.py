@@ -92,16 +92,17 @@ MOCK_RESULTS_ALL = {
 MOCK_RESULTS_EMPTY = {"Auditing": []}
 
 
-def mock_fetch(subject_filter: str | None = None, date_filter: str | None = None) -> dict:
-    """Mock fetcher that returns canned data."""
+async def mock_fetch(subject_filter: str | None = None, date_start: str | None = None, date_end: str | None = None) -> dict:
+    """Mock fetcher that returns canned data (async to match new API)."""
+    date_info = f"start={date_start}, end={date_end}"
     if subject_filter is None:
-        print(f"  [mock] on_fetch(Check All, {date_filter}) → {sum(len(v) for v in MOCK_RESULTS_ALL.values())} recordings")
+        print(f"  [mock] on_fetch(Check All, {date_info}) → {sum(len(v) for v in MOCK_RESULTS_ALL.values())} recordings")
         return MOCK_RESULTS_ALL
     if subject_filter in MOCK_RESULTS_SINGLE:
-        print(f"  [mock] on_fetch('{subject_filter}', {date_filter}) → {len(MOCK_RESULTS_SINGLE[subject_filter])} recordings")
+        print(f"  [mock] on_fetch('{subject_filter}', {date_info}) → {len(MOCK_RESULTS_SINGLE[subject_filter])} recordings")
         return {subject_filter: MOCK_RESULTS_SINGLE[subject_filter]}
     # Subjects with no recordings
-    print(f"  [mock] on_fetch('{subject_filter}', {date_filter}) → 0 recordings")
+    print(f"  [mock] on_fetch('{subject_filter}', {date_info}) → 0 recordings")
     return {subject_filter: []}
 
 

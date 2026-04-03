@@ -13,6 +13,8 @@ upload_recordings(recordings, access_token, tg_client, chat_id) → list[dict]
 import os
 import logging
 import tempfile
+import subprocess
+import json as _json
 from typing import Any
 
 import requests
@@ -37,6 +39,42 @@ class DownloadError(UploaderError):
 
 class TelegramUploadError(UploaderError):
     """Raised when a Telegram upload fails."""
+
+# ───────────────────────── video metadata ─────────────────────────
+
+def _probe_video(file_path: str) -> tuple[int, int, int]:
+    """Extract duration (seconds), width, height using ffprobe.
+
+    Returns (duration_s, width, height).
+    Falls back to (0, 1280, 720) on any error so upload never fails.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "quiet",
+                "-print_format", "json",
+                "-show_streams",
+                "-show_format",
+                file_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        data = _json.loads(result.stdout)
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video":
+                w = int(stream.get("width", 1280))
+                h = int(stream.get("height", 720))
+                dur = stream.get("duration")
+                if dur is None:
+                    # Some containers store duration on the format level
+                    fmt = data.get("format", {})
+                    dur = fmt.get("duration", 0)
+                return int(float(dur)), w, h
+    except Exception as exc:
+        log.warning("ffprobe failed for %s: %s — using defaults", file_path, exc)
+    return 0, 1280, 720
 
 # ───────────────────────── download from Graph ────────────────────
 
@@ -133,6 +171,9 @@ async def _upload_to_telegram(
             except Exception as e:
                 log.warning("Progress message failed at %d%%: %s", milestone, e)
 
+    # Extract video metadata for proper Telegram rendering
+    duration, width, height = _probe_video(file_path)
+
     try:
         # Issue 1: send_video for inline playback
         sent_msg = await client.send_video(
@@ -141,8 +182,9 @@ async def _upload_to_telegram(
             file_name=filename,
             caption=f"🎥 {filename}",
             supports_streaming=True,
-            width=1280,
-            height=720,
+            duration=duration,
+            width=width,
+            height=height,
             progress=progress_callback,
         )
     except BadRequest:

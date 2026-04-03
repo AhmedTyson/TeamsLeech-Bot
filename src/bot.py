@@ -1,9 +1,10 @@
 """
-Phase 3 — bot
+Phase 3 — bot (v2 — UI overhaul)
 
 Telegram bot interface for TeamsLeech using Pyrogram.
-Handles /check (subject buttons), text commands, /reauth recovery,
-multi-select recording checkboxes, rename, select all, and cancel workflow.
+Handles /check (subject buttons), date selection (single day, range,
+this week, today), text commands, /reauth recovery, multi-select
+recording checkboxes, rename, select all, change date, and cancel.
 
 This module does NOT call fetcher.py or uploader.py directly.
 It exposes handler functions that the orchestrator (main.py, Phase 5)
@@ -19,6 +20,8 @@ import os
 import json
 import logging
 import re
+import asyncio
+from datetime import datetime, date as date_type, timedelta, timezone
 from typing import Callable, Any
 
 from pyrogram import Client, filters
@@ -44,10 +47,14 @@ log = logging.getLogger("bot")
 
 # ───────────────────────── constants ──────────────────────────────
 
-DIVIDER = "─────────────────────────────"
+DIVIDER_THIN = "───────────────────"
+DIVIDER_THICK = "━━━━━━━━━━━━━━━━━━"
 
 # Emoji number labels: 1️⃣ through 🔟, then fallback to plain digits
 _NUM_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+MAX_DATE_RANGE_DAYS = 30
+
 
 def _num_label(n: int) -> str:
     """Return emoji number for 1-based index n."""
@@ -59,6 +66,37 @@ def _num_label(n: int) -> str:
 def _clean_filename(name: str) -> str:
     """Remove redundant '-Meeting Recording' suffix from filename."""
     return re.sub(r"-Meeting Recording", "", name)
+
+
+def _format_date_short(date_str: str) -> str:
+    """Format 'YYYY-MM-DD' → 'Apr 03'."""
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+        return d.strftime("%b %d")
+    except ValueError:
+        return date_str
+
+
+def _get_current_week_range() -> tuple[str, str]:
+    """Return (monday_str, sunday_str) for the current week."""
+    today = datetime.now(timezone.utc).date()
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    return monday.isoformat(), sunday.isoformat()
+
+
+def _validate_date_range(start: str, end: str) -> tuple[bool, str]:
+    """Validate a date range. Returns (is_valid, error_message)."""
+    try:
+        s = date_type.fromisoformat(start)
+        e = date_type.fromisoformat(end)
+    except ValueError:
+        return False, "❌ Invalid date format. Use `YYYY-MM-DD`."
+    if s > e:
+        return False, "❌ Start date must be before or equal to end date."
+    if (e - s).days > MAX_DATE_RANGE_DAYS:
+        return False, f"❌ Date range cannot exceed {MAX_DATE_RANGE_DAYS} days."
+    return True, ""
 
 
 # ───────────────────────── config ─────────────────────────────────
@@ -76,13 +114,7 @@ def create_bot(
     api_hash: str | None = None,
     bot_token: str | None = None,
 ) -> Client:
-    """Create a Pyrogram Client configured from env vars or arguments.
-
-    Environment variables (fallbacks):
-        TELEGRAM_API_ID    – from my.telegram.org
-        TELEGRAM_API_HASH  – from my.telegram.org
-        TELEGRAM_BOT_TOKEN – from @BotFather
-    """
+    """Create a Pyrogram Client configured from env vars or arguments."""
     aid = api_id or int(os.environ.get("TELEGRAM_API_ID", "0"))
     ahash = api_hash or os.environ.get("TELEGRAM_API_HASH", "")
     token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -109,9 +141,10 @@ def create_bot(
 def _build_subject_keyboard(subjects: list[dict]) -> InlineKeyboardMarkup:
     """Build the /check subject selection keyboard.
 
-    Layout (from PRD §7):
+    Layout:
         [ Advanced DB ]  [ Auditing ]  [ Econ of Info ]
         [ Internet Apps ]  [ MIS ]  [ O.R. ]
+        [ Sections 👥 ]  [ جهاد مجدي 👩‍🏫 ]  [ رانيا شحاتة 👩‍🏫 ]
         [ ✅ Check All ]
     """
     buttons = []
@@ -139,82 +172,93 @@ def _build_subject_keyboard(subjects: list[dict]) -> InlineKeyboardMarkup:
 
 def _build_checklist_text(
     results: dict[str, list[dict]],
+    scan_label: str = "",
     rename_overrides: dict[int, str] | None = None,
 ) -> str:
-    """Build the checklist message text with numbered, separated recordings.
+    """Build the checklist message text with improved formatting.
 
-    If the full listing exceeds Telegram's 4096-char limit, progressively falls back
-    to more compact formats to try and keep titles visible.
+    Progressive compaction if text exceeds Telegram's 4096-char limit.
     """
     total = sum(len(recs) for recs in results.values())
 
     if total == 0:
         subjects_checked = ", ".join(results.keys())
-        return f"No new recordings found for {subjects_checked} ✅"
+        header = f"📡 **Scan Results**"
+        if scan_label:
+            header += f"\n📅 {scan_label}"
+        return f"{header}\n{DIVIDER_THICK}\n\n✅ No new recordings found\n_{subjects_checked}_"
 
     overrides = rename_overrides or {}
-    
-    # Try different compaction levels so we can keep file titles visible if possible
+    is_multi = len(results) > 1
+
     for level in range(4):
         lines: list[str] = []
-        if level >= 2:
-            lines.append(f"**{total} new recording(s) found:**")
+
+        # Header
+        if level <= 1:
+            lines.append("📡 **Scan Results**")
+            if scan_label:
+                lines.append(f"📅 {scan_label}")
+            lines.append(DIVIDER_THICK)
         else:
-            lines.append("**New recordings found:**")
-            
+            lines.append(f"📡 **{total} recording(s) found**")
+
         idx = 0
         for subj_name, recs in results.items():
             if not recs:
-                if level == 0:
-                    lines.append(f"\n📚 **{subj_name}** — No new recordings ✅")
+                if level <= 1:
+                    lines.append(f"\n📚 **{subj_name}** — ✅ No new recordings")
                 continue
 
-            if level == 0:
-                lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
-                lines.append(DIVIDER)
-            elif level == 1:
-                lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
-            elif level == 2:
-                lines.append(f"\n📚 **{subj_name}**")
-            elif level == 3:
-                # Level 3: just subjects, no individual files (last resort)
-                lines.append(f"📚 **{subj_name}** — {len(recs)} file(s)")
-                
-            for rec_i, rec in enumerate(recs):
+            # Subject header
+            if is_multi:
+                if level <= 1:
+                    lines.append(f"\n📚 **{subj_name}** — {len(recs)} recording(s)")
+                elif level == 2:
+                    lines.append(f"\n📚 **{subj_name}**")
+                elif level == 3:
+                    lines.append(f"📚 **{subj_name}** — {len(recs)} file(s)")
+
+            for rec in recs:
                 if level == 3:
                     idx += 1
                     continue
-                    
+
                 display_name = _clean_filename(overrides.get(idx, rec["name"]))
                 num = _num_label(idx + 1)
-                
+                date_short = _format_date_short(rec["created"])
+
                 if level == 0:
                     lines.append(
-                        f"\n{num}  📅 {rec['created']}   💾 {rec['size_mb']}MB\n"
-                        f"👥 {rec['team_name']}\n"
-                        f"📄 {display_name}"
+                        f"\n{num}  📅 {date_short}  •  💾 {rec['size_mb']} MB\n"
+                        f"    📄 {display_name}"
                     )
-                    lines.append(f"\n{DIVIDER}")
                 elif level == 1:
                     lines.append(
-                        f"{num}  📅 {rec['created']}   💾 {rec['size_mb']}MB\n"
-                        f"📄 {display_name}\n"
+                        f"{num} 📅 {date_short} • 💾 {rec['size_mb']} MB\n"
+                        f"📄 {display_name}"
                     )
                 elif level == 2:
-                    if len(display_name) > 60:
-                        display_name = display_name[:57] + "..."
-                    lines.append(f"{num} {display_name}")
-                    
+                    short_name = display_name[:55] + "..." if len(display_name) > 58 else display_name
+                    lines.append(f"{num} {short_name}")
+
                 idx += 1
-                
+
+            # Separator between subjects
+            if is_multi and level <= 1:
+                lines.append(DIVIDER_THIN)
+
+        # Footer
+        if level <= 1:
+            lines.append(f"\n📊 **{total}** recording(s) found")
         if level == 3:
             lines.append("\n_Use the buttons below to select & upload._")
-             
+
         full_text = "\n".join(lines)
         if len(full_text) <= 4000:
             return full_text
-            
-    return "\n".join(lines[:100]) + "\n\n_...list truncated further due to Telegram limits._"
+
+    return "\n".join(lines[:100]) + "\n\n_...list truncated due to Telegram limits._"
 
 
 def _build_checklist_keyboard(
@@ -222,19 +266,15 @@ def _build_checklist_keyboard(
     selections: set[int],
     rename_overrides: dict[int, str] | None = None,
 ) -> InlineKeyboardMarkup:
-    """Build the checkbox + rename + upload + select-all keyboard.
-
-    Each button row:  ☐ 1️⃣ 331.8MB • 2026-02-26  [✏️]
-    Bottom rows:      [ 📤 Upload Selected (N) ]
-                      [ ✅ Select All ]
-    """
+    """Build the checkbox + rename + upload + select-all + change-date keyboard."""
     overrides = rename_overrides or {}
     buttons: list[list[InlineKeyboardButton]] = []
 
     for i, rec in enumerate(flat):
         mark = "☑" if i in selections else "☐"
         num = _num_label(i + 1)
-        label = f"{mark}  {num}  {rec['size_mb']}MB  •  {rec['created']}"
+        date_short = _format_date_short(rec["created"])
+        label = f"{mark}  {num}  {rec['size_mb']}MB  •  {date_short}"
         buttons.append([
             InlineKeyboardButton(
                 text=label,
@@ -246,12 +286,18 @@ def _build_checklist_keyboard(
             ),
         ])
 
-    # Upload Selected button with count
+    # Calculate total size of selection
+    total_mb = sum(flat[i]["size_mb"] for i in selections if i < len(flat))
+    sel_label = f"📤 Upload Selected ({len(selections)})"
+    if total_mb > 0:
+        sel_label += f" — {total_mb:.0f} MB"
+
     buttons.append([InlineKeyboardButton(
-        text=f"📤 Upload Selected ({len(selections)})",
+        text=sel_label,
         callback_data="upload:confirm",
     )])
-    # Select All button
+
+    # Select All / Deselect All
     all_selected = len(selections) == len(flat) and len(flat) > 0
     select_label = "☑ Deselect All" if all_selected else "✅ Select All"
     buttons.append([InlineKeyboardButton(
@@ -259,24 +305,27 @@ def _build_checklist_keyboard(
         callback_data="sel:all",
     )])
 
+    # Bottom row: Change Date + Cancel
+    buttons.append([
+        InlineKeyboardButton(text="📅 Change Date", callback_data="date:change"),
+        InlineKeyboardButton(text="❌ Cancel", callback_data="cancel:check"),
+    ])
+
     return InlineKeyboardMarkup(buttons)
 
 
 def _build_recording_checklist(
     results: dict[str, list[dict]],
+    scan_label: str = "",
 ) -> tuple[str, InlineKeyboardMarkup | None]:
-    """Build the recording selection message and checkbox keyboard.
-
-    Returns (message_text, keyboard_or_None).
-    """
+    """Build the recording selection message and checkbox keyboard."""
     total = sum(len(recs) for recs in results.values())
     if total == 0:
-        subjects_checked = ", ".join(results.keys())
-        return f"No new recordings found for {subjects_checked} ✅", None
+        text = _build_checklist_text(results, scan_label)
+        return text, None
 
-    text = _build_checklist_text(results)
+    text = _build_checklist_text(results, scan_label)
 
-    # Build flat list for keyboard
     flat: list[dict] = []
     for recs in results.values():
         flat.extend(recs)
@@ -309,11 +358,13 @@ _rename_overrides: dict[int, dict[int, str]] = {}         # chat_id → {idx: ne
 _rename_pending: dict[int, int | None] = {}               # chat_id → idx awaiting rename
 _upload_cancelled: dict[int, bool] = {}                   # chat_id → cancel flag
 _checklist_msg_id: dict[int, int] = {}                    # chat_id → message id of checklist
+_scan_context: dict[int, dict] = {}                       # chat_id → {subject_filter, label, ...}
+_date_input_pending: dict[int, bool] = {}                 # chat_id → waiting for date input
 
 
 def register_handlers(
     app: Client,
-    on_fetch: Callable[[str | None, str | None], dict[str, list[dict]]],
+    on_fetch: Callable,
     on_upload: Callable[[list[dict]], Any],
     owner_chat_id: int | None = None,
 ) -> None:
@@ -323,12 +374,10 @@ def register_handlers(
     ----------
     app : Client
         The Pyrogram client to register handlers on.
-    on_fetch : callable(subject_filter: str | None, date_filter: str | None) → dict
+    on_fetch : async callable(subject_filter, date_start, date_end) → dict
         Called to fetch recordings. Returns {subject: [recording_dicts]}.
-        Provided by the orchestrator (main.py) — wraps fetcher.fetch_recordings.
     on_upload : callable(recordings: list[dict]) → Any
-        Called to upload selected recordings. Provided by orchestrator.
-        Receives list of recording dicts (drive_id, item_id, etc.).
+        Called to upload selected recordings.
     owner_chat_id : int | None
         If set, only respond to this specific chat ID.
     """
@@ -353,8 +402,9 @@ def register_handlers(
         subjects = _load_subjects()
         keyboard = _build_subject_keyboard(subjects)
         await message.reply(
-            "**What do you want to check?**\n"
-            "_(You can also just type a date like YYYY-MM-DD to check a specific day)_",
+            "**What do you want to check?**\n\n"
+            "💡 _Tip: Send a date like_ `2026-04-01` _or range like_\n"
+            "`2026-04-01 to 2026-04-07` _to check specific dates._",
             reply_markup=keyboard,
         )
         log.info("/check command received — subject keyboard sent.")
@@ -379,12 +429,16 @@ def register_handlers(
             "Available commands:\n"
             "/check   — 🔍 Scan for new lecture recordings\n"
             "/reauth  — 🔑 Renew your session if expired\n\n"
-            "💡 _Tip: Send a date (e.g. 2026-03-12) to check all recordings for that day._\n\n"
+            "💡 **Quick access:**\n"
+            "• Tap a subject → scans **this week** automatically\n"
+            "• Send a date: `2026-04-01`\n"
+            "• Send a range: `2026-04-01 to 2026-04-07`\n"
+            "• Type `today` or `this week`\n\n"
             "Tap /check to get started.",
             reply_markup=REPLY_KEYBOARD,
         )
 
-    # ── Text message — match subject name OR handle rename ───────
+    # ── Text message handler ─────────────────────────────────────
     @app.on_message(filters.text & filters.private & ~filters.command(["check", "reauth", "start"]))
     async def handle_text(client: Client, message: Message) -> None:
         if not _is_owner(message):
@@ -398,7 +452,8 @@ def register_handlers(
             subjects = _load_subjects()
             keyboard = _build_subject_keyboard(subjects)
             await message.reply(
-                "**What do you want to check?**",
+                "**What do you want to check?**\n\n"
+                "💡 _Send a date or range to scan specific dates._",
                 reply_markup=keyboard,
             )
             log.info("Reply-keyboard /check triggered.")
@@ -412,29 +467,27 @@ def register_handlers(
         # ── Check if there's a rename pending ────────────────────
         if chat_id in _rename_pending and _rename_pending[chat_id] is not None:
             idx = _rename_pending[chat_id]
-            _rename_pending[chat_id] = None  # clear pending
+            _rename_pending[chat_id] = None
 
-            # Add .mp4 if not present
             new_name = text.strip()
             if not new_name.lower().endswith(".mp4"):
                 new_name += ".mp4"
 
-            # Store the rename override
             if chat_id not in _rename_overrides:
                 _rename_overrides[chat_id] = {}
             _rename_overrides[chat_id][idx] = new_name
 
             await message.reply(f"✅ Renamed to: **{new_name}**")
 
-            # Update the checklist message with the new name
             results = _pending_results.get(chat_id)
             flat = _flat_recordings.get(chat_id, [])
             selections = _pending_selections.get(chat_id, set())
             overrides = _rename_overrides.get(chat_id, {})
+            ctx = _scan_context.get(chat_id, {})
 
             if results and flat and chat_id in _checklist_msg_id:
                 try:
-                    checklist_text = _build_checklist_text(results, overrides)
+                    checklist_text = _build_checklist_text(results, ctx.get("label", ""), overrides)
                     keyboard = _build_checklist_keyboard(flat, selections, overrides)
                     await client.edit_message_text(
                         chat_id=chat_id,
@@ -450,20 +503,123 @@ def register_handlers(
             log.info("Renamed recording idx=%d to '%s'", idx, new_name)
             return
 
-        # ── Check for date string (YYYY-MM-DD) ──────────────────────
+        # ── Check if waiting for date input (change date flow) ───
+        if _date_input_pending.get(chat_id):
+            _date_input_pending[chat_id] = False
+            ctx = _scan_context.get(chat_id, {})
+            subject_filter = ctx.get("subject_filter")
+
+            parsed = _parse_date_input(text)
+            if parsed is None:
+                await message.reply(
+                    "❌ Couldn't parse that date.\n\n"
+                    "Send one of:\n"
+                    "• `2026-04-01` — single date\n"
+                    "• `2026-04-01 to 2026-04-07` — date range\n"
+                    "• `today` or `this week`"
+                )
+                return
+
+            date_start, date_end, label = parsed
+
+            if date_end:
+                valid, err = _validate_date_range(date_start, date_end)
+                if not valid:
+                    await message.reply(err)
+                    return
+
+            label_ctx = f"{subject_filter or 'All Subjects'}"
+            await message.reply(f"🔍 Scanning **{label_ctx}** — {label}...")
+
+            try:
+                results = await on_fetch(subject_filter, date_start, date_end)
+            except Exception as e:
+                await message.reply(f"❌ Fetch error: {e}")
+                log.error("Fetch failed: %s", e)
+                return
+
+            text_reply, keyboard = _build_recording_checklist(results, label)
+            _store_results(chat_id, results, subject_filter, label)
+            sent = await message.reply(text_reply, reply_markup=keyboard)
+            if keyboard:
+                _checklist_msg_id[chat_id] = sent.id
+            return
+
+        # ── Shortcut keywords ────────────────────────────────────
+        text_lower = text.lower().strip()
+        if text_lower == "today":
+            today_str = datetime.now(timezone.utc).date().isoformat()
+            label = f"Today ({_format_date_short(today_str)})"
+            await message.reply(f"🔍 Scanning **all subjects** — {label}...")
+            try:
+                results = await on_fetch(None, today_str, None)
+            except Exception as e:
+                await message.reply(f"❌ Fetch error: {e}")
+                return
+            text_reply, keyboard = _build_recording_checklist(results, label)
+            _store_results(chat_id, results, None, label)
+            sent = await message.reply(text_reply, reply_markup=keyboard)
+            if keyboard:
+                _checklist_msg_id[chat_id] = sent.id
+            return
+
+        if text_lower == "this week":
+            mon, sun = _get_current_week_range()
+            label = f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
+            await message.reply(f"🔍 Scanning **all subjects** — {label}...")
+            try:
+                results = await on_fetch(None, mon, sun)
+            except Exception as e:
+                await message.reply(f"❌ Fetch error: {e}")
+                return
+            text_reply, keyboard = _build_recording_checklist(results, label)
+            _store_results(chat_id, results, None, label)
+            sent = await message.reply(text_reply, reply_markup=keyboard)
+            if keyboard:
+                _checklist_msg_id[chat_id] = sent.id
+            return
+
+        # ── Date range: YYYY-MM-DD to YYYY-MM-DD ────────────────
+        range_match = re.match(
+            r"^(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})$",
+            text, re.IGNORECASE,
+        )
+        if range_match:
+            date_start = range_match.group(1)
+            date_end = range_match.group(2)
+            valid, err = _validate_date_range(date_start, date_end)
+            if not valid:
+                await message.reply(err)
+                return
+            label = f"{_format_date_short(date_start)} – {_format_date_short(date_end)}"
+            await message.reply(f"🔍 Scanning **all subjects** — {label}...")
+            try:
+                results = await on_fetch(None, date_start, date_end)
+            except Exception as e:
+                await message.reply(f"❌ Fetch error: {e}")
+                return
+            text_reply, keyboard = _build_recording_checklist(results, label)
+            _store_results(chat_id, results, None, label)
+            sent = await message.reply(text_reply, reply_markup=keyboard)
+            if keyboard:
+                _checklist_msg_id[chat_id] = sent.id
+            return
+
+        # ── Single date: YYYY-MM-DD ──────────────────────────────
         date_match = re.match(r"^(\d{4}-\d{2}-\d{2})$", text)
         if date_match:
             date_str = date_match.group(1)
-            await message.reply(f"🔍 Scanning all subjects for date **{date_str}**...")
+            label = _format_date_short(date_str)
+            await message.reply(f"🔍 Scanning **all subjects** — {label}...")
             try:
-                results = on_fetch(None, date_str)
+                results = await on_fetch(None, date_str, None)
             except Exception as e:
                 await message.reply(f"❌ Fetch error: {e}")
                 log.error("Fetch failed for date '%s': %s", date_str, e)
                 return
 
-            text_reply, keyboard = _build_recording_checklist(results)
-            _store_results(chat_id, results)
+            text_reply, keyboard = _build_recording_checklist(results, label)
+            _store_results(chat_id, results, None, label)
             sent = await message.reply(text_reply, reply_markup=keyboard)
             if keyboard:
                 _checklist_msg_id[chat_id] = sent.id
@@ -472,13 +628,11 @@ def register_handlers(
         # ── Normal subject matching ──────────────────────────────
         subjects = _load_subjects()
         matched_subject = None
-        text_lower = text.lower()
         for subj in subjects:
             if (text_lower == subj["name"].lower()
                     or text_lower == subj.get("short", "").lower()):
                 matched_subject = subj["name"]
                 break
-            # Also match any keyword
             for kw in subj.get("keywords", []):
                 if text_lower == kw.lower():
                     matched_subject = subj["name"]
@@ -489,17 +643,20 @@ def register_handlers(
         if not matched_subject:
             return  # Not a subject — ignore silently
 
-        await message.reply(f"🔍 Scanning **{matched_subject}**...")
+        # Single subject → auto-fetch This Week
+        mon, sun = _get_current_week_range()
+        label = f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
+        await message.reply(f"🔍 Scanning **{matched_subject}** — {label}...")
 
         try:
-            results = on_fetch(matched_subject, None)
+            results = await on_fetch(matched_subject, mon, sun)
         except Exception as e:
             await message.reply(f"❌ Fetch error: {e}")
             log.error("Fetch failed for '%s': %s", matched_subject, e)
             return
 
-        text_reply, keyboard = _build_recording_checklist(results)
-        _store_results(chat_id, results)
+        text_reply, keyboard = _build_recording_checklist(results, label)
+        _store_results(chat_id, results, matched_subject, label)
         sent = await message.reply(text_reply, reply_markup=keyboard)
         if keyboard:
             _checklist_msg_id[chat_id] = sent.id
@@ -511,16 +668,31 @@ def register_handlers(
             return
 
         subject_key = cb.data.split(":", 1)[1]
-        subject_filter = None if subject_key == "__ALL__" else subject_key
+        chat_id = cb.message.chat.id
 
-        label = "all subjects" if subject_filter is None else subject_filter
+        if subject_key == "__ALL__":
+            # Check All → Since Last Run
+            subject_filter = None
+            label = "Since Last Run"
+            display = "all subjects"
+        else:
+            # Single subject → This Week
+            subject_filter = subject_key
+            mon, sun = _get_current_week_range()
+            label = f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
+            display = subject_filter
+
         try:
-            await cb.message.edit_text(f"🔍 Scanning **{label}**...")
+            await cb.message.edit_text(f"🔍 Scanning **{display}** — {label}...")
         except MessageNotModified:
             pass
 
         try:
-            results = on_fetch(subject_filter, None)
+            if subject_filter:
+                mon, sun = _get_current_week_range()
+                results = await on_fetch(subject_filter, mon, sun)
+            else:
+                results = await on_fetch(None, None, None)
         except Exception as e:
             try:
                 await cb.message.edit_text(f"❌ Fetch error: {e}")
@@ -529,9 +701,8 @@ def register_handlers(
             log.error("Fetch failed: %s", e)
             return
 
-        chat_id = cb.message.chat.id
-        text, keyboard = _build_recording_checklist(results)
-        _store_results(chat_id, results)
+        text, keyboard = _build_recording_checklist(results, label)
+        _store_results(chat_id, results, subject_filter, label)
         try:
             await cb.message.edit_text(text, reply_markup=keyboard)
         except MessageNotModified:
@@ -541,7 +712,7 @@ def register_handlers(
         try:
             await cb.answer()
         except Exception:
-            pass  # callback query expired during long fetch — harmless
+            pass
 
     # ── Checkbox toggle callback ─────────────────────────────────
     @app.on_callback_query(filters.regex(r"^sel:"))
@@ -559,7 +730,6 @@ def register_handlers(
         selections = _pending_selections[chat_id]
 
         if action == "all":
-            # Toggle all: if all selected → deselect all, else select all
             if len(selections) == len(flat):
                 selections.clear()
             else:
@@ -571,7 +741,6 @@ def register_handlers(
             else:
                 selections.add(idx)
 
-        # Rebuild keyboard with updated check/uncheck marks
         overrides = _rename_overrides.get(chat_id, {})
         keyboard = _build_checklist_keyboard(flat, selections, overrides)
 
@@ -595,11 +764,9 @@ def register_handlers(
             await cb.answer("Invalid recording!", show_alert=True)
             return
 
-        # Cancel previous rename if active
         if chat_id in _rename_pending and _rename_pending[chat_id] is not None:
             await cb.message.reply("❌ Rename cancelled.")
 
-        # Set new rename pending
         _rename_pending[chat_id] = idx
         overrides = _rename_overrides.get(chat_id, {})
         current_name = overrides.get(idx, flat[idx]["name"])
@@ -609,6 +776,40 @@ def register_handlers(
             f"**{current_name}**\n"
             f"_(type without extension — .mp4 will be added automatically)_"
         )
+        await cb.answer()
+
+    # ── Change Date callback ─────────────────────────────────────
+    @app.on_callback_query(filters.regex(r"^date:change"))
+    async def handle_change_date(client: Client, cb: CallbackQuery) -> None:
+        if not _is_owner(cb):
+            return
+
+        chat_id = cb.message.chat.id
+        _date_input_pending[chat_id] = True
+
+        await cb.message.reply(
+            "📅 **Change Date**\n\n"
+            "Send one of:\n"
+            "• `2026-04-01` — single date\n"
+            "• `2026-04-01 to 2026-04-07` — date range\n"
+            "• `today` — today only\n"
+            "• `this week` — current week"
+        )
+        await cb.answer()
+
+    # ── Cancel callback ──────────────────────────────────────────
+    @app.on_callback_query(filters.regex(r"^cancel:check"))
+    async def handle_cancel(client: Client, cb: CallbackQuery) -> None:
+        if not _is_owner(cb):
+            return
+
+        chat_id = cb.message.chat.id
+        _clear_state(chat_id)
+
+        try:
+            await cb.message.edit_text("❌ **Cancelled.**\n\nSend /check to start again.")
+        except MessageNotModified:
+            pass
         await cb.answer()
 
     # ── Upload confirm callback ──────────────────────────────────
@@ -630,7 +831,6 @@ def register_handlers(
         for i in sorted(selections):
             if i < len(flat):
                 rec = flat[i].copy()
-                # Apply rename override if present
                 if i in overrides:
                     rec["name"] = overrides[i]
                 selected_recs.append(rec)
@@ -639,15 +839,15 @@ def register_handlers(
             await cb.answer("Selection invalid — try /check again.", show_alert=True)
             return
 
-        # Reset cancel flag
         _upload_cancelled[chat_id] = False
 
-        # Confirm selection
+        total_mb = sum(r["size_mb"] for r in selected_recs)
         names = "\n".join(f"  📥 {_clean_filename(r['name'])}" for r in selected_recs)
         try:
             await cb.message.edit_text(
-                f"**Uploading {len(selected_recs)} recording(s):**\n{names}\n\n"
-                "Starting upload..."
+                f"**Uploading {len(selected_recs)} recording(s)** ({total_mb:.0f} MB):\n"
+                f"{names}\n\n"
+                "⏳ Starting upload..."
             )
         except MessageNotModified:
             pass
@@ -658,38 +858,83 @@ def register_handlers(
             await cb.message.reply(f"❌ Upload error: {e}")
             log.error("Upload failed: %s", e)
         finally:
-            # Clean up state
-            _pending_results.pop(chat_id, None)
-            _pending_selections.pop(chat_id, None)
-            _flat_recordings.pop(chat_id, None)
-            _rename_overrides.pop(chat_id, None)
-            _rename_pending.pop(chat_id, None)
-            _checklist_msg_id.pop(chat_id, None)
-            _upload_cancelled.pop(chat_id, None)
+            _clear_state(chat_id)
 
         await cb.answer()
 
-def _store_results(chat_id: int, results: dict[str, list[dict]]) -> None:
-    """Store fetch results and build flat recording list for selection."""
+
+def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
+    """Parse user date input. Returns (date_start, date_end_or_None, label) or None."""
+    text = text.strip().lower()
+
+    if text == "today":
+        today_str = datetime.now(timezone.utc).date().isoformat()
+        return today_str, None, f"Today ({_format_date_short(today_str)})"
+
+    if text == "this week":
+        mon, sun = _get_current_week_range()
+        return mon, sun, f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
+
+    # Date range
+    range_match = re.match(
+        r"^(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})$",
+        text, re.IGNORECASE,
+    )
+    if range_match:
+        ds, de = range_match.group(1), range_match.group(2)
+        return ds, de, f"{_format_date_short(ds)} – {_format_date_short(de)}"
+
+    # Single date
+    date_match = re.match(r"^(\d{4}-\d{2}-\d{2})$", text)
+    if date_match:
+        ds = date_match.group(1)
+        return ds, None, _format_date_short(ds)
+
+    return None
+
+
+def _store_results(
+    chat_id: int,
+    results: dict[str, list[dict]],
+    subject_filter: str | None = None,
+    label: str = "",
+) -> None:
+    """Store fetch results and scan context for selection and date change."""
     _pending_results[chat_id] = results
     _pending_selections[chat_id] = set()
     _rename_overrides[chat_id] = {}
     _rename_pending[chat_id] = None
     _upload_cancelled[chat_id] = False
+    _date_input_pending[chat_id] = False
 
     flat: list[dict] = []
     for recs in results.values():
         flat.extend(recs)
     _flat_recordings[chat_id] = flat
 
+    _scan_context[chat_id] = {
+        "subject_filter": subject_filter,
+        "label": label,
+    }
+
+
+def _clear_state(chat_id: int) -> None:
+    """Clear all in-memory state for a chat."""
+    _pending_results.pop(chat_id, None)
+    _pending_selections.pop(chat_id, None)
+    _flat_recordings.pop(chat_id, None)
+    _rename_overrides.pop(chat_id, None)
+    _rename_pending.pop(chat_id, None)
+    _upload_cancelled.pop(chat_id, None)
+    _checklist_msg_id.pop(chat_id, None)
+    _scan_context.pop(chat_id, None)
+    _date_input_pending.pop(chat_id, None)
+
 
 # ───────────────────────── startup warnings ───────────────────────
 
 async def send_startup_warnings(client: Client, chat_id: int) -> None:
-    """Send one-time startup warnings to the owner.
-
-    Call this from main.py after app.start().
-    """
+    """Send one-time startup warnings to the owner."""
     gh_pat = os.environ.get("GH_PAT", "")
     if not gh_pat:
         try:
@@ -702,4 +947,3 @@ async def send_startup_warnings(client: Client, chat_id: int) -> None:
             log.warning("GH_PAT not set — startup warning sent to Telegram.")
         except Exception as e:
             log.warning("Failed to send GH_PAT warning: %s", e)
-

@@ -62,6 +62,10 @@ jobs:
           # That only caches downloaded wheels, not the installed venv.
           # We get true skip-install via the venv cache below.
 
+      # ── 2b. Install ffmpeg (for ffprobe video metadata) ────────
+      - name: Install ffmpeg
+        run: sudo apt-get install -y ffmpeg
+
       # ── 3. Restore cached .venv ───────────────────────────────
       - name: Restore cached virtualenv
         id: venv-cache

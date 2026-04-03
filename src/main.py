@@ -31,7 +31,7 @@ from token_manager import (
     TokenExpiredError,
     TokenManagerError,
 )
-from fetcher import fetch_recordings, save_last_run, load_subjects
+from fetcher import fetch_recordings_async, save_last_run, load_subjects
 from bot import create_bot, register_handlers, send_startup_warnings
 from uploader import upload_recordings
 
@@ -109,17 +109,22 @@ def _authenticate(env: dict[str, str]) -> str:
 # ───────────────────────── callback factories ─────────────────────
 
 def _make_on_fetch(access_token: str):
-    """Create the on_fetch callback for bot.register_handlers.
+    """Create the async on_fetch callback for bot.register_handlers.
 
-    Signature: on_fetch(subject_filter: str | None, date_filter: str | None) → dict
+    Signature: await on_fetch(subject_filter, date_start, date_end) → dict
     """
-    def on_fetch(subject_filter: str | None = None, date_filter: str | None = None) -> dict[str, list[dict]]:
-        return fetch_recordings(
+    async def on_fetch(
+        subject_filter: str | None = None,
+        date_start: str | None = None,
+        date_end: str | None = None,
+    ) -> dict[str, list[dict]]:
+        return await fetch_recordings_async(
             access_token=access_token,
             subjects_path=SUBJECTS_PATH,
             state_dir=STATE_DIR,
             subject_filter=subject_filter,
-            date_filter=date_filter,
+            date_start=date_start,
+            date_end=date_end,
         )
     return on_fetch
 
@@ -165,7 +170,7 @@ def main() -> None:
         log.warning("Starting bot in reauth-only mode.")
         app = create_bot()
 
-        def _fetch_disabled(_=None):
+        async def _fetch_disabled(_=None, __=None, ___=None):
             return {"⚠️ Session Expired": []}
 
         def _upload_disabled(_=None):
