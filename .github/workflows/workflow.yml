@@ -84,13 +84,6 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
 
-      # ── 5. Restore .state/ from previous run ──────────────────
-      - name: Restore state (last_run timestamps)
-        uses: actions/download-artifact@v4
-        with:
-          name: teamsleech-state
-          path: .state/
-        continue-on-error: true   # first run has no artifact yet
 
       # ── 6. Validate secrets before running ────────────────────
       # Catches an expired TEAMS_REFRESH_TOKEN early so the dashboard
@@ -112,12 +105,3 @@ jobs:
         run: .venv/bin/python src/main.py
         timeout-minutes: 25
 
-      # ── 8. Save .state/ for next run ──────────────────────────
-      - name: Save state (last_run timestamps)
-        if: always()   # save even on failure so partial progress isn't lost
-        uses: actions/upload-artifact@v4
-        with:
-          name: teamsleech-state
-          path: .state/
-          retention-days: 90
-          if-no-files-found: ignore

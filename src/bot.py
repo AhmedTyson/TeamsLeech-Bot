@@ -107,6 +107,36 @@ def _validate_date_range(start: str, end: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
+    text_lower = text.lower().strip()
+    
+    if text_lower == "this week":
+        mon, sun = _get_current_week_range()
+        label = f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
+        return mon, sun, label
+        
+    if text_lower == "today":
+        today_str = datetime.now(timezone.utc).date().isoformat()
+        label = f"Today ({_format_date_short(today_str)})"
+        return today_str, None, label
+        
+    range_match = re.match(r"^(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})$", text, re.IGNORECASE)
+    if range_match:
+        start = range_match.group(1)
+        end = range_match.group(2)
+        label = f"{_format_date_short(start)} – {_format_date_short(end)}"
+        return start, end, label
+        
+    date_match = re.match(r"^(\d{4}-\d{2}-\d{2})$", text)
+    if date_match:
+        d = date_match.group(1)
+        label = _format_date_short(d)
+        return d, None, label
+        
+    return None
+
+
+
 # ───────────────────────── config ─────────────────────────────────
 
 def _load_subjects(path: str = "subjects_config.json") -> list[dict]:
@@ -461,7 +491,11 @@ def register_handlers(
 
         # ── Change date input ────────────────────────────────────
         if _date_input_pending.get(chat_id):
-            _date_input_pending[chat_id] = False
+            if text.lower().strip() == "cancel":
+                _date_input_pending[chat_id] = False
+                await message.reply("❌ Date selection cancelled.")
+                return
+
             ctx = _scan_context.get(chat_id, {})
             subject_filter = ctx.get("subject_filter")
 
@@ -472,7 +506,8 @@ def register_handlers(
                     "Send one of:\n"
                     "• `2026-04-01` — single date\n"
                     "• `2026-04-01 to 2026-04-07` — date range\n"
-                    "• `today` or `this week`"
+                    "• `today` or `this week`\n\n"
+                    "_Type `cancel` to exit._"
                 )
                 return
 
@@ -483,6 +518,8 @@ def register_handlers(
                 if not valid:
                     await message.reply(err)
                     return
+
+            _date_input_pending[chat_id] = False
 
             label_ctx = f"{subject_filter or 'All Subjects'}"
             await message.reply(f"🔍 Scanning **{label_ctx}** — {label}...")
