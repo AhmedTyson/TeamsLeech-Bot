@@ -255,7 +255,11 @@ def _build_checklist_text(
     if len(full_text) <= 4000:
         return full_text
 
-    return "\n".join(lines[:100]) + "\n\n_...list truncated due to Telegram limits._"
+    cutoff = full_text.rfind('\n', 0, 3900)
+    if cutoff == -1:
+        cutoff = 3900
+
+    return full_text[:cutoff] + "\n\n_...list truncated due to Telegram limits._"
 
 
 def _build_checklist_keyboard(
@@ -272,6 +276,11 @@ def _build_checklist_keyboard(
     buttons: list[list[InlineKeyboardButton]] = []
 
     for i, rec in enumerate(flat):
+        if i >= 45:
+            # Telegram has a strict hard limit of 100 inline buttons per message.
+            # 45 recordings = 90 buttons, leaving 10 slots for the actions below.
+            break
+
         mark = "☑" if i in selections else "☐"
         num = _num_label(i + 1)
         date_short = _format_date_short(rec["created"])
