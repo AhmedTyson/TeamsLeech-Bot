@@ -228,7 +228,7 @@ def _build_checklist_text(
     is_multi = len(results) > 1
 
     lines: list[str] = []
-    lines.append("Scan Results")
+    lines.append("📡 **Scan Results**")
     if scan_label:
         lines.append(f"{scan_label}")
     lines.append(DIVIDER_THICK)
@@ -258,12 +258,13 @@ def _build_checklist_text(
             lines.append(
                 f"\n{num}. 👥 **{team_name}**"
                 f"\n   {date_short}{time_display}  •  💾 {rec['size_mb']} MB{duration_str}"
-                f"\n   📄 {display_name}"
+                f"\n   📄 {display_name}\n"
+                f"{DIVIDER_THIN}"
             )
             idx += 1
 
         if is_multi:
-            lines.append(f"\n{DIVIDER_THIN}")
+            pass
 
     lines.append(f"\n📊 **{total}** recording(s) found")
 
