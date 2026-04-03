@@ -11,6 +11,7 @@ upload_recordings(recordings, access_token, tg_client, chat_id) → list[dict]
 """
 
 import os
+import asyncio
 import logging
 import tempfile
 import subprocess
