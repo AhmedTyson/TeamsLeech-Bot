@@ -26,27 +26,40 @@ class TelegramStateManager:
             return
             
         try:
-            async for msg in self.client.search_messages(self.chat_id, query="#TEAMSLEECH_STATE", limit=1):
-                self._msg_id = msg.id
-                text = msg.text or ""
-                try:
-                    # Parse between JSON markdown blocks if possible
-                    if "```json" in text:
-                        json_str = text.split("```json\n")[1].split("\n```")[0]
-                    else:
-                        json_str = text.split("#TEAMSLEECH_STATE\n")[1]
-                    self._state_cache = json.loads(json_str)
-                except (IndexError, json.JSONDecodeError) as e:
-                    log.warning("Found state message but failed to parse JSON: %s. Resetting cache.", e)
-                    self._state_cache = {}
-                self._initialized = True
-                log.info("TelegramStateManager initialized. Loaded %d subjects.", len(self._state_cache))
+            # 1. First, check if it's the currently pinned message (optimization)
+            chat = await self.client.get_chat(self.chat_id)
+            if chat.pinned_message and chat.pinned_message.text and "#TEAMSLEECH_STATE" in chat.pinned_message.text:
+                await self._parse_and_load(chat.pinned_message)
                 return
+
+            # 2. If not pinned (or not the latest pin), scan recent history (bots cannot use search_messages)
+            log.info("Scanning recent chat history for state message...")
+            async for msg in self.client.get_chat_history(self.chat_id, limit=1000):
+                if msg.text and "#TEAMSLEECH_STATE" in msg.text:
+                    await self._parse_and_load(msg)
+                    return
                 
             log.info("No #TEAMSLEECH_STATE message found globally. Creating a new one.")
             self._initialized = True
         except Exception as e:
-            log.error(f"Failed to search telegram state: {e}")
+            log.error(f"Failed to fetch telegram state: {e}")
+
+    async def _parse_and_load(self, msg: 'Message') -> None:
+        """Helper to extract JSON from the state message."""
+        self._msg_id = msg.id
+        text = msg.text or ""
+        try:
+            # Parse between JSON markdown blocks if possible
+            if "```json" in text:
+                json_str = text.split("```json\n")[1].split("\n```")[0]
+            else:
+                json_str = text.split("#TEAMSLEECH_STATE\n")[1]
+            self._state_cache = json.loads(json_str)
+        except (IndexError, json.JSONDecodeError) as e:
+            log.warning("Found state message but failed to parse JSON: %s. Resetting cache.", e)
+            self._state_cache = {}
+        self._initialized = True
+        log.info("TelegramStateManager initialized. Loaded %d subjects.", len(self._state_cache))
 
     async def _push_to_telegram(self) -> None:
         """Writes the state_cache to Telegram."""
