@@ -16,6 +16,7 @@ import logging
 import tempfile
 import subprocess
 import json as _json
+import re
 from typing import Any, Callable
 
 import requests
@@ -77,6 +78,28 @@ def _probe_video(file_path: str) -> tuple[int, int, int]:
         log.warning("ffprobe failed for %s: %s — using defaults", file_path, exc)
     return 0, 1280, 720
 
+def _extract_thumbnail(video_path: str) -> str | None:
+    """Extract a thumbnail from the video using ffmpeg at 00:00:02."""
+    thumb_path = video_path + ".jpg"
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", video_path,
+                "-ss", "00:00:02",
+                "-vframes", "1",
+                "-q:v", "2",
+                thumb_path
+            ],
+            capture_output=True,
+            timeout=20,
+            check=True
+        )
+        if os.path.exists(thumb_path):
+            return thumb_path
+    except Exception as exc:
+        log.warning("Thumbnail extraction failed: %s", exc)
+    return None
+
 # ───────────────────────── download from Graph ────────────────────
 
 def _download_recording(
@@ -137,20 +160,32 @@ async def _upload_to_telegram(
     tg_progress_cb: Callable | None = None,
 ) -> Message:
     """Upload a file to Telegram Saved Messages."""
-    # Extract video metadata for proper Telegram rendering
+    # Extract video metadata and thumbnail
     duration, width, height = await asyncio.to_thread(_probe_video, file_path)
+    thumb_path = await asyncio.to_thread(_extract_thumbnail, file_path)
+
+    # Clean caption: remove .mp4, no emojis
+    caption = filename
+    if caption.lower().endswith(".mp4"):
+        caption = caption[:-4]
+        
+    # File name for download must end with .mp4
+    save_filename = filename
+    if not save_filename.lower().endswith(".mp4"):
+        save_filename += ".mp4"
 
     try:
         # Issue 1: send_video for inline playback
         sent_msg = await client.send_video(
             chat_id=chat_id,
             video=file_path,
-            file_name=filename,
-            caption=f"🎥 {filename}",
+            file_name=save_filename,
+            caption=caption,
             supports_streaming=True,
             duration=duration,
             width=width,
             height=height,
+            thumb=thumb_path,
             progress=tg_progress_cb,
         )
     except BadRequest:
@@ -163,11 +198,9 @@ async def _upload_to_telegram(
             sent_msg = await client.send_document(
                 chat_id=chat_id,
                 document=file_path,
-                file_name=filename,
-                caption=(
-                    f"🎥 {filename}\n"
-                    "(⚠️ inline play unavailable — tap to download)"
-                ),
+                file_name=save_filename,
+                caption=caption,
+                thumb=thumb_path,
                 progress=tg_progress_cb,
             )
         except Exception as exc:
@@ -178,6 +211,13 @@ async def _upload_to_telegram(
         raise TelegramUploadError(
             f"Telegram upload failed for {filename}: {exc}"
         ) from exc
+
+    finally:
+        if thumb_path and os.path.exists(thumb_path):
+            try:
+                os.unlink(thumb_path)
+            except OSError:
+                pass
 
     log.info("Uploaded %s to Telegram (chat_id=%d)", filename, chat_id)
     return sent_msg

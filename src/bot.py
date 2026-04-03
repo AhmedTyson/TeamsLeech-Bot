@@ -493,8 +493,6 @@ def register_handlers(
             _rename_pending[chat_id] = None
 
             new_name = text.strip()
-            if not new_name.lower().endswith(".mp4"):
-                new_name += ".mp4"
 
             if chat_id not in _rename_overrides:
                 _rename_overrides[chat_id] = {}
@@ -822,9 +820,8 @@ def register_handlers(
         current_name = overrides.get(idx, flat[idx]["name"])
 
         await cb.message.reply(
-            f"✏️ Send the new name for:\n"
-            f"**{current_name}**\n"
-            f"_(type without extension — .mp4 will be added automatically)_\n\n"
+            f"✏️ Send the new caption/name for:\n"
+            f"**{current_name}**\n\n"
             f"_Or send anything else to cancel._"
         )
         await cb.answer()
