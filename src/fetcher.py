@@ -216,6 +216,7 @@ async def _process_team(
 
             created_str = item.get("createdDateTime", "")
             created_date_only = created_str[:10]  # YYYY-MM-DD
+            time_only = created_str[11:16] if len(created_str) >= 16 else ""
 
             # Date filtering logic
             if date_start:
@@ -239,10 +240,14 @@ async def _process_team(
                     continue
 
             size_bytes = item.get("size", 0)
+            duration_ms = item.get("video", {}).get("duration", 0)
+            
             recordings.append({
                 "name": item["name"],
                 "size_mb": round(size_bytes / (1024 * 1024), 1),
                 "created": created_date_only,
+                "time": time_only,
+                "duration_ms": duration_ms,
                 "drive_id": drive_id,
                 "item_id": item_id,
                 "team_name": team_name,

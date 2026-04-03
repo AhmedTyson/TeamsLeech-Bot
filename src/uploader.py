@@ -138,7 +138,7 @@ async def _upload_to_telegram(
 ) -> Message:
     """Upload a file to Telegram Saved Messages."""
     # Extract video metadata for proper Telegram rendering
-    duration, width, height = _probe_video(file_path)
+    duration, width, height = await asyncio.to_thread(_probe_video, file_path)
 
     try:
         # Issue 1: send_video for inline playback
@@ -248,9 +248,9 @@ async def upload_recordings(
                         "index": i, "name": filename, "percent": 0, "speed_mbps": 0.0
                     })
                 
-                # Step 1: Download from Graph API (blocking)
-                file_size = _download_recording(
-                    drive_id, item_id, access_token, tmp_path
+                # Step 1: Download from Graph API (blocking, run in background thread to unblock loop)
+                file_size = await asyncio.to_thread(
+                    _download_recording, drive_id, item_id, access_token, tmp_path
                 )
 
                 # Step 2: Upload to Telegram

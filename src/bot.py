@@ -86,6 +86,19 @@ def _format_date_short(date_str: str) -> str:
     except ValueError:
         return date_str
 
+def _format_duration(duration_ms: int | float | str) -> str:
+    try:
+        d_ms = int(duration_ms)
+        if d_ms <= 0:
+            return ""
+        s = d_ms // 1000
+        m, s = divmod(s, 60)
+        h, m = divmod(m, 60)
+        if h > 0:
+            return f"{h}h {m}m"
+        return f"{m}m {s}s"
+    except (ValueError, TypeError):
+        return ""
 
 def _get_current_week_range() -> tuple[str, str]:
     today = datetime.now(timezone.utc).date()
@@ -239,10 +252,18 @@ def _build_checklist_text(
             display_name = _clean_filename(overrides.get(idx, rec["name"]))
             num = _num_label(idx + 1)
             date_short = _format_date_short(rec["created"])
+            time_str = rec.get("time", "")
+            time_display = f" at {time_str}" if time_str else ""
+            
+            duration_ms = rec.get("duration_ms", 0)
+            duration_str = f"  •  {_format_duration(duration_ms)}" if duration_ms else ""
+            
+            team_name = rec.get("team_name", "Unknown Team")
 
             lines.append(
-                f"\n{num} 📅 {date_short}  •  💾 {rec['size_mb']} MB\n"
-                f"   📄 {display_name}"
+                f"\n{num} 👥 **{team_name}**"
+                f"\n   📅 {date_short}{time_display}  •  💾 {rec['size_mb']} MB{duration_str}"
+                f"\n   📄 {display_name}"
             )
             idx += 1
 
@@ -284,7 +305,14 @@ def _build_checklist_keyboard(
         mark = "☑" if i in selections else "☐"
         num = _num_label(i + 1)
         date_short = _format_date_short(rec["created"])
-        label = f"{mark}  {num}  {rec['size_mb']}MB  •  {date_short}"
+        
+        time_str = rec.get("time", "")
+        duration_ms = rec.get("duration_ms", 0)
+        time_chip = f" {time_str}" if time_str else ""
+        dur_chip = f" • {_format_duration(duration_ms).replace('⏱️ ', '')}" if duration_ms else ""
+        
+        label = f"{mark}  {num}  {rec['size_mb']}MB{dur_chip}  •  {date_short}{time_chip}"
+        
         buttons.append([
             InlineKeyboardButton(text=label, callback_data=f"sel:{i}"),
             InlineKeyboardButton(text="✏️", callback_data=f"ren:{i}"),
