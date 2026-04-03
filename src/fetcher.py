@@ -119,6 +119,7 @@ async def _process_team(
     date_start: str | None,
     date_end: str | None,
     seen_ids: set,
+    subject_name: str,
 ) -> list[dict]:
     """Fetch drives + search .mp4s for ONE team concurrently."""
     team_id = team["id"]
@@ -217,7 +218,7 @@ async def _process_team(
                 "drive_id": drive_id,
                 "item_id": item_id,
                 "team_name": team_name,
-                "subject_name": subj_name,
+                "subject_name": subject_name,
             })
 
     return recordings
@@ -301,8 +302,7 @@ async def fetch_recordings_async(
             # ALL teams for this subject fire concurrently
             team_results = await asyncio.gather(*[
                 _process_team(
-                    client, team, access_token,
-                    last_run, date_start, date_end, seen_ids,
+                    client, team, access_token, last_run, date_start, date_end, seen_ids, subj_name
                 )
                 for team in matched_teams
             ])
