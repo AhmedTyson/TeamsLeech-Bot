@@ -69,41 +69,7 @@ def get_current_week_range() -> tuple[str, str]:
     sunday = monday + timedelta(days=6)
     return monday.isoformat(), sunday.isoformat()
 
-# ───────────────────────── state management ───────────────────────
-
-def _state_file(state_dir: str, subject_name: str) -> str:
-    """Return path to per-subject last_run file."""
-    safe_name = subject_name.replace(" ", "_").lower()
-    return os.path.join(state_dir, f"last_run_{safe_name}.txt")
-
-
-def get_last_run(state_dir: str, subject_name: str) -> datetime:
-    """Read the last_run timestamp for a subject.
-
-    Returns datetime.min (UTC) if no state file exists (first run).
-    """
-    path = _state_file(state_dir, subject_name)
-    if not os.path.exists(path):
-        return datetime.min.replace(tzinfo=timezone.utc)
-    with open(path, "r", encoding="utf-8") as f:
-        raw = f.read().strip()
-    try:
-        return datetime.fromisoformat(raw)
-    except ValueError:
-        log.warning("Invalid timestamp in %s, treating as first run.", path)
-        return datetime.min.replace(tzinfo=timezone.utc)
-
-
-def save_last_run(
-    state_dir: str, subject_name: str, timestamp: datetime | None = None
-) -> None:
-    """Write the current UTC timestamp as last_run for a subject."""
-    os.makedirs(state_dir, exist_ok=True)
-    ts = timestamp or datetime.now(timezone.utc)
-    path = _state_file(state_dir, subject_name)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(ts.isoformat())
-    log.info("Saved last_run for '%s' → %s", subject_name, ts.isoformat())
+# Local state filesystem functions removed to favor state_manager.py
 
 # ───────────────────────── Async Graph API helpers ────────────────
 
@@ -251,6 +217,7 @@ async def _process_team(
                 "drive_id": drive_id,
                 "item_id": item_id,
                 "team_name": team_name,
+                "subject_name": subj_name,
             })
 
     return recordings
@@ -260,7 +227,7 @@ async def _process_team(
 async def fetch_recordings_async(
     access_token: str,
     subjects_path: str = "subjects_config.json",
-    state_dir: str = ".state",
+    state_manager: "Any" = None,
     subject_filter: str | None = None,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -273,8 +240,8 @@ async def fetch_recordings_async(
         Valid Graph API Bearer token.
     subjects_path : str
         Path to subjects_config.json.
-    state_dir : str
-        Directory for per-subject last_run files.
+    state_manager : Any
+        Instance of TelegramStateManager to get last_run records.
     subject_filter : str | None
         If provided, only scan this one subject.
     date_start : str | None
@@ -321,7 +288,7 @@ async def fetch_recordings_async(
 
         for subject in subjects:
             subj_name = subject["name"]
-            last_run = get_last_run(state_dir, subj_name)
+            last_run = state_manager.get_last_run(subj_name) if state_manager else datetime.min.replace(tzinfo=timezone.utc)
             matched_teams = _match_teams_to_subject(all_teams, subject)
 
             log.info(

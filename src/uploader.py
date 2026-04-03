@@ -190,8 +190,9 @@ async def upload_recordings(
     tg_client: Client,
     chat_id: int,
     progress_cb: Callable | None = None,
+    state_manager: "Any" = None,
 ) -> list[dict]:
-    """Download recordings from Graph and upload to Telegram."""
+    """Download recordings from Graph and upload to Telegram via Producer/Consumer async queue."""
     access_token = access_token.strip()
 
     results: list[dict] = []
@@ -201,28 +202,67 @@ async def upload_recordings(
     if progress_cb:
         await progress_cb("start", {"total": len(recordings), "total_mb": total_size_mb})
 
-    try:
+    queue = asyncio.Queue(maxsize=1)
+
+    async def _producer():
         for i, rec in enumerate(recordings):
             filename = rec["name"]
             drive_id = rec["drive_id"]
             item_id = rec["item_id"]
-            file_size_mb_approx = rec.get("size_mb", 0.0)
-
+            
             start_time_file = asyncio.get_event_loop().time()
-            log.info("Processing: %s (drive=%s, item=%s)", filename, drive_id, item_id)
+            log.info("Downloading: %s (drive=%s, item=%s)", filename, drive_id, item_id)
 
-            tmp_file = tempfile.NamedTemporaryFile(
-                suffix=".mp4", prefix="teamsleech_", delete=False
-            )
+            tmp_file = tempfile.NamedTemporaryFile(suffix=".mp4", prefix="teamsleech_", delete=False)
             tmp_path = tmp_file.name
             tmp_file.close()
 
-            last_progress_time = start_time_file
+            try:
+                if progress_cb:
+                    await progress_cb("file_progress", {
+                        "index": i, "name": filename, "percent": 0, "speed_mbps": 0.0
+                    })
+                
+                # Fetching Graph API strictly blocks, wrap in to_thread
+                file_size = await asyncio.to_thread(_download_recording, drive_id, item_id, access_token, tmp_path)
+                
+                log.info("Download complete: %s. Handing to consumer queue...", filename)
+                await queue.put({
+                    "index": i, "rec": rec, "tmp_path": tmp_path, 
+                    "file_size": file_size, "start_time_file": start_time_file
+                })
+                
+            except Exception as e:
+                log.error("Download failed for %s: %s", filename, e)
+                if progress_cb:
+                    await progress_cb("error", {"index": i, "name": filename, "error": str(e)})
+                results.append({"name": filename, "success": False, "error": str(e)})
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+        
+        await queue.put(None) # Sentinel to terminate consumer
+
+    async def _consumer():
+        while True:
+            item = await queue.get()
+            if item is None:
+                queue.task_done()
+                break
+            
+            i = item["index"]
+            rec = item["rec"]
+            tmp_path = item["tmp_path"]
+            file_size = item["file_size"]
+            start_time_file = item["start_time_file"]
+            filename = rec["name"]
+
+            last_progress_time = asyncio.get_event_loop().time()
             last_progress_bytes = 0
 
             async def _tg_progress(current: int, total: int):
-                if total == 0:
-                    return
+                if total == 0: return
                 pct = int((current / total) * 100)
                 if pct % 5 == 0 and progress_cb:
                     nonlocal last_progress_time, last_progress_bytes
@@ -235,79 +275,49 @@ async def upload_recordings(
                     last_progress_time = now
                     last_progress_bytes = current
                     
-                    await progress_cb("file_progress", {
-                        "index": i,
-                        "name": filename,
-                        "percent": pct,
-                        "speed_mbps": speed_mbps,
-                    })
+                    await progress_cb("file_progress", {"index": i, "name": filename, "percent": pct, "speed_mbps": speed_mbps})
 
             try:
-                if progress_cb:
-                    await progress_cb("file_progress", {
-                        "index": i, "name": filename, "percent": 0, "speed_mbps": 0.0
-                    })
-                
-                # Step 1: Download from Graph API (blocking, run in background thread to unblock loop)
-                file_size = await asyncio.to_thread(
-                    _download_recording, drive_id, item_id, access_token, tmp_path
-                )
-
-                # Step 2: Upload to Telegram
-                await _upload_to_telegram(
-                    tg_client, chat_id, tmp_path, filename, _tg_progress
-                )
-
+                await _upload_to_telegram(tg_client, chat_id, tmp_path, filename, _tg_progress)
                 elapsed_file = asyncio.get_event_loop().time() - start_time_file
+                
+                # Update State Manager directly after a successful upload
+                if state_manager and "subject_name" in rec:
+                     from datetime import datetime, timezone
+                     rec_time_str = f"{rec.get('created', '')}T{rec.get('time', '00:00')}:00+00:00"
+                     try:
+                         rec_date = datetime.fromisoformat(rec_time_str)
+                         current_last = state_manager.get_last_run(rec["subject_name"])
+                         if rec_date > current_last:
+                             await state_manager.save_last_run(rec["subject_name"], rec_date)
+                     except Exception as e:
+                         log.warning("Could not set strict datetime for state, using now()")
+                         await state_manager.save_last_run(rec["subject_name"])
+
                 if progress_cb:
-                    await progress_cb("file_done", {
-                        "index": i,
-                        "name": filename,
-                        "size_mb": file_size / (1024*1024),
-                        "elapsed_s": elapsed_file,
-                    })
+                    await progress_cb("file_done", {"index": i, "name": filename, "size_mb": file_size / (1024*1024), "elapsed_s": elapsed_file})
+                results.append({"name": filename, "success": True, "error": None})
 
-                results.append({
-                    "name": filename,
-                    "success": True,
-                    "error": None,
-                })
-
-            except (DownloadError, TelegramUploadError) as exc:
-                log.error("Failed: %s — %s", filename, exc)
+            except Exception as e:
+                log.error("Upload Error for %s: %s", filename, e)
                 if progress_cb:
-                    await progress_cb("error", {"index": i, "name": filename, "error": str(exc)})
-                results.append({
-                    "name": filename,
-                    "success": False,
-                    "error": str(exc),
-                })
-
-            except Exception as exc:
-                log.error("Unexpected error for %s: %s", filename, exc)
-                if progress_cb:
-                    await progress_cb("error", {"index": i, "name": filename, "error": f"{type(exc).__name__}: {exc}"})
-                results.append({
-                    "name": filename,
-                    "success": False,
-                    "error": str(exc),
-                })
-                raise
-
+                    await progress_cb("error", {"index": i, "name": filename, "error": str(e)})
+                results.append({"name": filename, "success": False, "error": str(e)})
             finally:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
+                queue.task_done()
 
-    except (DownloadError, TelegramUploadError, UploaderError):
-        pass
+    try:
+        producer_task = asyncio.create_task(_producer())
+        consumer_task = asyncio.create_task(_consumer())
+        await asyncio.gather(producer_task, consumer_task)
+    except Exception as e:
+        log.error("Queue execution crashed: %s", e)
 
     if progress_cb:
-        await progress_cb("all_done", {
-            "total": len(recordings),
-            "total_mb": total_size_mb,
-            "elapsed_s": asyncio.get_event_loop().time() - start_time_all
-        })
+        await progress_cb("all_done", {"total": len(recordings), "total_mb": total_size_mb, "elapsed_s": asyncio.get_event_loop().time() - start_time_all})
 
     return results

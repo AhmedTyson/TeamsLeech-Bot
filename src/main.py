@@ -31,9 +31,10 @@ from token_manager import (
     TokenExpiredError,
     TokenManagerError,
 )
-from fetcher import fetch_recordings_async, save_last_run, load_subjects
+from fetcher import fetch_recordings_async, load_subjects
 from bot import create_bot, register_handlers, send_startup_warnings
 from uploader import upload_recordings
+from state_manager import TelegramStateManager
 
 # ───────────────────────── logging ────────────────────────────────
 
@@ -108,7 +109,7 @@ def _authenticate(env: dict[str, str]) -> str:
 
 # ───────────────────────── callback factories ─────────────────────
 
-def _make_on_fetch(access_token: str):
+def _make_on_fetch(access_token: str, state_manager: TelegramStateManager):
     """Create the async on_fetch callback for bot.register_handlers.
 
     Signature: await on_fetch(subject_filter, date_start, date_end) → dict
@@ -121,7 +122,7 @@ def _make_on_fetch(access_token: str):
         return await fetch_recordings_async(
             access_token=access_token,
             subjects_path=SUBJECTS_PATH,
-            state_dir=STATE_DIR,
+            state_manager=state_manager,
             subject_filter=subject_filter,
             date_start=date_start,
             date_end=date_end,
@@ -129,7 +130,7 @@ def _make_on_fetch(access_token: str):
     return on_fetch
 
 
-def _make_on_upload(access_token: str, tg_client, chat_id: int):
+def _make_on_upload(access_token: str, tg_client, chat_id: int, state_manager: TelegramStateManager):
     """Create the async on_upload callback for bot.register_handlers.
 
     Signature: await on_upload(recordings: list[dict], progress_cb) → None
@@ -141,6 +142,7 @@ def _make_on_upload(access_token: str, tg_client, chat_id: int):
             tg_client=tg_client,
             chat_id=chat_id,
             progress_cb=progress_cb,
+            state_manager=state_manager,
         )
     return on_upload
 
@@ -187,8 +189,9 @@ def main() -> None:
     app = create_bot()
 
     # 3. Build callbacks
-    on_fetch = _make_on_fetch(access_token)
-    on_upload = _make_on_upload(access_token, app, chat_id)
+    state_manager = TelegramStateManager(app, chat_id)
+    on_fetch = _make_on_fetch(access_token, state_manager)
+    on_upload = _make_on_upload(access_token, app, chat_id, state_manager)
 
     # 4. Register handlers
     register_handlers(
@@ -205,6 +208,7 @@ def main() -> None:
 
     async def _run():
         await app.start()
+        await state_manager.initialize()
         await send_startup_warnings(app, chat_id)
         from pyrogram import idle
         await idle()
