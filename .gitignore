@@ -45,11 +45,7 @@ job-logs.txt
 # Task prompt (internal use only)
 pompt-clean.md
 
-# Test scratch files
+# Internal docs (keep index.html + logo for GitHub Pages dashboard)
+docs/*.md
+docs/*.pdf
 docs/test2.html
-
-# Old PDF exports (the .md is the source of truth)
-docs/TeamsLeech_Bot_PRD_v1.1.pdf
-
-# Internal build-phase tracking
-docs/tasks.md
