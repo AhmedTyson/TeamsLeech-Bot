@@ -1,33 +1,23 @@
 """
-Phase 3 — bot (v3 — improvements)
+Telegram Bot Interface for TeamsLeech.
 
-Telegram bot interface for TeamsLeech using Pyrogram.
-
-Changes from v2:
-  1. Upload progress  — on_upload receives a progress_callback so the bot
-     streams per-file status (⬆️ uploading… → ✅ done) and a final summary.
-  2. Rename flow fix  — tapping ✏️ while another rename is pending now
-     cancels the old one cleanly before starting the new one.
-  3. Check All label  — "✅ Check All" now scans Since Last Run and surfaces
-     that label to the user before the scan starts (not just implied).
-  4. Await on_upload  — upload confirm handler now properly awaits on_upload.
-  5. Empty selection  — upload button label signals "nothing selected" clearly
-     when the selection set is empty, guiding users before they tap.
+Provides the Pyrogram-based Telegram UI for interacting with the
+TeamsLeech pipeline: subject selection, date filtering, recording
+checklists with rename/select/upload controls, and live upload
+progress streaming.
 
 Public API
 ----------
-create_bot()       → pyrogram.Client  (configured, not started)
-register_handlers(app, on_fetch, on_upload) → None
+create_bot(api_id, api_hash, bot_token) → pyrogram.Client
+    Create a configured Pyrogram client (not started).
+register_handlers(app, on_fetch, on_upload, owner_chat_id) → None
+    Register all Telegram command and callback handlers.
+send_startup_warnings(client, chat_id) → None
+    Send one-time startup warnings to the owner.
 
-on_upload signature (CHANGED):
+on_upload callback signature:
     async on_upload(recordings: list[dict], progress_cb: Callable) → None
-    Where progress_cb is: async progress_cb(event: str, data: dict) → None
-    Events:
-        "start"    — data: {total: int, total_mb: float}
-        "file_progress" — data: {index: int, name: str, percent: int, speed_mbps: float}
-        "file_done" — data: {index: int, name: str, size_mb: float, elapsed_s: float}
-        "all_done"  — data: {total: int, total_mb: float, elapsed_s: float}
-        "error"     — data: {index: int, name: str, error: str}
+    progress_cb events: "start", "file_progress", "file_done", "all_done", "error"
 """
 
 import os
@@ -115,33 +105,7 @@ def _validate_date_range(start: str, end: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
-    text_lower = text.lower().strip()
-    
-    if text_lower == "this week":
-        mon, sun = _get_current_week_range()
-        label = f"This Week ({_format_date_short(mon)} – {_format_date_short(sun)})"
-        return mon, sun, label
-        
-    if text_lower == "today":
-        today_str = datetime.now(timezone.utc).date().isoformat()
-        label = f"Today ({_format_date_short(today_str)})"
-        return today_str, None, label
-        
-    range_match = re.match(r"^(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})$", text, re.IGNORECASE)
-    if range_match:
-        start = range_match.group(1)
-        end = range_match.group(2)
-        label = f"{_format_date_short(start)} – {_format_date_short(end)}"
-        return start, end, label
-        
-    date_match = re.match(r"^(\d{4}-\d{2}-\d{2})$", text)
-    if date_match:
-        d = date_match.group(1)
-        label = _format_date_short(d)
-        return d, None, label
-        
-    return None
+
 
 
 
@@ -971,8 +935,8 @@ def register_handlers(
 
         try:
             await cb.answer()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Could not acknowledge upload callback: %s", exc)
 
 
 # ───────────────────────── helpers ────────────────────────────────

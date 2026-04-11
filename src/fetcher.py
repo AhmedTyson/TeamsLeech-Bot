@@ -1,5 +1,5 @@
 """
-Phase 2 — fetcher (v2 — async)
+Teams Drive Scanner.
 
 Scans Microsoft Teams drives via the Graph API to find new .mp4 recordings
 for each configured subject. Uses asyncio + httpx for concurrent scanning.
@@ -15,11 +15,14 @@ Flow
 
 Public API
 ----------
-fetch_recordings_async(...)  → dict  (async, preferred)
-fetch_recordings(...)        → dict  (sync wrapper, backward compat)
-load_subjects(path)          → list[dict]
-save_last_run(...)           → None
-get_current_week_range()     → tuple[str, str]
+fetch_recordings_async(access_token, ...) → dict[str, list[dict]]
+    Async core scanner. Preferred entry point.
+fetch_recordings(access_token, ...)       → dict[str, list[dict]]
+    Sync wrapper for backward compatibility.
+load_subjects(path)                       → list[dict]
+    Load subject definitions from JSON config.
+get_current_week_range()                  → tuple[str, str]
+    Return (monday, sunday) ISO date strings for the current week.
 """
 
 import os
@@ -32,9 +35,10 @@ from typing import Any
 
 import httpx
 
+from constants import GRAPH_BASE_URL
+
 # ───────────────────────── constants ──────────────────────────────
 
-GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 MAX_CONCURRENT = 20  # Graph API rate-limit safe ceiling
 
 log = logging.getLogger("fetcher")
@@ -140,7 +144,7 @@ async def _process_team(
     try:
         site = await _graph_get_async(
             client,
-            f"{GRAPH_BASE}/groups/{team_id}/sites/root",
+            f"{GRAPH_BASE_URL}/groups/{team_id}/sites/root",
             access_token,
         )
     except GraphAPIError as exc:
@@ -155,7 +159,7 @@ async def _process_team(
     try:
         drives_data = await _graph_get_async(
             client,
-            f"{GRAPH_BASE}/sites/{site_id}/drives",
+            f"{GRAPH_BASE_URL}/sites/{site_id}/drives",
             access_token,
         )
     except GraphAPIError as exc:
@@ -170,7 +174,7 @@ async def _process_team(
         try:
             data = await _graph_get_async(
                 client,
-                f"{GRAPH_BASE}/drives/{drive_id}/root/search(q='.mp4')",
+                f"{GRAPH_BASE_URL}/drives/{drive_id}/root/search(q='.mp4')",
                 access_token,
             )
         except GraphAPIError as exc:
@@ -290,7 +294,7 @@ async def fetch_recordings_async(
     async with httpx.AsyncClient(limits=limits) as client:
         # Fetch all joined teams once (single call + pagination)
         all_teams_data = await _graph_get_async(
-            client, f"{GRAPH_BASE}/me/joinedTeams", access_token
+            client, f"{GRAPH_BASE_URL}/me/joinedTeams", access_token
         )
         all_teams = all_teams_data.get("value", [])
         next_link = all_teams_data.get("@odata.nextLink")

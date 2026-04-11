@@ -1,7 +1,7 @@
 # Phase 8 — Personal Control Dashboard
 
 > **Status:** Not started  
-> **Repo:** AhmedTyson/TeamsLeech-Bot (private, GitHub Pro)  
+> **Repo:** `<your-username>/<your-repo>` (private, GitHub Pro)  
 > **Goal:** A lean, biometric-unlocked personal dashboard to trigger and monitor GitHub Actions runs — hosted on GitHub Pages, zero backend, zero extra cost.
 
 ---
@@ -83,7 +83,7 @@ Phase B — Dashboard
 
 Phase C — Deploy
 □ GitHub Pages enabled: Settings → Pages → /docs branch main
-□ Dashboard loads at ahmedtyson.github.io/TeamsLeech-Bot
+□ Dashboard loads at <your-username>.github.io/<your-repo>
 □ Unlock screen appears (not a blank page, not an error)
 □ Correct master password unlocks the dashboard
 □ Wrong password shows error and clears field

@@ -1,6 +1,19 @@
+"""
+Dashboard HTML Generator.
+
+Regenerates docs/index.html with an updated terminal-style dashboard UI.
+Preserves the existing GIST_ID and GIST_READ_TOKEN values from the
+current index.html so dynamic credentials are not lost on regeneration.
+
+Usage
+-----
+    python scripts/redesign_minimal.py
+"""
+
+import os
 import re
 
-FILE_PATH = r"c:\Programming\TeamsLeech Bot\docs\index.html"
+FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "docs", "index.html")
 
 with open(FILE_PATH, "r", encoding="utf-8") as f:
     content = f.read()
@@ -394,7 +407,8 @@ NEW_CONTENT = """<!DOCTYPE html>
   <script>
     const GIST_ID = "{gist_id}";
     const GIST_READ_TOKEN = "{gist_read_token}";
-    const REPO = "AhmedTyson/TeamsLeech-Bot";
+    // Replace with your own GitHub username/repo after forking
+    const REPO = "PASTE_YOUR_VALUE_HERE";
     const WORKFLOW_FILE = "workflow.yml";
 
     let gh_pat = null, bot_token = null, chat_id = null;

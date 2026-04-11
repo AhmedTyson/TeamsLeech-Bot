@@ -2,13 +2,13 @@
 
 > **Time required:** 10 minutes  
 > **Prerequisite:** Phase B complete — `docs/index.html` pushed to `main`  
-> **Produces:** Live dashboard at `ahmedtyson.github.io/TeamsLeech-Bot`
+> **Produces:** Live dashboard at `<your-username>.github.io/<your-repo>`
 
 ---
 
 ## Step 1 — Enable GitHub Pages
 
-1. Go to `https://github.com/AhmedTyson/TeamsLeech-Bot`
+1. Go to `https://github.com/<your-username>/<your-repo>`
 2. Click **Settings** (top navigation, not the repo description)
 3. In the left sidebar, scroll to **Pages**
 4. Under **Source**, select:
@@ -17,7 +17,7 @@
 5. Click **Save**
 
 GitHub will show a banner:
-> "Your site is being published at https://ahmedtyson.github.io/TeamsLeech-Bot"
+> "Your site is being published at https://<your-username>.github.io/<your-repo>"
 
 ---
 
@@ -35,7 +35,7 @@ GitHub Pages takes a moment to build. You can watch progress:
 
 Go to:
 ```
-https://ahmedtyson.github.io/TeamsLeech-Bot
+https://<your-username>.github.io/<your-repo>
 ```
 
 You should see the unlock screen with the password field.
@@ -119,7 +119,7 @@ The workflow dispatch endpoint requires `repo` scope.
 ## Phase C Complete When
 
 ```
-✅ Dashboard live at ahmedtyson.github.io/TeamsLeech-Bot
+✅ Dashboard live at <your-username>.github.io/<your-repo>
 ✅ Unlock works correctly
 ✅ Run Workflow button triggers a real Actions run
 ✅ Status dot updates correctly
@@ -152,7 +152,7 @@ This is standard browser behavior — nothing custom, nothing that can break.
 
 **Step 1: Open the dashboard in Safari**
 ```
-https://ahmedtyson.github.io/TeamsLeech-Bot
+https://<your-username>.github.io/<your-repo>
 ```
 Safari specifically is required for iCloud Keychain autofill on the first save.
 
@@ -169,7 +169,7 @@ Safari specifically is required for iCloud Keychain autofill on the first save.
 
 **Step 4: Verify biometric autofill**
 - Close the tab
-- Reopen `https://ahmedtyson.github.io/TeamsLeech-Bot`
+- Reopen `https://<your-username>.github.io/<your-repo>`
 - Tap the password field
 - Your phone should show a Face ID / Touch ID prompt
 - Authenticate → field autofills → tap Unlock
@@ -185,7 +185,7 @@ Settings → Safari → AutoFill → confirm "Passwords" is enabled.
 
 **Step 1: Open the dashboard in Chrome**
 ```
-https://ahmedtyson.github.io/TeamsLeech-Bot
+https://<your-username>.github.io/<your-repo>
 ```
 
 **Step 2: Enter your master password manually (once)**
@@ -195,7 +195,7 @@ https://ahmedtyson.github.io/TeamsLeech-Bot
 
 **Step 3: Let Chrome save the password**
 - Chrome shows a prompt at the bottom:
-  > "Save password for ahmedtyson.github.io?"
+  > "Save password for <your-username>.github.io?"
 - Tap **Save**
 
 **Step 4: Verify biometric autofill**
@@ -236,9 +236,9 @@ Now your home screen has a TeamsLeech icon. Tap it → Face ID / fingerprint →
 
 If you're on a device that doesn't have your password manager:
 
-1. Open `https://ahmedtyson.github.io/TeamsLeech-Bot`
+1. Open `https://<your-username>.github.io/<your-repo>`
 2. Open your password manager app on your phone
-3. Find the entry for `ahmedtyson.github.io`
+3. Find the entry for `<your-username>.github.io`
 4. Copy the master password
 5. Paste it into the dashboard
 
@@ -266,7 +266,7 @@ All four phases complete. Your dashboard is live.
 - `scripts/setup_gist.py` — one-time setup script (commit it, it's safe — no secrets in it)
 - `docs/index.html` — your dashboard (commit it, it's safe — secrets only in memory after unlock)
 - A private Gist containing your encrypted credentials
-- A biometric-unlocked dashboard at `ahmedtyson.github.io/TeamsLeech-Bot`
+- A biometric-unlocked dashboard at `<your-username>.github.io/<your-repo>`
 - One-tap workflow trigger from anywhere in the world
 
 **What remains completely unchanged:**

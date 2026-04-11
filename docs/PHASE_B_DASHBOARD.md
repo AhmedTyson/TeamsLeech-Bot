@@ -44,7 +44,7 @@ PART 1 — CONSTANTS (at the very top of the <script> tag):
   const GIST_ID = "PASTE_GIST_ID_HERE";
   const GIST_READ_TOKEN = "PASTE_GIST_READ_TOKEN_HERE";
   // ────────────────────────────────────────────────────────
-  const REPO = "AhmedTyson/TeamsLeech-Bot";
+  const REPO = "<your-username>/<your-repo>";
   const WORKFLOW_FILE = "workflow.yml";
 
   Leave GIST_ID and GIST_READ_TOKEN as placeholder strings.

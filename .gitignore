@@ -1,0 +1,55 @@
+# Environment files
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Pyrogram sessions
+*.session
+*.session-journal
+
+# Bot state persistence
+.state/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Temporary files
+/tmp/
+*.tmp
+
+# AI scratch / analysis files
+claude-analysis-output.md
+gemini_deep_analysis.md
+
+# Raw log dumps
+job-logs.txt
+
+# Task prompt (internal use only)
+pompt-clean.md
+
+# Test scratch files
+docs/test2.html
+
+# Old PDF exports (the .md is the source of truth)
+docs/TeamsLeech_Bot_PRD_v1.1.pdf
+
+# Internal build-phase tracking
+docs/tasks.md

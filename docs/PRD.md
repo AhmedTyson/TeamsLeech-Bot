@@ -331,7 +331,7 @@ The project is complete and successful when **all** of the following are true:
 | Known log warnings              | Unclosed <u> tag (cosmetic), MessageNotModified (cosmetic) |
 | Artifact error on first run     | Expected — continue-on-error handles it                    |
 | Run duration                    | ~8 minutes for full session                                |
-| Dashboard URL                   | ahmedtyson.github.io/TeamsLeech-Bot                        |
+| Dashboard URL                   | `<your-username>.github.io/<your-repo>`                    |
 | Dashboard hosting               | GitHub Pages (private repo, GitHub Pro)                    |
 | Credential encryption           | AES-256-GCM, PBKDF2 310k iterations                        |
 | Biometric auth                  | WebAuthn platform authenticator (Android fingerprint)      |
@@ -346,7 +346,7 @@ The project is complete and successful when **all** of the following are true:
 ### Hosting
 
 - **Platform:** GitHub Pages on private repo (GitHub Pro)
-- **URL:** `ahmedtyson.github.io/TeamsLeech-Bot`
+- **URL:** `<your-username>.github.io/<your-repo>`
 - **File:** `docs/index.html` (single file)
 - **Deployment:** Auto-deploys on every push to main branch
 

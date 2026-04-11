@@ -1,13 +1,14 @@
 """
-Phase 4 — uploader
+Telegram Video Uploader.
 
 Streams selected .mp4 recordings from Microsoft Graph API to
-Telegram Saved Messages via Pyrogram, with 10%-increment progress
-messages (new messages, never edits existing ones).
+Telegram Saved Messages via Pyrogram, with real-time progress
+callbacks and producer/consumer async queue architecture.
 
 Public API
 ----------
-upload_recordings(recordings, access_token, tg_client, chat_id) → list[dict]
+upload_recordings(recordings, access_token, tg_client, chat_id, ...) → list[dict]
+    Download recordings from Graph and upload to Telegram.
 """
 
 import os
@@ -24,11 +25,12 @@ from pyrogram import Client
 from pyrogram.errors import BadRequest
 from pyrogram.types import Message
 
+from constants import GRAPH_BASE_URL
+
 log = logging.getLogger("uploader")
 
 # ───────────────────────── constants ──────────────────────────────
 
-GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 CHUNK_SIZE = 10 * 1024 * 1024  # 10 MB streaming chunks
 
 # ───────────────────────── exceptions ─────────────────────────────
@@ -125,7 +127,7 @@ def _download_recording(
     -------
     int — total bytes written.
     """
-    url = f"{GRAPH_BASE}/drives/{drive_id}/items/{item_id}/content"
+    url = f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/content"
     headers = {"Authorization": f"Bearer {access_token}"}
 
     try:

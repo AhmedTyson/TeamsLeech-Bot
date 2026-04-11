@@ -1,6 +1,15 @@
 """
-State Manager - Stores persistent JSON data via Telegram messages.
-Removes dependency on ephemeral local disk caching.
+Telegram State Manager.
+
+Persists per-subject last_run timestamps as a pinned JSON message
+in a Telegram chat, eliminating dependency on ephemeral local disk.
+
+Public API
+----------
+TelegramStateManager(client, chat_id)
+    .initialize()                         → None  (async, call once)
+    .get_last_run(subject_name)           → datetime
+    .save_last_run(subject_name, ts)      → None  (async)
 """
 import json
 import logging

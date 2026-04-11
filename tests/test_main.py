@@ -16,7 +16,7 @@ Prerequisites
         TELEGRAM_CHAT_ID=...
     Optional (for secret rotation):
         GH_PAT=...
-        GITHUB_REPOSITORY=AhmedTyson/TeamsLeech-Bot
+        GITHUB_REPOSITORY=<your-username>/<your-repo>
 3.  Run:  python tests/test_main.py
 4.  Open Telegram → interact with the bot.
 5.  Press Ctrl+C to stop.

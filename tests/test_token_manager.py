@@ -7,7 +7,7 @@ Prerequisites
 2.  Create a .env file in the project root with:
         TEAMS_REFRESH_TOKEN=<your token from HAR>
         GH_PAT=<your PAT with secrets:write>
-        GITHUB_REPOSITORY=AhmedTyson/TeamsLeech-Bot
+        GITHUB_REPOSITORY=<your-username>/<your-repo>
 3.  Run:  python tests/test_token_manager.py
 """
 
@@ -49,7 +49,7 @@ def main() -> None:
 
     rt  = os.environ.get("TEAMS_REFRESH_TOKEN", "")
     pat = os.environ.get("GH_PAT", "")
-    repo = os.environ.get("GITHUB_REPOSITORY", "AhmedTyson/TeamsLeech-Bot")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
 
     if not rt or not pat:
         print("\n  ❌  Missing TEAMS_REFRESH_TOKEN or GH_PAT in .env")

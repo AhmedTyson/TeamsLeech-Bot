@@ -89,7 +89,7 @@ async def run_e2e() -> None:
     # ── CHECK 2: Refresh token rotation ──────────────────────────
     print("[2] Refresh token rotation...")
     gh_pat = os.environ.get("GH_PAT", "")
-    repo = os.environ.get("GITHUB_REPOSITORY", "AhmedTyson/TeamsLeech-Bot")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
 
     if not gh_pat:
         print("  ⚠️  [2/8] GH_PAT not set — skipping rotation check")

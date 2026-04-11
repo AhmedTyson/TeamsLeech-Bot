@@ -1,14 +1,17 @@
 """
-Phase 1 — token_manager
+OAuth2 Token Manager.
 
 Exchanges a Microsoft OAuth2 refresh_token for a Graph API access_token,
 then auto-rotates the refresh_token back into GitHub Encrypted Secrets.
 
 Public API
 ----------
-get_access_token()              → str   (convenience entry point)
-exchange_refresh_token(rt)      → (access_token, new_refresh_token)
-rotate_github_secret(rt, repo, pat) → None
+get_access_token()                          → str
+    All-in-one: exchange → rotate → return access_token.
+exchange_refresh_token(refresh_token)       → (str, str)
+    Exchange refresh_token for (access_token, new_refresh_token).
+rotate_github_secret(rt, repo, pat)         → None
+    Encrypt and write the new refresh_token to GitHub Secrets.
 """
 
 import os
@@ -186,7 +189,7 @@ def get_access_token() -> str:
     """
     refresh_token = os.environ.get("TEAMS_REFRESH_TOKEN")
     gh_pat        = os.environ.get("GH_PAT")
-    repo          = os.environ.get("GITHUB_REPOSITORY", "AhmedTyson/TeamsLeech-Bot")
+    repo          = os.environ.get("GITHUB_REPOSITORY", "")
 
     if not refresh_token:
         raise TokenManagerError("TEAMS_REFRESH_TOKEN env var is not set.")

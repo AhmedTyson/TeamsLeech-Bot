@@ -1,5 +1,5 @@
 """
-Phase 5 — main (orchestrator)
+Main Orchestrator.
 
 Single entry point that wires all modules together:
     token_manager → fetcher → bot → uploader
@@ -83,7 +83,7 @@ def _authenticate(env: dict[str, str]) -> str:
     """
     refresh_token = env["TEAMS_REFRESH_TOKEN"]
     gh_pat = os.environ.get("GH_PAT", "")
-    repo = os.environ.get("GITHUB_REPOSITORY", "AhmedTyson/TeamsLeech-Bot")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
 
     try:
         access_token, new_refresh_token = exchange_refresh_token(refresh_token)
