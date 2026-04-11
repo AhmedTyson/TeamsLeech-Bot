@@ -68,7 +68,7 @@ The inefficiency is layered: manual discovery, manual download, local storage
 consumption, no cross-device access, no organization by subject. Every single
 lecture, every single time.
 
-The question that started this project was not *"can I automate this"* — the answer
+The question that started this project was not _"can I automate this"_ — the answer
 to that is obviously yes. The question was: **can I automate this in a way that
 eliminates the bandwidth problem entirely, not just schedules it for off-peak hours?**
 
@@ -198,25 +198,39 @@ The full pipeline, from trigger to delivery:
 
 ```mermaid
 flowchart TD
-    A([User trigger\nTelegram /check\nor Dashboard dispatch]) --> B
+    %%{init: {'flowchart': {'padding': 20, 'nodeSpacing': 60, 'rankSpacing': 60}}}%%
+    
+    A(["<b>User Trigger</b><br/>Telegram /check or Dashboard dispatch"])
+    B["<b>GitHub Actions Runner</b><br/>ubuntu-latest • free tier • workflow_dispatch"]
+    C("<b>token_manager.py</b><br/>OAuth2 refresh_token exchange<br/>Rotate secret via PyNaCl + GitHub API")
+    D("<b>fetcher.py</b><br/>httpx.AsyncClient • asyncio.gather • cap 20<br/>joinedTeams → drives → .mp4 search")
+    E[("<b>state_manager.py</b><br/>Read last_run timestamps<br/>from pinned Telegram message")]
+    F("<b>bot.py</b><br/>Pyrogram inline keyboard<br/>User selects recordings • Rename support")
+    G("<b>uploader.py</b><br/>Graph API download to /tmp/<br/>ffprobe metadata extraction • Pyrogram MTProto")
+    H[("<b>state_manager.py</b><br/>Update last_run timestamps<br/>Write back to pinned message")]
+    I(["<b>Telegram Saved Messages</b><br/>Full-quality .mp4<br/>Duration • thumbnail • streaming"])
 
-    B[GitHub Actions runner\nubuntu-latest · free tier\nworkflow_dispatch] --> C
-
-    C[token_manager.py\nOAuth2 refresh_token exchange\nRotate secret via PyNaCl + GitHub API] --> D
-
-    D[fetcher.py\nhttpx.AsyncClient · asyncio.gather\nconcurrency cap 20\njoinedTeams → drives → .mp4 search] --> E
-
-    E[state_manager.py\nRead last_run timestamps\nfrom pinned Telegram message] -.->|filters by timestamp| D
-
-    E --> F
-
-    F[bot.py\nPyrogram inline keyboard\nUser selects recordings\nRename / date filter support] --> G
-
-    G[uploader.py\nGraph API download → /tmp/\nffprobe metadata extraction\nPyrogram MTProto send_video] --> H
-
-    H[state_manager.py\nUpdate last_run timestamps\nWrite back to pinned message] --> I
-
-    I([Telegram Saved Messages\nFull-quality .mp4\nDuration · thumbnail · streaming])
+    A --> B
+    B --> C
+    C --> D
+    E -.-> |"Filters by timestamp"| D
+    D --> F
+    F --> G
+    G --> H
+    H --> I
+    
+    classDef default font-family:sans-serif,font-size:14px,padding:16px,line-height:1.5;
+    classDef trigger fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#000;
+    classDef runner fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#000;
+    classDef module fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#000;
+    classDef state fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#000;
+    classDef endpoint fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#000;
+    
+    class A trigger;
+    class B runner;
+    class C,D,F,G module;
+    class E,H state;
+    class I endpoint;
 ```
 
 Each module is independently testable and has a single, well-defined responsibility.
@@ -323,12 +337,12 @@ of results.
 
 **Date input parsing** accepts multiple natural-language formats:
 
-| Input format | Parsed result |
-|---|---|
-| `2026-04-01` | Single date |
-| `2026-04-01 to 2026-04-07` | Date range |
-| `today` | Current UTC date |
-| `this week` | Monday–Sunday of current week |
+| Input format               | Parsed result                 |
+| -------------------------- | ----------------------------- |
+| `2026-04-01`               | Single date                   |
+| `2026-04-01 to 2026-04-07` | Date range                    |
+| `today`                    | Current UTC date              |
+| `this week`                | Monday–Sunday of current week |
 
 Date ranges are validated for logical consistency (start ≤ end) and capped at
 30 days to prevent runaway API calls.
@@ -491,13 +505,13 @@ The dashboard uses a layered polling strategy to avoid false failure states:
 During an active run, the dashboard polls `GET /repos/.../actions/runs/{id}/jobs`
 every 2 seconds and renders each step with its real-time status:
 
-| Step status | Icon | Row style |
-|---|---|---|
-| `in_progress` | ⏳ spinning | Purple, nudged right |
-| `completed: success` | ✅ | Green |
-| `completed: failure` | ✗ | Red |
-| `completed: skipped` | → | Muted |
-| `queued` | ○ | Dimmed |
+| Step status          | Icon        | Row style            |
+| -------------------- | ----------- | -------------------- |
+| `in_progress`        | ⏳ spinning | Purple, nudged right |
+| `completed: success` | ✅          | Green                |
+| `completed: failure` | ✗           | Red                  |
+| `completed: skipped` | →           | Muted                |
+| `queued`             | ○           | Dimmed               |
 
 **Token expiry detection:**
 
@@ -514,27 +528,27 @@ red `FAILED` state, which would not tell the user what to do next.
 
 ### Accounts
 
-| Account | Required for | Cost |
-|---|---|---|
+| Account           | Required for                                | Cost |
+| ----------------- | ------------------------------------------- | ---- |
 | GitHub (any plan) | Hosting code, running Actions, GitHub Pages | Free |
-| Telegram account | Bot interface, file delivery, state storage | Free |
-| Microsoft account | Teams access (existing university account) | Free |
+| Telegram account  | Bot interface, file delivery, state storage | Free |
+| Microsoft account | Teams access (existing university account)  | Free |
 
 ### Tokens and Credentials to Collect
 
 Before starting setup, you will need to gather the following. Each item's
 source is explained in the setup steps that follow.
 
-| Credential | Where to get it | Notes |
-|---|---|---|
-| `TEAMS_REFRESH_TOKEN` | `scripts/get_teams_token.py` | Captured via device login flow |
-| `TELEGRAM_SESSION` | `scripts/generate_session.py` | Pyrogram session string |
-| `TELEGRAM_API_ID` | [my.telegram.org](https://my.telegram.org) | Numeric app ID |
-| `TELEGRAM_API_HASH` | [my.telegram.org](https://my.telegram.org) | 32-character hash |
-| `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/botfather) | `123456:ABC-DEF...` format |
-| `TELEGRAM_CHAT_ID` | [@userinfobot](https://t.me/userinfobot) | Your numeric user ID |
-| `GH_PAT` | GitHub → Settings → Developer Settings | Needs `secrets:write` scope |
-| `SUBJECTS_JSON` | Your `subjects_config.json` content | Optional — overrides the config file at runtime |
+| Credential            | Where to get it                            | Notes                                           |
+| --------------------- | ------------------------------------------ | ----------------------------------------------- |
+| `TEAMS_REFRESH_TOKEN` | `scripts/get_teams_token.py`               | Captured via device login flow                  |
+| `TELEGRAM_SESSION`    | `scripts/generate_session.py`              | Pyrogram session string                         |
+| `TELEGRAM_API_ID`     | [my.telegram.org](https://my.telegram.org) | Numeric app ID                                  |
+| `TELEGRAM_API_HASH`   | [my.telegram.org](https://my.telegram.org) | 32-character hash                               |
+| `TELEGRAM_BOT_TOKEN`  | [@BotFather](https://t.me/botfather)       | `123456:ABC-DEF...` format                      |
+| `TELEGRAM_CHAT_ID`    | [@userinfobot](https://t.me/userinfobot)   | Your numeric user ID                            |
+| `GH_PAT`              | GitHub → Settings → Developer Settings     | Needs `secrets:write` scope                     |
+| `SUBJECTS_JSON`       | Your `subjects_config.json` content        | Optional — overrides the config file at runtime |
 
 ### Local Tools (One-Time Only)
 
@@ -659,15 +673,15 @@ Navigate to your forked repository on GitHub:
 
 Add each of the following secrets:
 
-| Secret name | Value | Where it comes from |
-|---|---|---|
-| `TEAMS_REFRESH_TOKEN` | The long token from Step 2 | `get_teams_token.py` output |
-| `TELEGRAM_SESSION` | The long string from Step 3 | `generate_session.py` output |
-| `TELEGRAM_API_ID` | Your numeric API ID | my.telegram.org |
-| `TELEGRAM_API_HASH` | Your 32-char API hash | my.telegram.org |
-| `TELEGRAM_BOT_TOKEN` | Your bot token | @BotFather |
-| `TELEGRAM_CHAT_ID` | Your numeric user ID | @userinfobot |
-| `GH_PAT` | Your GitHub personal access token | See below |
+| Secret name           | Value                             | Where it comes from          |
+| --------------------- | --------------------------------- | ---------------------------- |
+| `TEAMS_REFRESH_TOKEN` | The long token from Step 2        | `get_teams_token.py` output  |
+| `TELEGRAM_SESSION`    | The long string from Step 3       | `generate_session.py` output |
+| `TELEGRAM_API_ID`     | Your numeric API ID               | my.telegram.org              |
+| `TELEGRAM_API_HASH`   | Your 32-char API hash             | my.telegram.org              |
+| `TELEGRAM_BOT_TOKEN`  | Your bot token                    | @BotFather                   |
+| `TELEGRAM_CHAT_ID`    | Your numeric user ID              | @userinfobot                 |
+| `GH_PAT`              | Your GitHub personal access token | See below                    |
 
 **Creating the GH_PAT:**
 
@@ -758,7 +772,7 @@ GIST_READ_TOKEN = "ghp_xxxxxxxxxxxxxx"
 Open `docs/index.html`. Near the top of the `<script>` section, find:
 
 ```javascript
-const GIST_ID         = "PASTE_GIST_ID_HERE";
+const GIST_ID = "PASTE_GIST_ID_HERE";
 const GIST_READ_TOKEN = "PASTE_GIST_READ_TOKEN_HERE";
 ```
 
@@ -806,7 +820,7 @@ and send `/check`.
 
 > **First run behavior:** The first time the bot runs with no prior state, all
 > three `last_run` timestamps default to `datetime.min` (the earliest possible
-> datetime). This means the bot will find *all* recordings across all matched
+> datetime). This means the bot will find _all_ recordings across all matched
 > teams, not just recent ones. If your Teams groups have many old recordings,
 > the checklist will be very long. This is expected — select only what you want
 > and let the rest go. The next run will only show recordings created after the
@@ -834,12 +848,12 @@ since PBKDF2 with 310,000 iterations takes ~200ms per attempt).
 The status indicator in the Telemetry section shows the current state of the
 most recent workflow run:
 
-| Dot color | Status text | Meaning |
-|---|---|---|
-| Grey (static) | SYSTEM IDLE | No runs found, or last run was cancelled |
-| Yellow (pulsing) | EXECUTING | Run is currently in progress |
-| Green (static) | COMPLETED | Last run finished successfully |
-| Red (static) | FAILED | Last run ended with an error |
+| Dot color        | Status text   | Meaning                                      |
+| ---------------- | ------------- | -------------------------------------------- |
+| Grey (static)    | SYSTEM IDLE   | No runs found, or last run was cancelled     |
+| Yellow (pulsing) | EXECUTING     | Run is currently in progress                 |
+| Green (static)   | COMPLETED     | Last run finished successfully               |
+| Red (static)     | FAILED        | Last run ended with an error                 |
 | Orange (pulsing) | TOKEN EXPIRED | Last run failed due to expired refresh token |
 
 The log message below the status dot provides human-readable context. During
@@ -894,7 +908,7 @@ and a persistent reply keyboard at the bottom of the chat with two buttons:
 
 Send `/check` or tap **🔍 Check Recordings**. A subject selection keyboard appears.
 
-*To scan a single subject:*
+_To scan a single subject:_
 
 Tap the subject button. The bot asks for a date or date range. Send one of:
 
@@ -907,12 +921,12 @@ this week            ← Monday through Sunday of current week
 
 The bot scans that subject and returns a checklist.
 
-*To scan all subjects since last run:*
+_To scan all subjects since last run:_
 
 Tap **✅ Check All (since last run)**. The bot scans all subjects using their
 stored `last_run` timestamps and returns a combined checklist.
 
-*To scan all subjects for a specific date without tapping a subject first:*
+_To scan all subjects for a specific date without tapping a subject first:_
 
 Just send the date directly in the chat:
 
@@ -980,21 +994,21 @@ Follow the instructions to run `get_teams_token.py` locally and update the
 These figures are from live production usage of TeamsLeech on a single university
 account across a full academic semester.
 
-| Metric | Value |
-|---|---|
-| Microsoft Teams groups scanned per run | 98 |
-| Average full-scan duration (async, post-optimization) | < 90 seconds |
-| Average full-scan duration (sequential, pre-optimization) | ~7 minutes |
-| Recordings found on first run | 14 |
-| Average download speed (Graph API → runner) | ~148 MB in 5 seconds |
-| Average upload speed (runner → Telegram MTProto) | ~238 MB in 7 seconds |
-| Average total run duration (scan + upload + state) | ~8 minutes |
-| GitHub Actions compute used per month | ~200 minutes |
-| GitHub Actions compute available per month (free tier) | 2,000 minutes |
-| Quota utilization | ~10% |
-| Infrastructure cost | $0 |
-| Token auto-rotation success rate | 100% |
-| Run success rate (across full semester) | 93% |
+| Metric                                                    | Value                |
+| --------------------------------------------------------- | -------------------- |
+| Microsoft Teams groups scanned per run                    | 98                   |
+| Average full-scan duration (async, post-optimization)     | < 90 seconds         |
+| Average full-scan duration (sequential, pre-optimization) | ~7 minutes           |
+| Recordings found on first run                             | 14                   |
+| Average download speed (Graph API → runner)               | ~148 MB in 5 seconds |
+| Average upload speed (runner → Telegram MTProto)          | ~238 MB in 7 seconds |
+| Average total run duration (scan + upload + state)        | ~8 minutes           |
+| GitHub Actions compute used per month                     | ~200 minutes         |
+| GitHub Actions compute available per month (free tier)    | 2,000 minutes        |
+| Quota utilization                                         | ~10%                 |
+| Infrastructure cost                                       | $0                   |
+| Token auto-rotation success rate                          | 100%                 |
+| Run success rate (across full semester)                   | 93%                  |
 
 The 7% failure rate is accounted for by: three runs that failed due to Microsoft
 Graph API transient 429 rate-limiting during peak exam periods, one run where
@@ -1098,19 +1112,19 @@ architectures with explicit cold-start windows from the beginning.
 
 ## 10. Troubleshooting Reference
 
-| Symptom | Most likely cause | Resolution |
-|---|---|---|
-| Run fails at "Validate secrets present" step | `TEAMS_REFRESH_TOKEN` is empty or expired | Run `python scripts/get_teams_token.py`, copy the new token, update the `TEAMS_REFRESH_TOKEN` GitHub Secret |
-| Bot finds 0 recordings for a subject | Keywords do not match Teams group display names | Check `subjects_config.json` keywords against the exact display names of your Teams groups. Microsoft Teams often has long, specific group names like "Faculty of Commerce - Advanced Database - Spring 2026" |
-| Videos show 0:00 duration in Telegram | `ffprobe` is not installed on the runner | Confirm the `Install ffmpeg` step exists in `workflow.yml` before the `Run TeamsLeech Bot` step |
-| Some users cannot play videos inline | Same as above — missing video metadata | Same fix. After re-running, existing messages will not be updated — the fix applies to future uploads only |
-| Dashboard shows "Access Denied" | Wrong master password, or `GIST_ID`/`GIST_READ_TOKEN` are incorrect | Verify the values in `docs/index.html` match what `setup_gist.py` printed. Re-run `setup_gist.py` if needed |
-| Dashboard shows "TOKEN EXPIRED" with orange dot | The dashboard detected that the workflow's validation step failed | Send `/reauth` in Telegram and follow the instructions to rotate the token manually |
-| Dashboard shows run as failed immediately after dispatch | GitHub Actions cold-start — the run has not appeared in the API yet | This is a polling timing issue, not a real failure. Wait 60 seconds and reload the dashboard. If the run genuinely failed, check the Actions tab for the error log |
-| Token auto-rotation fails silently | `GH_PAT` is missing or has insufficient scope | Ensure `GH_PAT` is set in GitHub Secrets and was created with `repo:secrets` write scope |
-| Pyrogram raises `FloodWait` during upload | Telegram rate limiting on large batch uploads | This is handled automatically by Pyrogram — it pauses and retries. For very large batches (10+ files), consider splitting into two separate runs |
-| `generate_session.py` fails with "API ID invalid" | Incorrect `TELEGRAM_API_ID` or `TELEGRAM_API_HASH` in `.env` | Verify both values at my.telegram.org → API development tools |
-| Bot does not respond to Telegram messages | `TELEGRAM_BOT_TOKEN` is incorrect, or the bot is not running (the bot only runs during a workflow run, not persistently) | Trigger a workflow run first. The bot is only active while the GitHub Actions runner is executing |
+| Symptom                                                  | Most likely cause                                                                                                        | Resolution                                                                                                                                                                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run fails at "Validate secrets present" step             | `TEAMS_REFRESH_TOKEN` is empty or expired                                                                                | Run `python scripts/get_teams_token.py`, copy the new token, update the `TEAMS_REFRESH_TOKEN` GitHub Secret                                                                                                   |
+| Bot finds 0 recordings for a subject                     | Keywords do not match Teams group display names                                                                          | Check `subjects_config.json` keywords against the exact display names of your Teams groups. Microsoft Teams often has long, specific group names like "Faculty of Commerce - Advanced Database - Spring 2026" |
+| Videos show 0:00 duration in Telegram                    | `ffprobe` is not installed on the runner                                                                                 | Confirm the `Install ffmpeg` step exists in `workflow.yml` before the `Run TeamsLeech Bot` step                                                                                                               |
+| Some users cannot play videos inline                     | Same as above — missing video metadata                                                                                   | Same fix. After re-running, existing messages will not be updated — the fix applies to future uploads only                                                                                                    |
+| Dashboard shows "Access Denied"                          | Wrong master password, or `GIST_ID`/`GIST_READ_TOKEN` are incorrect                                                      | Verify the values in `docs/index.html` match what `setup_gist.py` printed. Re-run `setup_gist.py` if needed                                                                                                   |
+| Dashboard shows "TOKEN EXPIRED" with orange dot          | The dashboard detected that the workflow's validation step failed                                                        | Send `/reauth` in Telegram and follow the instructions to rotate the token manually                                                                                                                           |
+| Dashboard shows run as failed immediately after dispatch | GitHub Actions cold-start — the run has not appeared in the API yet                                                      | This is a polling timing issue, not a real failure. Wait 60 seconds and reload the dashboard. If the run genuinely failed, check the Actions tab for the error log                                            |
+| Token auto-rotation fails silently                       | `GH_PAT` is missing or has insufficient scope                                                                            | Ensure `GH_PAT` is set in GitHub Secrets and was created with `repo:secrets` write scope                                                                                                                      |
+| Pyrogram raises `FloodWait` during upload                | Telegram rate limiting on large batch uploads                                                                            | This is handled automatically by Pyrogram — it pauses and retries. For very large batches (10+ files), consider splitting into two separate runs                                                              |
+| `generate_session.py` fails with "API ID invalid"        | Incorrect `TELEGRAM_API_ID` or `TELEGRAM_API_HASH` in `.env`                                                             | Verify both values at my.telegram.org → API development tools                                                                                                                                                 |
+| Bot does not respond to Telegram messages                | `TELEGRAM_BOT_TOKEN` is incorrect, or the bot is not running (the bot only runs during a workflow run, not persistently) | Trigger a workflow run first. The bot is only active while the GitHub Actions runner is executing                                                                                                             |
 
 ---
 
@@ -1121,16 +1135,16 @@ phases over the course of several months, each adding a critical capability.
 Understanding the order of development explains many of the design decisions
 documented above.
 
-| Phase | Name | What was built | Key decision |
-|---|---|---|---|
-| **A** | Foundation & Setup | OAuth2 device login, token exchange, manual `requests` download, basic Telegram `send_document` | Chose Azure CLI client ID to bypass tenant app registration blocks |
-| **B** | Fetcher & Scanner | Joined teams discovery, drive search, keyword matching, date filtering | Switched from sequential `requests` to `httpx.AsyncClient` after 7-minute scan times |
-| **C** | Upload Pipeline | Pyrogram MTProto `send_video`, `ffprobe` metadata extraction, thumbnail generation | Discovered the hard way that missing metadata causes 0:00 scrubber on some Telegram clients |
-| **D** | Token Rotation | PyNaCl sealed-box encryption, GitHub Secrets API write-back, auto-rotation loop | Solved the 90-day token expiry cliff that killed the bot during exam breaks |
-| **E** | Bot UI | Inline keyboard checklist, rename flow, select-all, date input parsing, live upload progress | Rewrote rename logic after discovering dangling state when users tapped ✏️ twice |
-| **F** | State Persistence | Pinned Telegram message as JSON key-value store, per-subject `last_run` timestamps | Replaced GitHub Actions Artifacts after hitting the 90-day retention limit |
-| **G** | Dashboard | AES-256-GCM encrypted Gist credentials, WebAuthn biometric unlock, live step tracker, GitHub Actions dispatch | Built the entire dashboard as a single `index.html` with zero backend |
-| **H** | Hardening & Polish | Concurrent connection cap tuning, word-boundary keyword matching, reauth-only mode, cold-start polling window, validate-secrets workflow step | Every item in this phase was a bug fix discovered in production |
+| Phase | Name               | What was built                                                                                                                                | Key decision                                                                                |
+| ----- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **A** | Foundation & Setup | OAuth2 device login, token exchange, manual `requests` download, basic Telegram `send_document`                                               | Chose Azure CLI client ID to bypass tenant app registration blocks                          |
+| **B** | Fetcher & Scanner  | Joined teams discovery, drive search, keyword matching, date filtering                                                                        | Switched from sequential `requests` to `httpx.AsyncClient` after 7-minute scan times        |
+| **C** | Upload Pipeline    | Pyrogram MTProto `send_video`, `ffprobe` metadata extraction, thumbnail generation                                                            | Discovered the hard way that missing metadata causes 0:00 scrubber on some Telegram clients |
+| **D** | Token Rotation     | PyNaCl sealed-box encryption, GitHub Secrets API write-back, auto-rotation loop                                                               | Solved the 90-day token expiry cliff that killed the bot during exam breaks                 |
+| **E** | Bot UI             | Inline keyboard checklist, rename flow, select-all, date input parsing, live upload progress                                                  | Rewrote rename logic after discovering dangling state when users tapped ✏️ twice            |
+| **F** | State Persistence  | Pinned Telegram message as JSON key-value store, per-subject `last_run` timestamps                                                            | Replaced GitHub Actions Artifacts after hitting the 90-day retention limit                  |
+| **G** | Dashboard          | AES-256-GCM encrypted Gist credentials, WebAuthn biometric unlock, live step tracker, GitHub Actions dispatch                                 | Built the entire dashboard as a single `index.html` with zero backend                       |
+| **H** | Hardening & Polish | Concurrent connection cap tuning, word-boundary keyword matching, reauth-only mode, cold-start polling window, validate-secrets workflow step | Every item in this phase was a bug fix discovered in production                             |
 
 Each phase was deployed to production before the next one began. This means the
 bot was usable from Phase A — everything after that was iterative improvement
@@ -1147,16 +1161,16 @@ a single reference.
 
 ### Credentials in flight
 
-| Credential | At rest | In transit | Lifetime |
-|---|---|---|---|
-| Microsoft refresh token | GitHub Encrypted Secrets (libsodium sealed box) | HTTPS to Microsoft OAuth2 endpoint, HTTPS to GitHub Secrets API | ~90 days (auto-rotated every run) |
-| Microsoft access token | Runner memory only (never written to disk) | HTTPS to Microsoft Graph API | ~87 minutes (single run) |
-| Telegram session string | GitHub Encrypted Secrets | Pyrogram MTProto (encrypted) | Until manually revoked |
-| Telegram bot token | GitHub Encrypted Secrets | HTTPS to Telegram Bot API (registration only; MTProto at runtime) | Until manually revoked |
-| Dashboard master password | User's memory (or password manager) | Never transmitted — used locally in browser for PBKDF2 key derivation | Indefinite |
-| Dashboard credentials blob | Private GitHub Gist (AES-256-GCM encrypted) | HTTPS fetch, decrypted in browser memory only | Until re-encrypted |
-| `GH_PAT` | GitHub Encrypted Secrets | HTTPS to GitHub API | Until manually revoked |
-| `GIST_READ_TOKEN` | Baked into `docs/index.html` source (read-only scope) | HTTPS to GitHub Gist API | Until manually revoked |
+| Credential                 | At rest                                               | In transit                                                            | Lifetime                          |
+| -------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------- |
+| Microsoft refresh token    | GitHub Encrypted Secrets (libsodium sealed box)       | HTTPS to Microsoft OAuth2 endpoint, HTTPS to GitHub Secrets API       | ~90 days (auto-rotated every run) |
+| Microsoft access token     | Runner memory only (never written to disk)            | HTTPS to Microsoft Graph API                                          | ~87 minutes (single run)          |
+| Telegram session string    | GitHub Encrypted Secrets                              | Pyrogram MTProto (encrypted)                                          | Until manually revoked            |
+| Telegram bot token         | GitHub Encrypted Secrets                              | HTTPS to Telegram Bot API (registration only; MTProto at runtime)     | Until manually revoked            |
+| Dashboard master password  | User's memory (or password manager)                   | Never transmitted — used locally in browser for PBKDF2 key derivation | Indefinite                        |
+| Dashboard credentials blob | Private GitHub Gist (AES-256-GCM encrypted)           | HTTPS fetch, decrypted in browser memory only                         | Until re-encrypted                |
+| `GH_PAT`                   | GitHub Encrypted Secrets                              | HTTPS to GitHub API                                                   | Until manually revoked            |
+| `GIST_READ_TOKEN`          | Baked into `docs/index.html` source (read-only scope) | HTTPS to GitHub Gist API                                              | Until manually revoked            |
 
 ### Threat model boundaries
 
@@ -1211,8 +1225,8 @@ instead of opening a public issue.
 
 ## 14. Conclusion
 
-TeamsLeech started as a single question: *can I avoid downloading a 1 GB lecture
-recording on a metered connection?* The answer was yes — and the solution turned
+TeamsLeech started as a single question: _can I avoid downloading a 1 GB lecture
+recording on a metered connection?_ The answer was yes — and the solution turned
 out to be architecturally interesting enough to document in full.
 
 The core insight — that a GitHub Actions runner sits on the same Azure network
@@ -1249,7 +1263,7 @@ TeamsLeech is that pipeline.
 
 ---
 
-*TeamsLeech Bot is open source and built for personal, non-commercial use.
-Source code: [github.com/AhmedTyson/TeamsLeech-Bot](https://github.com/AhmedTyson/TeamsLeech-Bot)*
+_TeamsLeech Bot is open source and built for personal, non-commercial use.
+Source code: [github.com/AhmedTyson/TeamsLeech-Bot](https://github.com/AhmedTyson/TeamsLeech-Bot)_
 
-*Written by Ahmed Tyson — April 2026*
+_Written by Ahmed Tyson — April 2026_
