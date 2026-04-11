@@ -112,6 +112,16 @@ def _validate_date_range(start: str, end: str) -> tuple[bool, str]:
 # ───────────────────────── config ─────────────────────────────────
 
 def _load_subjects(path: str = "subjects_config.json") -> list[dict]:
+    subjects_env = os.environ.get("SUBJECTS_JSON")
+    if subjects_env:
+        try:
+            data = json.loads(subjects_env)
+            subjects = data.get("subjects", [])
+            if subjects:
+                return subjects
+        except json.JSONDecodeError as exc:
+            log.error("Failed to parse SUBJECTS_JSON env var: %s", exc)
+
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data.get("subjects", [])

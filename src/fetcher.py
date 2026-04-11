@@ -58,11 +58,21 @@ def load_subjects(path: str = "subjects_config.json") -> list[dict]:
 
     Each subject has: name, short, keywords[]
     """
+    subjects_env = os.environ.get("SUBJECTS_JSON")
+    if subjects_env:
+        try:
+            data = json.loads(subjects_env)
+            subjects = data.get("subjects", [])
+            if subjects:
+                return subjects
+        except json.JSONDecodeError as exc:
+            raise FetcherError(f"Failed to parse SUBJECTS_JSON env var: {exc}")
+
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     subjects = data.get("subjects", [])
     if not subjects:
-        raise FetcherError(f"No subjects found in {path}")
+        raise FetcherError(f"No subjects found in {path} and SUBJECTS_JSON env var is empty")
     return subjects
 
 # ───────────────────────── date helpers ────────────────────────────

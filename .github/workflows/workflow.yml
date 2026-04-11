@@ -42,6 +42,7 @@ jobs:
       TELEGRAM_API_HASH:    ${{ secrets.TELEGRAM_API_HASH }}
       TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
+      SUBJECTS_JSON:        ${{ secrets.SUBJECTS_JSON }}
       # Point Python at the cached venv so sub-processes inherit it
       VIRTUAL_ENV:          ${{ github.workspace }}/.venv
 
