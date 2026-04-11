@@ -16,6 +16,7 @@ import logging
 from datetime import datetime, timezone
 
 from pyrogram import Client
+from pyrogram.types import Message
 
 log = logging.getLogger("state_manager")
 
