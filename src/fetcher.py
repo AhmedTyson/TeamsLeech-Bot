@@ -27,6 +27,7 @@ get_current_week_range()                  → tuple[str, str]
 
 import os
 import json
+import base64
 import logging
 import asyncio
 import re
@@ -292,8 +293,39 @@ async def fetch_recordings_async(
         async with httpx.AsyncClient() as client:
             try:
                 headers = {"Authorization": f"Bearer {access_token}"}
-                # If it's already a Graph API item URL
-                if "graph.microsoft.com" in url:
+                
+                # Case 1: Standard SharePoint Sharing Link
+                # (e.g. https://tenant.sharepoint.com/:v:/s/site/...)
+                if ".sharepoint.com" in url:
+                    # Convert to sharing token
+                    # 1. Base64 encode the URL
+                    # 2. Convert to unpadded base64url
+                    # 3. Prepend u!
+                    url_bytes = url.encode("utf-8")
+                    b64_str = base64.b64encode(url_bytes).decode("utf-8")
+                    sharing_token = "u!" + b64_str.rstrip("=").replace("/", "_").replace("+", "-")
+                    
+                    resolve_url = f"{GRAPH_BASE_URL}/shares/{sharing_token}/driveItem"
+                    resp = await client.get(resolve_url, headers=headers)
+                    if resp.status_code == 200:
+                        item = resp.json()
+                        drive_id = item.get("parentReference", {}).get("driveId", "unknown")
+                        return {"Direct Link": [{
+                            "name": item["name"],
+                            "size_mb": round(item.get("size", 0) / (1024*1024), 1),
+                            "created": item.get("createdDateTime", "")[:10],
+                            "time": item.get("createdDateTime", "")[11:16],
+                            "duration_ms": item.get("video", {}).get("duration", 0),
+                            "drive_id": drive_id,
+                            "item_id": item["id"],
+                            "team_name": "Direct Link",
+                            "subject_name": "Direct Link",
+                        }]}
+                    else:
+                        log.warning("Failed to resolve share link [%d]: %s", resp.status_code, resp.text)
+
+                # Case 2: Already a Graph API item URL
+                elif "graph.microsoft.com" in url:
                     resp = await client.get(url, headers=headers)
                     if resp.status_code == 200:
                         item = resp.json()
