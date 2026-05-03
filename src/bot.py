@@ -60,6 +60,12 @@ def _num_label(n: int) -> str:
     return str(n)
 
 
+def _is_valid_url(text: str) -> bool:
+    """Check if the text is a valid URL (Microsoft Graph or OneDrive/SharePoint)."""
+    pattern = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
+    return bool(re.match(pattern, text))
+
+
 def _clean_filename(name: str) -> str:
     return re.sub(r"-Meeting Recording", "", name)
 
@@ -618,8 +624,33 @@ def register_handlers(
             text_reply, keyboard = _build_recording_checklist(results, label)
             _store_results(chat_id, results, None, label)
             sent = await message.reply(text_reply, reply_markup=keyboard)
+            sent = await message.reply(text_reply, reply_markup=keyboard)
             if keyboard:
                 _checklist_msg_id[chat_id] = sent.id
+            return
+
+        # ── Direct Link Upload ───────────────────────────────────
+        if _is_valid_url(text):
+            await message.reply("🔗 **Link detected.** Fetching recording metadata...")
+            try:
+                # We need a dummy recording dict for the link. 
+                # The actual link processing should be handled by fetcher or uploader.
+                # Assuming the user wants to upload THIS link.
+                # Since the current architecture relies on drive_id/item_id, 
+                # we might need to resolve the link first or update uploader.
+                # For now, we will assume fetcher can handle a link to get metadata.
+                results = await on_fetch(subject_filter="__LINK__", date_start=text)
+                if not results or not any(results.values()):
+                     await message.reply("❌ Could not resolve recording from link.")
+                     return
+                
+                text_reply, keyboard = _build_recording_checklist(results, "Direct Link")
+                _store_results(chat_id, results, "__LINK__", "Direct Link")
+                sent = await message.reply(text_reply, reply_markup=keyboard)
+                if keyboard:
+                    _checklist_msg_id[chat_id] = sent.id
+            except Exception as e:
+                await message.reply(f"❌ Link error: {e}")
             return
 
         # ── Subject matching ─────────────────────────────────────
@@ -987,6 +1018,37 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
     if date_match:
         ds = date_match.group(1)
         return ds, None, _format_date_short(ds)
+
+    # Month matching (e.g. "April", "April 2026", "2026-04")
+    month_map = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
+    }
+    
+    month_match = re.match(r"^([a-z]+)(?:\s+(\d{4}))?$", text)
+    if month_match:
+        m_name, year_str = month_match.groups()
+        if m_name in month_map:
+            m_num = month_map[m_name]
+            year = int(year_str) if year_str else datetime.now().year
+            import calendar
+            _, last_day = calendar.monthrange(year, m_num)
+            ds = f"{year}:{m_num:02d}:01".replace(":", "-")
+            de = f"{year}:{m_num:02d}:{last_day:02d}".replace(":", "-")
+            label = f"{m_name.capitalize()} {year}"
+            return ds, de, label
+
+    year_month_match = re.match(r"^(\d{4})-(\d{2})$", text)
+    if year_month_match:
+        year, month = map(int, year_month_match.groups())
+        import calendar
+        _, last_day = calendar.monthrange(year, month)
+        ds = f"{year}:{month:02d}:01".replace(":", "-")
+        de = f"{year}:{month:02d}:{last_day:02d}".replace(":", "-")
+        label = datetime(year, month, 1).strftime("%B %Y")
+        return ds, de, label
 
     return None
 

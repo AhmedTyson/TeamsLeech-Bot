@@ -279,6 +279,41 @@ async def fetch_recordings_async(
     -------
     dict mapping subject name → list of recording dicts.
     """
+    if subject_filter == "__LINK__":
+        # Special case: direct link provided via date_start
+        url = date_start
+        log.info("Special Case: Resolving direct link: %s", url)
+        
+        # We need to extract drive_id and item_id from the link if it's a Graph URL
+        # Or use a search query if it's a sharing link. 
+        # For now, assume it's a Graph URL or we need to find it.
+        # This is a placeholder for actual link resolution logic.
+        # Let's assume we can at least try to get the item from the URL.
+        async with httpx.AsyncClient() as client:
+            try:
+                headers = {"Authorization": f"Bearer {access_token}"}
+                # If it's already a Graph API item URL
+                if "graph.microsoft.com" in url:
+                    resp = await client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        item = resp.json()
+                        drive_id = item.get("parentReference", {}).get("driveId", "unknown")
+                        # Return as a single result
+                        return {"Direct Link": [{
+                            "name": item["name"],
+                            "size_mb": round(item.get("size", 0) / (1024*1024), 1),
+                            "created": item.get("createdDateTime", "")[:10],
+                            "time": item.get("createdDateTime", "")[11:16],
+                            "duration_ms": item.get("video", {}).get("duration", 0),
+                            "drive_id": drive_id,
+                            "item_id": item["id"],
+                            "team_name": "Direct Link",
+                            "subject_name": "Direct Link",
+                        }]}
+            except Exception as e:
+                log.warning("Link resolution failed: %s", e)
+        return {"Direct Link": []}
+
     subjects = load_subjects(subjects_path)
 
     if subject_filter:
