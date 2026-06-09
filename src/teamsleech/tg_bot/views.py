@@ -5,6 +5,8 @@ from teamsleech.models.domain import Recording
 
 DIVIDER_THIN = "┄" * 20
 DIVIDER_THICK = "━" * 20
+TG_MAX_MSG_LENGTH = 4000
+TRUNCATE_LIMIT = 3900
 
 def num_label(n: int) -> str:
     return f"{n}."
@@ -110,10 +112,10 @@ def build_checklist_text(
     lines.append(_build_footer(total, n_video, n_doc))
 
     full_text = "\n".join(lines)
-    if len(full_text) <= 4000:
+    if len(full_text) <= TG_MAX_MSG_LENGTH:
         return full_text
-    cutoff = full_text.rfind("\n", 0, 3900)
+    cutoff = full_text.rfind("\n", 0, TRUNCATE_LIMIT)
     return (
-        full_text[: cutoff if cutoff != -1 else 3900]
+        full_text[: cutoff if cutoff != -1 else TRUNCATE_LIMIT]
         + "\n\n_...list truncated due to Telegram limits._"
     )
