@@ -89,9 +89,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          # Cache key = Python version + hash of requirements.txt
-          # Any change to requirements.txt busts the cache automatically.
-          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('requirements.txt') }}
+          # Cache key = Python version + hash of pyproject.toml
+          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('pyproject.toml') }}
 
       # ── 4. Install dependencies (only on cache miss) ──────────
       - name: Install dependencies
@@ -99,7 +98,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install .
 
 
       # ── 6. Validate secrets before running ────────────────────
@@ -123,6 +122,6 @@ jobs:
           if [ "${{ github.event_name }}" == "schedule" ]; then
             export AUTO_CHECK=1
           fi
-          .venv/bin/python src/main.py
+          .venv/bin/python src/teamsleech/main.py
         timeout-minutes: 25
 
