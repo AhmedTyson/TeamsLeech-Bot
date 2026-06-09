@@ -189,7 +189,7 @@ class TransferService:
             else:
                 sent_msg = await self._tg_send_video(
                     self.chat_id, file_path, save_filename, caption,
-                    duration, width, height, thumb, tg_progress_cb,
+                    duration, width, height, thumb_path, tg_progress_cb,
                 )
         except BadRequest:
             if is_video:
@@ -197,7 +197,7 @@ class TransferService:
                     "send_video rejected — falling back to send_document"
                 )
                 sent_msg = await self._tg_send_document(
-                    self.chat_id, file_path, save_filename, caption, thumb, tg_progress_cb,
+                    self.chat_id, file_path, save_filename, caption, thumb_path, tg_progress_cb,
                 )
             else:
                 raise

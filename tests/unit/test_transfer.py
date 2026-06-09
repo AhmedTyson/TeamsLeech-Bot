@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, patch, MagicMock, call
 
+import httpx
 import pytest
 
 from teamsleech.services.transfer import (
