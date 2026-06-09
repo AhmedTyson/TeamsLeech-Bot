@@ -50,3 +50,4 @@ docs/*.md
 docs/*.pdf
 !docs/TeamsLeech_Guide.md
 docs/test2.html
+.serena/
