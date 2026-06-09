@@ -9,7 +9,7 @@ from typing import Callable
 
 import httpx
 from pyrogram import Client
-from pyrogram.errors import BadRequest
+from pyrogram.errors import BadRequest, RPCError
 from pyrogram.types import Message
 
 from teamsleech.core.constants import GRAPH_BASE_URL, CHUNK_SIZE_BYTES
@@ -182,7 +182,7 @@ class TransferService:
                 )
             else:
                 raise
-        except Exception as exc:
+        except RPCError as exc:
             raise TelegramUploadError(
                 f"Upload failed: {exc}"
             ) from exc
@@ -260,7 +260,7 @@ class TransferService:
                             "start_time_file": start_time_file,
                         }
                     )
-                except Exception as e:
+                except DownloadError as e:
                     log.error(
                         "Download failed for %s: %s", rec.name, e
                     )
@@ -392,7 +392,7 @@ class TransferService:
                             "error": None,
                         }
                     )
-                except Exception as e:
+                except (TelegramUploadError, OSError) as e:
                     if progress_cb:
                         await progress_cb(
                             "error",
