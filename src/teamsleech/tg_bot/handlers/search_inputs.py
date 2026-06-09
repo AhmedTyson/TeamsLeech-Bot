@@ -1,17 +1,21 @@
 import json
 import os
+
 from pyrogram import Client, filters
 from pyrogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
 )
 
-from teamsleech.tg_bot.filters import owner_only
-from teamsleech.services.discovery import DiscoveryService
-from teamsleech.services.state import StateManager
-from teamsleech.services.auth import rotate_github_secret
-from teamsleech.services.scanner import ScannerService
-from teamsleech.models.domain import SubjectConfig, Team
 from teamsleech.core.config import settings
+from teamsleech.models.domain import SubjectConfig, Team
+from teamsleech.services.auth import rotate_github_secret
+from teamsleech.services.discovery import DiscoveryService
+from teamsleech.services.scanner import ScannerService
+from teamsleech.services.state import StateManager
+from teamsleech.tg_bot.filters import owner_only
 
 def register_search_inputs(
     app: Client, discovery: DiscoveryService, state: StateManager

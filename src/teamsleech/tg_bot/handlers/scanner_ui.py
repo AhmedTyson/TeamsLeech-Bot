@@ -1,19 +1,25 @@
-import re
 import calendar
-from datetime import datetime, timezone, date as date_type, timedelta
-from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+import re
+from datetime import UTC, date as date_type, datetime, timedelta
 
-from teamsleech.tg_bot.filters import owner_only
-from teamsleech.tg_bot.views import build_checklist_text, format_date_short
-from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from pyrogram import Client, filters
+from pyrogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
+
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
+from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from teamsleech.tg_bot.views import build_checklist_text, format_date_short
 
 MAX_DATE_RANGE_DAYS = 30
 
 def _get_current_week_range() -> tuple[str, str]:
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
     return monday.isoformat(), sunday.isoformat()
@@ -34,7 +40,7 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
     text = text.strip().lower()
 
     if text == "today":
-        today_str = datetime.now(timezone.utc).date().isoformat()
+        today_str = datetime.now(UTC).date().isoformat()
         return today_str, None, f"Today ({format_date_short(today_str)})"
 
     if text == "this week":
@@ -60,7 +66,7 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
     month_map = {
         "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
         "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+        "january": 1, "february": 2, "march": 3, "april": 4,
         "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
         "november": 11, "december": 12,
     }

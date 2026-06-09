@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pyrogram import Client
 from pyrogram.types import Message
 from teamsleech.models.domain import UserSession
@@ -106,14 +106,14 @@ class StateManager:
         safe_name = subject_name.replace(" ", "_").lower()
         raw = self._subject_cache.get(safe_name)
         if not raw:
-            return datetime.min.replace(tzinfo=timezone.utc)
+            return datetime.min.replace(tzinfo=UTC)
 
         try:
             if isinstance(raw, dict):
                 return datetime.fromisoformat(raw.get("last_run", ""))
             return datetime.fromisoformat(raw)
         except (ValueError, TypeError):
-            return datetime.min.replace(tzinfo=timezone.utc)
+            return datetime.min.replace(tzinfo=UTC)
 
     def get_last_lecture(self, subject_name: str) -> int:
         safe_name = subject_name.replace(" ", "_").lower()
@@ -129,7 +129,7 @@ class StateManager:
             await self.initialize()
 
         safe_name = subject_name.replace(" ", "_").lower()
-        ts = timestamp or datetime.now(timezone.utc)
+        ts = timestamp or datetime.now(UTC)
 
         raw = self._subject_cache.get(safe_name)
         if isinstance(raw, dict):
@@ -159,7 +159,7 @@ class StateManager:
             last_run = (
                 raw
                 if isinstance(raw, str)
-                else datetime.now(timezone.utc).isoformat()
+                else datetime.now(UTC).isoformat()
             )
             self._subject_cache[safe_name] = {
                 "last_run": last_run,

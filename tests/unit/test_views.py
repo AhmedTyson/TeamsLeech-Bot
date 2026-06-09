@@ -1,4 +1,4 @@
-from teamsleech.tg_bot.views import format_duration, format_date_short, clean_filename
+from teamsleech.tg_bot.views import clean_filename, format_date_short, format_duration
 
 def test_clean_filename():
     assert clean_filename("Lecture -Meeting Recording") == "Lecture"

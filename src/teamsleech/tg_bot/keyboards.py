@@ -1,10 +1,11 @@
 from pyrogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
     KeyboardButton,
+    ReplyKeyboardMarkup,
 )
-from teamsleech.models.domain import SubjectConfig, Recording
+
+from teamsleech.models.domain import Recording, SubjectConfig
 
 REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [

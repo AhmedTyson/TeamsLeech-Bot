@@ -1,5 +1,6 @@
-from datetime import datetime
 import re
+from datetime import datetime
+
 from teamsleech.models.domain import Recording
 
 DIVIDER_THIN = "┄" * 20

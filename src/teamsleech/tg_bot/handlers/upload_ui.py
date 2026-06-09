@@ -1,12 +1,17 @@
 from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
-from teamsleech.tg_bot.filters import owner_only
-from teamsleech.tg_bot.views import build_checklist_text
-from teamsleech.tg_bot.keyboards import build_checklist_keyboard
-from teamsleech.services.transfer import TransferService
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
+from teamsleech.services.transfer import TransferService
+from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from teamsleech.tg_bot.views import build_checklist_text
 
 def register_upload_ui(
     app: Client, transfer: TransferService, state: StateManager, scanner: ScannerService
@@ -192,7 +197,7 @@ def register_upload_ui(
         )
 
         progress_msg = await cb.message.reply(
-            "📊 Progress: 0 / {} files".format(len(selected_recs))
+            f"📊 Progress: 0 / {len(selected_recs)} files"
         )
 
         async def progress_cb(action: str, data: dict):

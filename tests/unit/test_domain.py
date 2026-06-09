@@ -1,6 +1,7 @@
-import pytest
 from pydantic import ValidationError
-from teamsleech.models.domain import SubjectConfig, Recording, Team, UserSession
+
+import pytest
+from teamsleech.models.domain import Recording, SubjectConfig, Team, UserSession
 
 def test_subject_config_defaults():
     s = SubjectConfig(name="Math", short="MTH", keywords=["math", "algebra"])
