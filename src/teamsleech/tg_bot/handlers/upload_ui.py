@@ -23,12 +23,8 @@ def register_upload_ui(
         if not session.pending_recordings:
             return
 
-        results = {}
-        for rec in session.pending_recordings:
-            results.setdefault(rec.subject_name, []).append(rec)
-
         text = build_checklist_text(
-            results, session.scan_label, session.rename_overrides
+            session.grouped_recordings, session.scan_label, session.rename_overrides
         )
         keyboard = build_checklist_keyboard(
             session.pending_recordings,

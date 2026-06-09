@@ -53,7 +53,8 @@ def build_checklist_text(
     overrides = rename_overrides or {}
     is_multi = len(results) > 1
 
-    n_video = sum(1 for recs in results.values() for r in recs if r.is_video)
+    flat = [r for recs in results.values() for r in recs]
+    n_video = sum(1 for r in flat if r.is_video)
     n_doc = total - n_video
 
     lines = ["📡 **Scan Results**"]

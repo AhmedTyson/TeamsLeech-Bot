@@ -46,3 +46,22 @@ class UserSession(BaseModel):
     pending_recordings: list[Recording] = Field(default_factory=list)
     selected_indices: set[int] = Field(default_factory=set)
     rename_overrides: dict[int, str] = Field(default_factory=dict)
+
+    @property
+    def video_count(self) -> int:
+        return sum(1 for r in self.pending_recordings if r.is_video)
+
+    @property
+    def doc_count(self) -> int:
+        return len(self.pending_recordings) - self.video_count
+
+    @property
+    def grouped_recordings(self) -> dict[str, list[Recording]]:
+        results: dict[str, list[Recording]] = {}
+        for rec in self.pending_recordings:
+            results.setdefault(rec.subject_name, []).append(rec)
+        return results
+
+    @property
+    def all_selected(self) -> bool:
+        return bool(self.pending_recordings) and len(self.selected_indices) == len(self.pending_recordings)
