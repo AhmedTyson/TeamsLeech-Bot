@@ -302,7 +302,12 @@ class TransferService:
                 last_progress_time = asyncio.get_event_loop().time()
                 last_progress_bytes = 0
 
-                async def _tg_progress(current: int, total: int):
+                async def _tg_progress(
+                    current: int,
+                    total: int,
+                    _i=i,
+                    _rec=rec,
+                ):
                     if total == 0:
                         return
                     pct = int((current / total) * 100)
@@ -324,8 +329,8 @@ class TransferService:
                         await progress_cb(
                             "file_progress",
                             {
-                                "index": i,
-                                "name": rec.name,
+                                "index": _i,
+                                "name": _rec.name,
                                 "percent": pct,
                                 "speed_mbps": speed_mbps,
                             },

@@ -210,15 +210,22 @@ class ScannerService:
 
                 sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 
-                async def bounded_process(team: Team):
+                async def bounded_process(
+                    team: Team,
+                    _subject=subject,
+                    _last_run=last_run,
+                    _date_start=date_start,
+                    _date_end=date_end,
+                    _seen_ids=seen_ids,
+                ):
                     async with sem:
                         return await self._process_team(
                             team,
-                            subject,
-                            last_run,
-                            date_start,
-                            date_end,
-                            seen_ids,
+                            _subject,
+                            _last_run,
+                            _date_start,
+                            _date_end,
+                            _seen_ids,
                         )
 
                 tasks = [bounded_process(t) for t in matched_teams]
