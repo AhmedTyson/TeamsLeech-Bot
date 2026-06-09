@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from pydantic import BaseModel, Field
 
 class Recording(BaseModel):
@@ -7,7 +5,7 @@ class Recording(BaseModel):
     size_mb: float
     created: str
     time: str = ""
-    duration_ms: int | float = 0
+    duration_ms: int = 0
     drive_id: str
     item_id: str
     team_name: str

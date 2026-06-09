@@ -18,6 +18,8 @@ from teamsleech.services.state import StateManager
 
 log = logging.getLogger("transfer")
 
+THUMBNAIL_TIMESTAMP = "00:00:02"
+
 class TransferError(Exception):
     pass
 
@@ -73,7 +75,7 @@ class TransferService:
             subprocess.run(
                 [
                     "ffmpeg", "-y", "-i", video_path,
-                    "-ss", "00:00:02", "-vframes", "1",
+                    "-ss", THUMBNAIL_TIMESTAMP, "-vframes", "1",
                     "-q:v", "2", thumb_path,
                 ],
                 capture_output=True,

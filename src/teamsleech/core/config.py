@@ -9,6 +9,7 @@ class AppConfig(BaseSettings):
     """
     # Microsoft / Auth
     teams_refresh_token: str = Field(..., alias="TEAMS_REFRESH_TOKEN")
+    teams_client_id: str = Field("04b07795-8ddb-461a-bbee-02f9e1bf7b46", alias="TEAMS_CLIENT_ID")
     
     # Telegram Bot
     telegram_api_id: int = Field(..., alias="TELEGRAM_API_ID")
