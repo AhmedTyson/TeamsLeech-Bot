@@ -79,7 +79,9 @@ jobs:
 
       # ── 2b. Install ffmpeg (for ffprobe video metadata) ────────
       - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
       # ── 3. Restore cached .venv ───────────────────────────────
       - name: Restore cached virtualenv
