@@ -47,7 +47,6 @@ jobs:
       TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
       SUBJECTS_JSON:        ${{ secrets.SUBJECTS_JSON }}
-      VIRTUAL_ENV:          ${{ github.workspace }}/.venv
       SUBJECT_NAME:         ${{ github.event.inputs.subject || '' }}
 
     steps:
@@ -64,32 +63,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Add strict venv to PATH
-        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+        run: uv python install 3.11
 
       - name: Install ffmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Restore cached virtualenv
-        id: venv-cache
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('pyproject.toml') }}
-
       - name: Install dependencies
-        if: steps.venv-cache.outputs.cache-hit != 'true'
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install .
+        run: uv sync --no-dev
 
       - name: Validate secrets present
         run: |
@@ -114,7 +103,7 @@ jobs:
           if [ -n "$SUBJECT_NAME" ]; then
             echo "Running single-subject mode for: $SUBJECT_NAME"
           fi
-          .venv/bin/python src/teamsleech/main.py
+          uv run python src/teamsleech/main.py
         timeout-minutes: 55
 
       - name: Summarize Result
