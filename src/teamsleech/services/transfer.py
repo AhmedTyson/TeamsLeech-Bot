@@ -318,6 +318,79 @@ class TransferService:
                     pass
                 queue.task_done()
 
+    async def _producer_loop(
+        self,
+        recordings: list[Recording],
+        queue: asyncio.Queue[dict | None],
+        results: list[dict],
+        progress_cb: Callable | None,
+    ) -> None:
+        for i, rec in enumerate(recordings):
+            start_time_file = asyncio.get_event_loop().time()
+            log.info("Downloading: %s", rec.name)
+
+            ext = (
+                ".mp4"
+                if rec.is_video
+                else (
+                    ".pdf"
+                    if ".pdf" in rec.name.lower()
+                    else ""
+                )
+            )
+            if not ext and "." in rec.name:
+                ext = "." + rec.name.split(".")[-1]
+
+            tmp_file = tempfile.NamedTemporaryFile(
+                suffix=ext, prefix="teamsleech_", delete=False
+            )
+            tmp_path = tmp_file.name
+            tmp_file.close()
+
+            try:
+                if progress_cb:
+                    await progress_cb(
+                        "file_progress",
+                        {
+                            "index": i,
+                            "name": rec.name,
+                            "percent": 0,
+                            "speed_mbps": 0.0,
+                        },
+                    )
+
+                file_size = await self._download_recording(rec, tmp_path)
+
+                await queue.put(
+                    {
+                        "index": i,
+                        "rec": rec,
+                        "tmp_path": tmp_path,
+                        "file_size": file_size,
+                        "start_time_file": start_time_file,
+                    }
+                )
+            except DownloadError as e:
+                log.error("Download failed for %s: %s", rec.name, e)
+                if progress_cb:
+                    await progress_cb(
+                        "error",
+                        {
+                            "index": i,
+                            "name": rec.name,
+                            "error": str(e),
+                        },
+                    )
+                results.append(
+                    {"name": rec.name, "success": False, "error": str(e)}
+                )
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+        await queue.put(None)
+
     async def upload_recordings(
         self,
         recordings: list[Recording],
@@ -335,83 +408,8 @@ class TransferService:
 
         queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=1)
 
-        async def _producer():
-            for i, rec in enumerate(recordings):
-                start_time_file = asyncio.get_event_loop().time()
-                log.info("Downloading: %s", rec.name)
-
-                ext = (
-                    ".mp4"
-                    if rec.is_video
-                    else (
-                        ".pdf"
-                        if ".pdf" in rec.name.lower()
-                        else ""
-                    )
-                )
-                if not ext and "." in rec.name:
-                    ext = "." + rec.name.split(".")[-1]
-
-                tmp_file = tempfile.NamedTemporaryFile(
-                    suffix=ext, prefix="teamsleech_", delete=False
-                )
-                tmp_path = tmp_file.name
-                tmp_file.close()
-
-                try:
-                    if progress_cb:
-                        await progress_cb(
-                            "file_progress",
-                            {
-                                "index": i,
-                                "name": rec.name,
-                                "percent": 0,
-                                "speed_mbps": 0.0,
-                            },
-                        )
-
-                    file_size = await self._download_recording(
-                        rec, tmp_path
-                    )
-
-                    await queue.put(
-                        {
-                            "index": i,
-                            "rec": rec,
-                            "tmp_path": tmp_path,
-                            "file_size": file_size,
-                            "start_time_file": start_time_file,
-                        }
-                    )
-                except DownloadError as e:
-                    log.error(
-                        "Download failed for %s: %s", rec.name, e
-                    )
-                    if progress_cb:
-                        await progress_cb(
-                            "error",
-                            {
-                                "index": i,
-                                "name": rec.name,
-                                "error": str(e),
-                            },
-                        )
-                    results.append(
-                        {
-                            "name": rec.name,
-                            "success": False,
-                            "error": str(e),
-                        }
-                    )
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-
-            await queue.put(None)
-
         await asyncio.gather(
-            asyncio.create_task(_producer()),
+            asyncio.create_task(self._producer_loop(recordings, queue, results, progress_cb)),
             asyncio.create_task(self._consumer_loop(queue, results, progress_cb)),
         )
 
