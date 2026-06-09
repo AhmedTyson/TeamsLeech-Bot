@@ -31,7 +31,9 @@ def format_duration(duration_ms: int | float | str) -> str:
         h, m = divmod(m, 60)
         if h > 0:
             return f"{h}h {m}m"
-        return f"{m}m {s:02d}s"
+        if m > 0:
+            return f"{m}m {s:02d}s"
+        return f"{s}s"
     except (ValueError, TypeError):
         return ""
 

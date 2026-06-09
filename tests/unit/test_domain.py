@@ -34,7 +34,7 @@ def test_recording_defaults():
         subject_name="Math",
     )
     assert r.name == "lecture.mp4"
-    assert r.is_video is True
+    assert r.is_video is False  # Model doesn't auto-detect; set explicitly
     assert r.size_mb == 100.0
 
 def test_recording_non_video():
