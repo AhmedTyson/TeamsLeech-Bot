@@ -29,7 +29,7 @@ jobs:
           pip install ".[dev]"
           
       - name: Lint with Ruff
-        run: ruff check .
+        run: ruff check --fix . && ruff check .
         
       - name: Format Check with Ruff
         run: ruff format --check .
