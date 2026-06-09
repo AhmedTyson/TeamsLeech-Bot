@@ -29,6 +29,7 @@ dev = [
     "respx>=0.21.0",
     "ruff>=0.3.0",
     "mypy>=1.9.0",
+    "python-semantic-release>=9.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -46,3 +47,11 @@ ignore = []
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
+
+[tool.semantic_release]
+version_variable = ["pyproject.toml:version"]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+upload_to_pypi = false
+upload_to_release = true
+commit_message = "chore(release): {version} [skip ci]"

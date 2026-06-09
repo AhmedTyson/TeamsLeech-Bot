@@ -175,30 +175,45 @@ class ScannerService:
         results: Dict[str, List[Recording]] = {}
         
         # We need Team models. We can fetch them via graph directly.
-        from services.discovery import DiscoveryService
+        from teamsleech.services.discovery import DiscoveryService
         discovery = DiscoveryService(self.graph)
         all_teams = await discovery.get_all_joined_teams()
 
         for subject in subjects:
-            last_run = self.state.get_last_run(subject.name)
-            matched_teams = self._match_teams(all_teams, subject)
-            seen_ids: Set[str] = set()
+            try:
+                last_run = self.state.get_last_run(subject.name)
+                matched_teams = self._match_teams(all_teams, subject)
+                seen_ids: Set[str] = set()
 
-            log.info("Scanning '%s': %d teams. Since: %s", subject.name, len(matched_teams), last_run)
+                log.info("Scanning '%s': %d teams. Since: %s", subject.name, len(matched_teams), last_run)
 
-            # Limit concurrency to avoid hitting Graph API rate limits too hard
-            sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
-            
-            async def bounded_process(team: Team):
-                async with sem:
-                    return await self._process_team(team, subject, last_run, date_start, date_end, seen_ids)
+                # Limit concurrency to avoid hitting Graph API rate limits too hard
+                sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
+                
+                async def bounded_process(team: Team):
+                    async with sem:
+                        return await self._process_team(team, subject, last_run, date_start, date_end, seen_ids)
 
-            tasks = [bounded_process(t) for t in matched_teams]
-            team_results = await asyncio.gather(*tasks)
+                tasks = [bounded_process(t) for t in matched_teams]
+                team_results = await asyncio.gather(*tasks)
 
-            # Flatten and sort
-            recordings = [r for batch in team_results for r in batch]
-            recordings.sort(key=lambda r: r.created, reverse=True)
-            results[subject.name] = recordings
+                # Flatten and sort
+                recordings = [r for batch in team_results for r in batch]
+                recordings.sort(key=lambda r: r.created, reverse=True)
+                results[subject.name] = recordings
+
+                # Checkpoint: save last_run after successful scan (before upload)
+                # Prevents re-scanning this subject if upload phase fails
+                if recordings:
+                    latest = max(r.created for r in recordings)
+                    try:
+                        timestamp = datetime.fromisoformat(f"{latest}T23:59:59+00:00")
+                        await self.state.save_last_run(subject.name, timestamp)
+                    except Exception:
+                        pass
+                log.info("'%s' scan complete: %d recordings found.", subject.name, len(recordings))
+            except Exception as e:
+                log.error("Scan failed for subject '%s': %s", subject.name, e)
+                results[subject.name] = []
 
         return results

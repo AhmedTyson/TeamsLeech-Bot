@@ -1,40 +1,42 @@
 # TeamsLeech Bot — GitHub Actions Workflow
 #
-# Trigger:  Manual only (workflow_dispatch from GitHub UI)
+# Trigger:  Manual (workflow_dispatch) or daily schedule at 08:00 UTC
 # Runner:   ubuntu-latest (free tier)
-# Purpose:  Run main.py → authenticate → fetch → bot → upload
+# Purpose:  Run main.py → authenticate → scan → upload
 #
-# Caching strategy:
-#   We cache the entire .venv/ directory (not just pip wheels).
-#   cache: "pip" in setup-python only caches downloaded wheels — pip
-#   still has to resolve, unzip, and compile on every run.
-#   Caching .venv/ skips all of that. Cache key is requirements.txt hash.
+# State persistence via Telegram pinned message (not GitHub artifacts).
+# Per-subject checkpointing: if a subject finishes scanning, its state
+# is saved immediately so a timeout mid-upload does not force a re-scan.
 #
-# State persistence:
-#   The .state/ directory (per-subject last_run timestamps) is saved
-#   and restored via GitHub Actions artifacts between runs.
+# Single-subject processing: set SUBJECT_NAME input to process only
+# one subject (case-insensitive match on name or short code).
 
 name: TeamsLeech Bot
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Run every day at 08:00 UTC
+    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
       mode:
-        description: "Run mode (normal = full pipeline, reauth = bot only)"
+        description: "Run mode"
         required: false
         default: "normal"
         type: choice
         options:
           - normal
           - reauth
+      subject:
+        description: "Subject name (optional — process single subject)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   run:
     name: Check & Upload Recordings
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     env:
       TEAMS_REFRESH_TOKEN:  ${{ secrets.TEAMS_REFRESH_TOKEN }}
@@ -45,54 +47,43 @@ jobs:
       TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
       SUBJECTS_JSON:        ${{ secrets.SUBJECTS_JSON }}
-      # Point Python at the cached venv so sub-processes inherit it
       VIRTUAL_ENV:          ${{ github.workspace }}/.venv
+      SUBJECT_NAME:         ${{ github.event.inputs.subject || '' }}
 
     steps:
-      # ── 0. Silence Check (Before Sept 10) ─────────────────────
       - name: Check Date (Silent before Sept 10)
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             CURRENT_DATE=$(date +%Y%m%d)
-            # Assuming year 2026
             if [ "$CURRENT_DATE" -lt "20260910" ]; then
               echo "Today is before Sept 10. Staying silent."
               exit 0
             fi
           fi
 
-      # ── 1. Checkout code ──────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Add strict venv to PATH
         run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
 
-      # ── 2. Set up Python (no pip cache — we cache the whole venv) ──
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          # Do NOT use cache: "pip" here.
-          # That only caches downloaded wheels, not the installed venv.
-          # We get true skip-install via the venv cache below.
 
-      # ── 2b. Install ffmpeg (for ffprobe video metadata) ────────
       - name: Install ffmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      # ── 3. Restore cached .venv ───────────────────────────────
       - name: Restore cached virtualenv
         id: venv-cache
         uses: actions/cache@v4
         with:
           path: .venv
-          # Cache key = Python version + hash of pyproject.toml
           key: venv-${{ runner.os }}-py3.11-${{ hashFiles('pyproject.toml') }}
 
-      # ── 4. Install dependencies (only on cache miss) ──────────
       - name: Install dependencies
         if: steps.venv-cache.outputs.cache-hit != 'true'
         run: |
@@ -100,10 +91,6 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install .
 
-
-      # ── 6. Validate secrets before running ────────────────────
-      # Catches an expired TEAMS_REFRESH_TOKEN early so the dashboard
-      # can show "Token Expired" instead of a generic failure.
       - name: Validate secrets present
         run: |
           if [ -z "$TEAMS_REFRESH_TOKEN" ]; then
@@ -111,17 +98,30 @@ jobs:
             exit 1
           fi
           if [ -z "$GH_PAT" ]; then
-            echo "::warning title=Secret Warning::GH_PAT is not set — token auto-rotation will be disabled."
+            echo "::warning title=Secret Warning::GH_PAT is not set — token auto-rotation disabled."
+          fi
+          if [ -n "$SUBJECT_NAME" ]; then
+            echo "::notice title=Single Subject::Processing only: $SUBJECT_NAME"
           fi
           echo "Secret presence check passed."
 
-      # ── 7. Run the bot ────────────────────────────────────────
       - name: Run TeamsLeech Bot
         id: run-bot
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             export AUTO_CHECK=1
           fi
+          if [ -n "$SUBJECT_NAME" ]; then
+            echo "Running single-subject mode for: $SUBJECT_NAME"
+          fi
           .venv/bin/python src/teamsleech/main.py
-        timeout-minutes: 25
+        timeout-minutes: 55
 
+      - name: Summarize Result
+        if: always()
+        run: |
+          if [ "${{ steps.run-bot.outcome }}" == "success" ]; then
+            echo "::notice::Bot finished successfully."
+          else
+            echo "::warning::Bot finished with outcome: ${{ steps.run-bot.outcome }}"
+          fi

@@ -73,21 +73,26 @@ def main():
         # 5. Scheduled Auto-Check Logic (Silent Mode)
         if settings.auto_check == "1":
             log.info("Running automated scheduled check...")
+
+            subject_filter = os.getenv("SUBJECT_NAME") or None
+            if subject_filter:
+                log.info("Filtering to single subject: %s", subject_filter)
+
             try:
-                results = await scanner_service.scan_recordings(None, None, None)
+                results = await scanner_service.scan_recordings(subject_filter, None, None)
                 total = sum(len(recs) for recs in results.values())
                 if total > 0:
-                    from tg_bot.views import build_checklist_text
-                    from tg_bot.keyboards import build_checklist_keyboard
-                    
+                    from teamsleech.tg_bot.views import build_checklist_text
+                    from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+
                     label = "Since Last Run"
                     session = state_manager.get_session(settings.telegram_chat_id)
                     session.pending_recordings = [r for recs in results.values() for r in recs]
                     session.scan_label = label
-                    
+
                     text = build_checklist_text(results, label)
                     keyboard = build_checklist_keyboard(session.pending_recordings, session.selected_indices)
-                    
+
                     await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
                     log.info("Auto-check found %d recordings, notification sent.", total)
                 else:
