@@ -45,7 +45,7 @@ def build_checklist_keyboard(
         if i >= 45: # Telegram strict hard limit of 100 inline buttons per message
             break
 
-        mark = "☑" if i in selections else "☐"
+        mark = "✅" if i in selections else "⬛️"
         current_row.append(InlineKeyboardButton(text=f"{mark} {i + 1}", callback_data=f"sel:{i}"))
         current_row.append(InlineKeyboardButton(text="✏️", callback_data=f"ren:{i}"))
         
@@ -57,19 +57,22 @@ def build_checklist_keyboard(
         buttons.append(current_row)
 
     if not selections:
-        upload_label = "📤 Upload  —  tap a recording to select"
+        upload_label = "📤 Upload (Select items first)"
     else:
         total_mb = sum(flat[i].size_mb for i in selections if i < len(flat))
-        upload_label = f"📤 Upload Selected ({len(selections)}) — {total_mb:.0f} MB"
+        upload_label = f"🚀 Upload Selected ({len(selections)} files, {total_mb:.0f} MB)"
 
     buttons.append([InlineKeyboardButton(text=upload_label, callback_data="upload:confirm")])
 
     all_selected = len(selections) == len(flat) and len(flat) > 0
-    select_label = "☑ Deselect All" if all_selected else "✅ Select All"
-    buttons.append([InlineKeyboardButton(text=select_label, callback_data="sel:all")])
+    select_label = "➖ Deselect All" if all_selected else "➕ Select All"
+    
+    buttons.append([
+        InlineKeyboardButton(text=select_label, callback_data="sel:all"),
+        InlineKeyboardButton(text="📅 Change Date", callback_data="date:change")
+    ])
 
     buttons.append([
-        InlineKeyboardButton(text="📅 Change Date", callback_data="date:change"),
         InlineKeyboardButton(text="❌ Cancel", callback_data="cancel:check"),
     ])
 

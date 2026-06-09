@@ -12,16 +12,17 @@ def register_commands(app: Client, scanner: ScannerService, state: StateManager,
     @app.on_message(filters.command("start") & filters.private & owner_only)
     async def handle_start(client: Client, message: Message):
         await message.reply(
-            "📡 **TeamsLeech Bot**\n\n"
-            "Available commands:\n"
-            "/check   — 🔍 Scan for new lecture recordings\n"
-            "/subjects — 📚 Manage your courses\n\n"
-            "💡 **Quick access:**\n"
+            "🎓 **𝗧𝗲𝗮𝗺𝘀𝗟𝗲𝗲𝗰𝗵 𝗕𝗼𝘁**\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "**𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀:**\n"
+            "🔍 `/check`   — Scan for new files & recordings\n"
+            "📚 `/subjects` — Manage your courses\n\n"
+            "💡 **𝗤𝘂𝗶𝗰𝗸 𝗔𝗰𝗰𝗲𝘀𝘀:**\n"
             "• Tap a subject → scans **this week** automatically\n"
             "• Send a date: `2026-04-01`\n"
             "• Send a range: `2026-04-01 to 2026-04-07`\n"
             "• Type `today` or `this week`\n\n"
-            "Tap /check to get started.",
+            "_Tap_ 🔍 **Check Recordings** _below to get started!_",
             reply_markup=REPLY_KEYBOARD,
         )
 
@@ -42,20 +43,20 @@ def register_commands(app: Client, scanner: ScannerService, state: StateManager,
         session.is_searching_teams = True
         
         subjects = scanner.load_subjects()
-        msg_text = "📚 **Current Subjects Configured:**\n"
+        msg_text = "⚙️ **𝗖𝗼𝘂𝗿𝘀𝗲 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱**\n━━━━━━━━━━━━━━━━━━━━━━\nHere are the subjects you are currently tracking:\n\n"
         
         buttons = []
         for i, s in enumerate(subjects):
-            doc = s.doctor or "No doctor set"
-            msg_text += f"• **{s.name}** (Short: `{s.short}`, Doc: `{doc}`)\n"
+            doc = s.doctor or "None"
+            msg_text += f"📚 **{s.name}**\n   🏷 Short: `{s.short}`\n   👨‍🏫 Doctor: `{doc}`\n\n"
             
-            # Add a delete button for this subject
             btn_text = f"❌ Delete {s.short or s.name}"
             buttons.append([InlineKeyboardButton(btn_text, callback_data=f"del_subj:{i}")])
             
-        msg_text += "\n🔍 **Find New Courses**\n"
+        msg_text += "┄" * 20 + "\n\n"
+        msg_text += "🔍 **𝗔𝗱𝗱 𝗡𝗲𝘄 𝗖𝗼𝘂𝗿𝘀𝗲**\n"
         msg_text += "Send a keyword (at least 3 characters) to search your joined Teams.\n"
-        msg_text += "_Type `cancel` to exit search mode._"
+        msg_text += "_Type `cancel` at any time to exit._"
         
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
         

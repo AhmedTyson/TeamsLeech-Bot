@@ -154,9 +154,9 @@ def register_upload_ui(app: Client, transfer: TransferService, state: StateManag
                 selected_recs.append(rec)
                 
         total_mb = sum(r.size_mb for r in selected_recs)
-        names = "\n".join(f"  📥 {clean_filename(r.name)}" for r in selected_recs)
+        names = "\n".join(f"   └─ 📥 `{clean_filename(r.name)}`" for r in selected_recs)
         
-        status_text = f"**Uploading {len(selected_recs)} recording(s)** ({total_mb:.0f} MB):\n{names}\n\n⏳ Starting upload..."
+        status_text = f"🚀 **𝗨𝗽𝗹𝗼𝗮𝗱𝗶𝗻𝗴 {len(selected_recs)} 𝗙𝗶𝗹𝗲(𝘀)** ({total_mb:.0f} MB)\n{names}\n\n⏳ _Preparing streams..._"
         await cb.message.edit_text(status_text, reply_markup=None)
         
         # Progress callback
@@ -172,21 +172,21 @@ def register_upload_ui(app: Client, transfer: TransferService, state: StateManag
                 bar = "█" * (pct // 10) + "░" * (10 - (pct // 10))
                 
                 await cb.message.edit_text(
-                    f"**Uploading {len(selected_recs)} recording(s)** ({total_mb:.0f} MB)\n{names}\n\n"
-                    f"⬆️ **{idx + 1}/{len(selected_recs)}** — {name}\n"
-                    f"`[{bar}]` {pct}%  •  {speed:.1f} MB/s"
+                    f"🚀 **𝗨𝗽𝗹𝗼𝗮𝗱𝗶𝗻𝗴 {len(selected_recs)} 𝗙𝗶𝗹𝗲(𝘀)** ({total_mb:.0f} MB)\n{names}\n\n"
+                    f"⬆️ **{idx + 1}/{len(selected_recs)}** — `{name}`\n"
+                    f"`[{bar}]` **{pct}%**  |  ⚡ {speed:.1f} MB/s"
                 )
             elif event == "file_done":
                 name = clean_filename(data.get("name", ""))
                 size = data.get("size_mb", 0)
-                await client.send_message(chat_id, f"✅ **{name}** uploaded ({size:.0f} MB)")
+                await client.send_message(chat_id, f"✅ **Successfully Uploaded:**\n`{name}` ({size:.0f} MB)")
             elif event == "all_done":
                 total = data.get("total", len(selected_recs))
-                await cb.message.edit_text(f"🎉 **All done!** {total} uploaded.")
+                await cb.message.edit_text(f"🎉 **𝗔𝗹𝗹 𝗗𝗼𝗻𝗲!**\nSuccessfully transferred {total} file(s).")
             elif event == "error":
                 name = clean_filename(data.get("name", ""))
                 err = data.get("error", "")
-                await client.send_message(chat_id, f"❌ **{name}** failed: {err}")
+                await client.send_message(chat_id, f"❌ **Failed:** `{name}`\nError: {err}")
 
         # Execute transfer
         try:
