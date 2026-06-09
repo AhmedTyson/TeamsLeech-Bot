@@ -45,17 +45,29 @@ def build_checklist_text(
     total = sum(len(recs) for recs in results.values())
     if total == 0:
         subjects_checked = ", ".join(results.keys()) if results else "all subjects"
-        header = "📡 **𝗦𝗰𝗮𝗻 𝗥𝗲𝘀𝘂𝗹𝘁𝘀**"
+        header = "📡 **Scan Results**"
         if scan_label:
             header += f"\n📅 _{scan_label}_"
-        return f"{header}\n{DIVIDER_THICK}\n\n✅ **No new recordings found.**\n_{subjects_checked}_"
+        return f"{header}\n{DIVIDER_THICK}\n\n✅ **No new files found.**\n_{subjects_checked}_"
 
     overrides = rename_overrides or {}
     is_multi = len(results) > 1
 
-    lines = ["📡 **𝗦𝗰𝗮𝗻 𝗥𝗲𝘀𝘂𝗹𝘁𝘀**"]
+    n_video = sum(1 for recs in results.values() for r in recs if r.is_video)
+    n_doc = total - n_video
+
+    lines = ["📡 **Scan Results**"]
     if scan_label:
         lines.append(f"📅 _{scan_label}_")
+
+    parts = []
+    if n_video:
+        parts.append(f"🎬 {n_video} recording{'s' if n_video != 1 else ''}")
+    if n_doc:
+        parts.append(f"📄 {n_doc} file{'s' if n_doc != 1 else ''}")
+    if parts:
+        lines.append("  |  ".join(parts))
+
     lines.append(DIVIDER_THICK)
 
     idx = 0
@@ -90,7 +102,10 @@ def build_checklist_text(
             idx += 1
 
     lines.append(DIVIDER_THICK)
-    lines.append(f"📊 **{total}** file(s) found. Select to upload:")
+    if n_video and n_doc:
+        lines.append(f"📊 **{total}** files — {n_video} 🎬 + {n_doc} 📄. Select to upload:")
+    else:
+        lines.append(f"📊 **{total}** file(s). Select to upload:")
 
     full_text = "\n".join(lines)
     if len(full_text) <= 4000:

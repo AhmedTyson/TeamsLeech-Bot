@@ -38,7 +38,29 @@ def register_upload_ui(
 
         await message.edit_text(text, reply_markup=keyboard)
 
-    @app.on_callback_query(filters.regex(r"^sel:") & owner_only)
+    @app.on_callback_query(filters.regex(r"^sel:pdfs$") & owner_only)
+    async def handle_select_pdfs(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        session.selected_indices = {
+            i for i, r in enumerate(session.pending_recordings)
+            if not r.is_video
+        }
+        await update_checklist_msg(client, chat_id, cb.message)
+        await cb.answer(f"📄 Selected {len(session.selected_indices)} file(s)")
+
+    @app.on_callback_query(filters.regex(r"^sel:videos$") & owner_only)
+    async def handle_select_videos(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        session.selected_indices = {
+            i for i, r in enumerate(session.pending_recordings)
+            if r.is_video
+        }
+        await update_checklist_msg(client, chat_id, cb.message)
+        await cb.answer(f"🎬 Selected {len(session.selected_indices)} recording(s)")
+
+    @app.on_callback_query(filters.regex(r"^sel:(all|\d+)$") & owner_only)
     async def handle_select(client: Client, cb: CallbackQuery):
         chat_id = cb.message.chat.id
         session = state.get_session(chat_id)

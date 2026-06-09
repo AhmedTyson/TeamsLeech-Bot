@@ -74,15 +74,29 @@ def build_checklist_keyboard(
         InlineKeyboardButton(text=upload_label, callback_data="upload:confirm")
     ])
 
+    n_video = sum(1 for r in flat if r.is_video)
+    n_doc = len(flat) - n_video
+
+    filter_row = []
+    if n_doc > 0:
+        n_selected_doc = sum(1 for i in selections if i < len(flat) and not flat[i].is_video)
+        filter_row.append(
+            InlineKeyboardButton(text=f"📄 PDFs {n_selected_doc}/{n_doc}", callback_data="sel:pdfs")
+        )
+    if n_video > 0:
+        n_selected_vid = sum(1 for i in selections if i < len(flat) and flat[i].is_video)
+        filter_row.append(
+            InlineKeyboardButton(text=f"🎬 Videos {n_selected_vid}/{n_video}", callback_data="sel:videos")
+        )
     all_selected = len(selections) == len(flat) and len(flat) > 0
-    select_label = "➖ Deselect All" if all_selected else "➕ Select All"
+    select_label = "➖ All" if all_selected else "➕ All"
+    filter_row.append(
+        InlineKeyboardButton(text=select_label, callback_data="sel:all")
+    )
+    buttons.append(filter_row)
 
     buttons.append([
-        InlineKeyboardButton(text=select_label, callback_data="sel:all"),
         InlineKeyboardButton(text="📅 Change Date", callback_data="date:change"),
-    ])
-
-    buttons.append([
         InlineKeyboardButton(text="❌ Cancel", callback_data="cancel:check"),
     ])
 
