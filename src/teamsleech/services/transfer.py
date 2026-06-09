@@ -40,6 +40,8 @@ class TransferService:
         self.state = state_manager
         self.tg = tg_client
         self.chat_id = chat_id
+        self._progress_last_time: float = 0.0
+        self._progress_last_bytes: int = 0
 
     def _probe_video(self, file_path: str) -> tuple[int, int, int]:
         try:
@@ -195,6 +197,37 @@ class TransferService:
 
         return sent_msg
 
+    async def _report_progress(
+        self,
+        current: int,
+        total: int,
+        index: int,
+        name: str,
+        progress_cb: Callable | None,
+    ) -> None:
+        if total == 0:
+            return
+        pct = int((current / total) * 100)
+        if pct % 5 == 0 and progress_cb:
+            now = asyncio.get_event_loop().time()
+            elapsed_chunk = now - self._progress_last_time
+            speed_mbps = (
+                ((current - self._progress_last_bytes) / (1024 * 1024))
+                / elapsed_chunk
+                if elapsed_chunk > 0
+                else 0.0
+            )
+            self._progress_last_time, self._progress_last_bytes = now, current
+            await progress_cb(
+                "file_progress",
+                {
+                    "index": index,
+                    "name": name,
+                    "percent": pct,
+                    "speed_mbps": speed_mbps,
+                },
+            )
+
     async def _consumer_loop(
         self,
         queue: asyncio.Queue[dict | None],
@@ -212,42 +245,11 @@ class TransferService:
             tmp_path = item["tmp_path"]
             file_size = item["file_size"]
             start_time_file = item["start_time_file"]
-            last_progress_time = asyncio.get_event_loop().time()
-            last_progress_bytes = 0
+            self._progress_last_time = asyncio.get_event_loop().time()
+            self._progress_last_bytes = 0
 
-            async def _tg_progress(
-                current: int,
-                total: int,
-                _i=i,
-                _rec=rec,
-            ):
-                if total == 0:
-                    return
-                pct = int((current / total) * 100)
-                if pct % 5 == 0 and progress_cb:
-                    nonlocal last_progress_time, last_progress_bytes
-                    now = asyncio.get_event_loop().time()
-                    elapsed_chunk = now - last_progress_time
-                    speed_mbps = (
-                        ((current - last_progress_bytes)
-                         / (1024 * 1024))
-                        / elapsed_chunk
-                        if elapsed_chunk > 0
-                        else 0.0
-                    )
-                    last_progress_time, last_progress_bytes = (
-                        now,
-                        current,
-                    )
-                    await progress_cb(
-                        "file_progress",
-                        {
-                            "index": _i,
-                            "name": _rec.name,
-                            "percent": pct,
-                            "speed_mbps": speed_mbps,
-                        },
-                    )
+            async def _tg_progress(current: int, total: int, _i=i, _name=rec.name):
+                await self._report_progress(current, total, _i, _name, progress_cb)
 
             try:
                 await self._upload_to_telegram(
