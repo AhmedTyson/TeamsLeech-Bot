@@ -84,28 +84,29 @@ class TransferService:
             except httpx.RequestError as exc:
                 raise DownloadError(f"Graph download failed: {exc}") from exc
 
-    async def _upload_to_telegram(self, file_path: str, filename: str, is_pdf: bool, tg_progress_cb: Callable) -> Message:
-        if is_pdf:
+    async def _upload_to_telegram(self, file_path: str, filename: str, is_video: bool, tg_progress_cb: Callable) -> Message:
+        if not is_video:
             duration, width, height = 0, 0, 0
             thumb_path = None
         else:
             duration, width, height = await asyncio.to_thread(self._probe_video, file_path)
             thumb_path = await asyncio.to_thread(self._extract_thumbnail, file_path)
 
-        # Remove extension from caption
-        caption = filename
-        for ext in [".mp4", ".pdf"]:
-            if caption.lower().endswith(ext):
-                caption = caption[:-4]
-                
+        # Extract extension and clean caption
+        ext = ""
+        if "." in filename:
+            ext = "." + filename.split(".")[-1].lower()
+            caption = filename[:-len(ext)]
+        else:
+            caption = filename
+
         # Ensure correct extension for file_name
         save_filename = filename
-        target_ext = ".pdf" if is_pdf else ".mp4"
-        if not save_filename.lower().endswith(target_ext):
-            save_filename += target_ext
+        if not save_filename.lower().endswith(ext):
+            save_filename += ext
 
         try:
-            if is_pdf:
+            if not is_video:
                 sent_msg = await self.tg.send_document(
                     chat_id=self.chat_id,
                     document=file_path,
@@ -127,7 +128,7 @@ class TransferService:
                     progress=tg_progress_cb,
                 )
         except BadRequest:
-            if not is_pdf:
+            if is_video:
                 log.warning("send_video rejected — falling back to send_document")
                 sent_msg = await self.tg.send_document(
                     chat_id=self.chat_id,
@@ -170,8 +171,11 @@ class TransferService:
                 start_time_file = asyncio.get_event_loop().time()
                 log.info("Downloading: %s", rec.name)
 
-                suffix = ".pdf" if rec.is_pdf else ".mp4"
-                tmp_file = tempfile.NamedTemporaryFile(suffix=suffix, prefix="teamsleech_", delete=False)
+                ext = ".mp4" if rec.is_video else (".pdf" if ".pdf" in rec.name.lower() else "")
+                if not ext and "." in rec.name:
+                    ext = "." + rec.name.split(".")[-1]
+                    
+                tmp_file = tempfile.NamedTemporaryFile(suffix=ext, prefix="teamsleech_", delete=False)
                 tmp_path = tmp_file.name
                 tmp_file.close()
 
@@ -217,7 +221,7 @@ class TransferService:
                         await progress_cb("file_progress", {"index": i, "name": rec.name, "percent": pct, "speed_mbps": speed_mbps})
 
                 try:
-                    await self._upload_to_telegram(tmp_path, rec.name, rec.is_pdf, _tg_progress)
+                    await self._upload_to_telegram(tmp_path, rec.name, rec.is_video, _tg_progress)
                     elapsed_file = asyncio.get_event_loop().time() - start_time_file
                     
                     # Advance State Manager

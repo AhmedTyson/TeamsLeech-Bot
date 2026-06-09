@@ -87,21 +87,21 @@ class ScannerService:
 
         # 3. Search Drives Concurrently
         async def search_drive(drive_id: str):
-            try:
-                # Fire both .mp4 and .pdf searches concurrently
-                task_mp4 = self.graph.get(f"/drives/{drive_id}/root/search(q='.mp4')")
-                task_pdf = self.graph.get(f"/drives/{drive_id}/root/search(q='.pdf')")
-                res_mp4, res_pdf = await asyncio.gather(task_mp4, task_pdf, return_exceptions=True)
-                
-                items = []
-                if not isinstance(res_mp4, Exception):
-                    items.extend([i for i in res_mp4.get("value", []) if i.get("name", "").lower().endswith(".mp4")])
-                if not isinstance(res_pdf, Exception):
-                    items.extend([i for i in res_pdf.get("value", []) if i.get("name", "").lower().endswith(".pdf")])
-                    
-                return drive_id, items
-            except Exception:
-                return drive_id, []
+            extensions = [".mp4", ".pdf", ".pptx", ".ppt", ".docx", ".doc", ".xlsx", ".zip", ".rar"]
+            tasks = [self.graph.get(f"/drives/{drive_id}/root/search(q='{ext}')") for ext in extensions]
+            
+            # Fire all extension searches concurrently for this drive
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            items = []
+            for ext, res in zip(extensions, results):
+                if not isinstance(res, Exception):
+                    for i in res.get("value", []):
+                        name = i.get("name", "").lower()
+                        if name.endswith(ext):
+                            items.append(i)
+                            
+            return drive_id, items
 
         drive_tasks = [search_drive(d["id"]) for d in drives]
         drive_results = await asyncio.gather(*drive_tasks)
@@ -135,7 +135,7 @@ class ScannerService:
 
                 size_bytes = item.get("size", 0)
                 duration_ms = item.get("video", {}).get("duration", 0)
-                is_pdf = item.get("name", "").lower().endswith(".pdf")
+                is_video = item.get("name", "").lower().endswith(".mp4")
 
                 recordings.append(Recording(
                     name=item["name"],
@@ -147,7 +147,7 @@ class ScannerService:
                     item_id=item_id,
                     team_name=team.display_name,
                     subject_name=subject.name,
-                    is_pdf=is_pdf
+                    is_video=is_video
                 ))
 
         return recordings

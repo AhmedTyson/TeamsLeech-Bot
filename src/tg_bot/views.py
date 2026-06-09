@@ -67,8 +67,8 @@ def build_checklist_text(
             date_short = format_date_short(rec.created)
             time_display = f" at {rec.time}" if rec.time else ""
             
-            icon = "📕" if rec.is_pdf else "📄"
-            duration_str = f"  •  {format_duration(rec.duration_ms)}" if not rec.is_pdf and rec.duration_ms else ""
+            icon = "🎬" if rec.is_video else "📄"
+            duration_str = f"  •  {format_duration(rec.duration_ms)}" if rec.is_video and rec.duration_ms else ""
 
             lines.append(
                 f"\n{num}. 👥 **{rec.team_name}**\n"

@@ -20,7 +20,7 @@ class Recording(BaseModel):
     item_id: str
     team_name: str
     subject_name: str
-    is_pdf: bool = False
+    is_video: bool = True
 
 class Team(BaseModel):
     """Represents a Microsoft Team from the Graph API."""
