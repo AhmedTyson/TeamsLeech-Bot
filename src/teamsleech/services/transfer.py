@@ -10,8 +10,10 @@ import httpx
 from pyrogram import Client
 from pyrogram.errors import BadRequest, RPCError
 from pyrogram.types import Message
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
 
 from teamsleech.core.constants import GRAPH_BASE_URL, CHUNK_SIZE_BYTES
+from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import Recording
 from teamsleech.services.graph import GraphClient
 from teamsleech.services.state import StateManager
@@ -43,6 +45,36 @@ class TransferService:
         self.chat_id = chat_id
         self._progress_last_time: float = 0.0
         self._progress_last_bytes: int = 0
+
+    _retry_download = retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential_jitter(initial=1, max=10, jitter=2),
+        retry=retry_if_exception_type(DownloadError),
+        reraise=True,
+    )
+
+    @retry_tg
+    async def _tg_send_document(
+        self, chat_id, file_path, file_name, caption, thumb, progress
+    ) -> Message:
+        return await self.tg.send_document(
+            chat_id=chat_id, document=file_path,
+            file_name=file_name, caption=caption,
+            thumb=thumb, progress=progress,
+        )
+
+    @retry_tg
+    async def _tg_send_video(
+        self, chat_id, file_path, file_name, caption,
+        duration, width, height, thumb, progress,
+    ) -> Message:
+        return await self.tg.send_video(
+            chat_id=chat_id, video=file_path,
+            file_name=file_name, caption=caption,
+            supports_streaming=True,
+            duration=duration, width=width, height=height,
+            thumb=thumb, progress=progress,
+        )
 
     def _probe_video(self, file_path: str) -> tuple[int, int, int]:
         try:
@@ -88,6 +120,7 @@ class TransferService:
             log.warning("Thumbnail extraction failed: %s", exc)
         return None
 
+    @_retry_download
     async def _download_recording(
         self, rec: Recording, dest_path: str
     ) -> int:
@@ -150,42 +183,25 @@ class TransferService:
 
         try:
             if not is_video:
-                sent_msg = await self.tg.send_document(
-                    chat_id=self.chat_id,
-                    document=file_path,
-                    file_name=save_filename,
-                    caption=caption,
-                    progress=tg_progress_cb,
+                sent_msg = await self._tg_send_document(
+                    self.chat_id, file_path, save_filename, caption, None, tg_progress_cb,
                 )
             else:
-                sent_msg = await self.tg.send_video(
-                    chat_id=self.chat_id,
-                    video=file_path,
-                    file_name=save_filename,
-                    caption=caption,
-                    supports_streaming=True,
-                    duration=duration,
-                    width=width,
-                    height=height,
-                    thumb=thumb_path,
-                    progress=tg_progress_cb,
+                sent_msg = await self._tg_send_video(
+                    self.chat_id, file_path, save_filename, caption,
+                    duration, width, height, thumb, tg_progress_cb,
                 )
         except BadRequest:
             if is_video:
                 log.warning(
                     "send_video rejected — falling back to send_document"
                 )
-                sent_msg = await self.tg.send_document(
-                    chat_id=self.chat_id,
-                    document=file_path,
-                    file_name=save_filename,
-                    caption=caption,
-                    thumb=thumb_path,
-                    progress=tg_progress_cb,
+                sent_msg = await self._tg_send_document(
+                    self.chat_id, file_path, save_filename, caption, thumb, tg_progress_cb,
                 )
             else:
                 raise
-        except RPCError as exc:
+        except (RPCError, TimeoutError, ConnectionError, OSError) as exc:
             raise TelegramUploadError(
                 f"Upload failed: {exc}"
             ) from exc

@@ -1,10 +1,12 @@
 import json
 import logging
 from datetime import UTC, datetime
+from io import BytesIO
 
 from pyrogram import Client
 from pyrogram.types import Message
 
+from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import UserSession
 
 log = logging.getLogger("state_manager")
@@ -26,27 +28,57 @@ class StateManager:
     def clear_session(self, user_id: int) -> None:
         self._sessions.pop(user_id, None)
 
+    @retry_tg
+    async def _download_document(self, msg: Message) -> BytesIO:
+        return await self.client.download_media(msg, in_memory=True)
+
+    @retry_tg
+    async def _send_state_doc(
+        self, chat_id: int, document: BytesIO, file_name: str, caption: str
+    ) -> Message:
+        return await self.client.send_document(
+            chat_id, document, file_name=file_name, caption=caption
+        )
+
     async def initialize(self) -> None:
         if self._initialized:
             return
 
         try:
             chat = await self.client.get_chat(self.chat_id)
-            if (
-                chat.pinned_message
-                and chat.pinned_message.text
-                and "#TEAMSLEECH_STATE" in chat.pinned_message.text
-            ):
-                await self._parse_and_load(chat.pinned_message)
+            pinned = chat.pinned_message
+
+            if pinned and pinned.document and pinned.document.file_name == "teamsleech_state.json":
+                self._msg_id = pinned.id
+                await self._load_from_document(pinned)
+                return
+
+            if pinned and pinned.text and "#TEAMSLEECH_STATE" in pinned.text:
+                self._msg_id = pinned.id
+                await self._parse_and_load(pinned)
                 return
 
             log.info(
-                "No pinned #TEAMSLEECH_STATE message found."
-                " Creating new empty database."
+                "No pinned state document found. Creating new empty database."
             )
             self._initialized = True
         except Exception as e:
-            log.error("Failed to fetch telegram state: %s", e)
+            log.error("Failed to initialize state: %s", e)
+
+    async def _load_from_document(self, msg: Message) -> None:
+        self._msg_id = msg.id
+        try:
+            file_bytes = await self._download_document(msg)
+            self._subject_cache = json.loads(file_bytes.getvalue())
+        except Exception as e:
+            log.warning("Failed to parse state document. Resetting: %s", e)
+            self._subject_cache = {}
+            await self._push_to_telegram()
+        self._initialized = True
+        log.info(
+            "StateManager initialized. Loaded %d subjects from document.",
+            len(self._subject_cache),
+        )
 
     async def _parse_and_load(self, msg: Message) -> None:
         self._msg_id = msg.id
@@ -71,36 +103,37 @@ class StateManager:
             self._subject_cache = json.loads(json_str)
         except Exception as e:
             log.warning(
-                "Failed to parse state JSON. Resetting cache and rewriting: %s",
+                "Failed to parse legacy state text. Resetting cache: %s",
                 e,
             )
             self._subject_cache = {}
-            await self._push_to_telegram()
         self._initialized = True
         log.info(
-            "StateManager initialized. Loaded %d subjects.",
+            "StateManager initialized (legacy text). Upgrading %d subjects to document format.",
             len(self._subject_cache),
         )
+        await self._push_to_telegram()
 
     async def _push_to_telegram(self) -> None:
-        text = (
-            "#TEAMSLEECH_STATE\n"
-            "**⚠️ DO NOT DELETE THIS MESSAGE**\n"
-            "_This acts as the database for the bot._\n\n"
-            "=====JSON_START=====\n"
-            f"{json.dumps(self._subject_cache, indent=2)}\n"
-            "=====JSON_END====="
-        )
+        data = json.dumps(self._subject_cache, indent=2).encode("utf-8")
+        bio = BytesIO(data)
+        bio.name = "teamsleech_state.json"
         try:
-            if self._msg_id:
-                await self.client.edit_message_text(
-                    self.chat_id, self._msg_id, text
-                )
-            else:
-                msg = await self.client.send_message(self.chat_id, text)
-                await msg.pin(both_sides=True)
-                self._msg_id = msg.id
-            log.info("Successfully pushed updated state to Telegram DB.")
+            old_msg_id = self._msg_id
+            msg = await self._send_state_doc(
+                self.chat_id,
+                bio,
+                file_name="teamsleech_state.json",
+                caption="#TEAMSLEECH_STATE",
+            )
+            await msg.pin(both_sides=True)
+            self._msg_id = msg.id
+            if old_msg_id:
+                try:
+                    await self.client.delete_messages(self.chat_id, old_msg_id)
+                except Exception as e:
+                    log.warning("Failed to delete old state message: %s", e)
+            log.info("Successfully pushed updated state as document.")
         except Exception as e:
             log.error("Failed to push state to Telegram: %s", e)
 

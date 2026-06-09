@@ -38,5 +38,5 @@ jobs:
       - name: Type Check with Mypy
         run: uv run mypy src/teamsleech/ || echo "Mypy checks failed, but allowing workflow to proceed for now"
         
-      - name: Run Tests
-        run: uv run pytest tests/ -v
+      - name: Run Tests with Coverage
+        run: uv run pytest tests/ -v --cov=src/teamsleech --cov-report=term-missing

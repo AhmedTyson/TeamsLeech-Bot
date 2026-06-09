@@ -35,7 +35,7 @@ Graph API joinedTeams scan
   Filter by subject keywords & smart search
               ↓
  Find new .mp4 & .pdf files since last run
-  (state stored safely in Telegram pinned message)
+  (state stored as JSON document in Telegram pinned message)
               ↓
  Stream to Telegram Saved Messages
   (Pyrogram MTProto · chunked async generator)

@@ -3,6 +3,7 @@ import logging
 import httpx
 
 from teamsleech.core.config import settings
+from teamsleech.core.retry import retry_http
 from teamsleech.services.github_secrets import rotate_github_secret
 
 log = logging.getLogger("auth")
@@ -22,6 +23,11 @@ SCOPE = "https://graph.microsoft.com/.default offline_access"
 SECRET_NAME = "TEAMS_REFRESH_TOKEN"
 MS_TIMEOUT = 30.0
 
+@retry_http
+async def _post_token(payload: dict[str, str]) -> httpx.Response:
+    async with httpx.AsyncClient() as client:
+        return await client.post(TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
+
 async def exchange_refresh_token() -> tuple[str, str]:
     """
     Exchange the configured refresh_token for a fresh (access_token, new_refresh_token).
@@ -33,11 +39,10 @@ async def exchange_refresh_token() -> tuple[str, str]:
         "scope": SCOPE,
     }
     
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
-        except httpx.RequestError as exc:
-            raise TokenExchangeError(f"Network error during exchange: {exc}") from exc
+    try:
+        resp = await _post_token(payload)
+    except httpx.RequestError as exc:
+        raise TokenExchangeError(f"Network error during exchange: {exc}") from exc
 
     if resp.status_code != 200:
         body = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}

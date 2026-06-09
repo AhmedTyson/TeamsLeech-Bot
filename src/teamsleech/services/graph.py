@@ -4,6 +4,7 @@ from typing import Any
 import httpx
 
 from teamsleech.core.constants import GRAPH_BASE_URL
+from teamsleech.core.retry import retry_http
 
 log = logging.getLogger("graph_api")
 
@@ -25,6 +26,24 @@ class GraphClient:
             "Accept": "application/json",
         }
 
+    @retry_http
+    async def _get_raw(
+        self,
+        url: str,
+        headers: dict[str, str],
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        return await self.client.get(url, headers=headers, params=params)
+
+    @retry_http
+    async def _post_raw(
+        self,
+        url: str,
+        headers: dict[str, str],
+        json_data: dict[str, Any],
+    ) -> httpx.Response:
+        return await self.client.post(url, headers=headers, json=json_data)
+
     async def get(
         self,
         endpoint_or_url: str,
@@ -37,9 +56,7 @@ class GraphClient:
         )
 
         try:
-            resp = await self.client.get(
-                url, headers=self.headers, params=params
-            )
+            resp = await self._get_raw(url, self.headers, params=params)
         except httpx.RequestError as exc:
             raise GraphAPIError(f"Network error: {exc}") from exc
 
@@ -61,9 +78,7 @@ class GraphClient:
         )
 
         try:
-            resp = await self.client.post(
-                url, headers=self.headers, json=json_data
-            )
+            resp = await self._post_raw(url, self.headers, json_data=json_data)
         except httpx.RequestError as exc:
             raise GraphAPIError(f"Network error: {exc}") from exc
 
