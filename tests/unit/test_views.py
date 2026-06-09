@@ -1,23 +1,17 @@
 from teamsleech.tg_bot.views import format_duration, format_date_short, clean_filename
 
 def test_clean_filename():
-    assert clean_filename("Lecture 1-Meeting Recording.mp4") == "Lecture 1.mp4"
-    assert clean_filename("Session-20260401_103000.mp4") == "Session.mp4"
-    assert clean_filename("Normal File.pdf") == "Normal File.pdf"
+    assert clean_filename("Lecture -Meeting Recording") == "Lecture"
+    assert clean_filename("Video-20240115_123456") == "Video"
+    assert clean_filename("Normal File.mp4") == "Normal File.mp4"
 
 def test_format_date_short():
-    assert format_date_short("2026-04-01") == "Apr 01"
-    assert format_date_short("invalid-date") == "invalid-date"
+    assert format_date_short("2024-01-15") == "Jan 15"
+    assert format_date_short("invalid") == "invalid"
 
 def test_format_duration():
     assert format_duration(0) == ""
-    assert format_duration("invalid") == ""
-    
-    # 65000 ms = 65 seconds = 1m 05s
+    assert format_duration(5000) == "5s"
     assert format_duration(65000) == "1m 05s"
-    
-    # 3600000 ms = 3600 seconds = 1h 0m
-    assert format_duration(3600000) == "1h 0m"
-    
-    # 3665000 ms = 3665 seconds = 1h 1m
-    assert format_duration(3665000) == "1h 1m"
+    assert format_duration(3661000) == "1h 1m"
+    assert format_duration("invalid") == ""

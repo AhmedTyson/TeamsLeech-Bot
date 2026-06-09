@@ -1,7 +1,7 @@
 import base64
 import logging
 import httpx
-from typing import Tuple
+
 from nacl import public
 
 from teamsleech.core.config import settings
@@ -27,7 +27,7 @@ SCOPE = "https://graph.microsoft.com/.default offline_access"
 GITHUB_API = "https://api.github.com"
 SECRET_NAME = "TEAMS_REFRESH_TOKEN"
 
-async def exchange_refresh_token() -> Tuple[str, str]:
+async def exchange_refresh_token() -> tuple[str, str]:
     """
     Exchange the configured refresh_token for a fresh (access_token, new_refresh_token).
     """

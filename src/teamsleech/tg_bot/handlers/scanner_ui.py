@@ -1,7 +1,8 @@
 import re
+import calendar
 from datetime import datetime, timezone, date as date_type, timedelta
 from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery
+from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.views import build_checklist_text, format_date_short
@@ -38,9 +39,15 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
 
     if text == "this week":
         mon, sun = _get_current_week_range()
-        return mon, sun, f"This Week ({format_date_short(mon)} – {format_date_short(sun)})"
+        return (
+            mon,
+            sun,
+            f"This Week ({format_date_short(mon)} – {format_date_short(sun)})",
+        )
 
-    range_match = re.match(r"^(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})$", text, re.IGNORECASE)
+    range_match = re.match(
+        r"^(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})$", text, re.IGNORECASE
+    )
     if range_match:
         ds, de = range_match.group(1), range_match.group(2)
         return ds, de, f"{format_date_short(ds)} – {format_date_short(de)}"
@@ -53,14 +60,14 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
     month_map = {
         "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
         "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+        "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+        "november": 11, "december": 12,
     }
     month_match = re.match(r"^([a-z]+)(?:\s+(\d{4}))?$", text)
     if month_match:
         m_name, year_str = month_match.groups()
         if m_name in month_map:
-            import calendar
             m_num = month_map[m_name]
             year = int(year_str) if year_str else datetime.now().year
             _, last_day = calendar.monthrange(year, m_num)
@@ -71,23 +78,39 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
     return None
 
 def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManager):
-
-    async def run_scan_and_reply(client: Client, chat_id: int, subject_filter: str | None, date_start: str | None, date_end: str | None, label: str):
+    async def run_scan_and_reply(
+        client: Client,
+        chat_id: int,
+        subject_filter: str | None,
+        date_start: str | None,
+        date_end: str | None,
+        label: str,
+    ):
         try:
-            results = await scanner.scan_recordings(subject_filter, date_start, date_end)
+            results = await scanner.scan_recordings(
+                subject_filter, date_start, date_end
+            )
         except Exception as e:
             await client.send_message(chat_id, f"❌ Fetch error: {e}")
             return
 
         session = state.get_session(chat_id)
-        session.pending_recordings = [r for recs in results.values() for r in recs]
+        session.pending_recordings = [
+            r for recs in results.values() for r in recs
+        ]
         session.selected_indices.clear()
         session.rename_overrides.clear()
         session.scan_label = label
-        
+
         text = build_checklist_text(results, label)
-        keyboard = build_checklist_keyboard(session.pending_recordings, session.selected_indices) if session.pending_recordings else None
-        
+        keyboard = (
+            build_checklist_keyboard(
+                session.pending_recordings, session.selected_indices
+            )
+            if session.pending_recordings
+            else None
+        )
+
         await client.send_message(chat_id, text, reply_markup=keyboard)
 
     @app.on_callback_query(filters.regex(r"^subj:") & owner_only)
@@ -98,21 +121,33 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         if subject_key == "__ALL__":
             label = "Since Last Run"
-            await cb.message.edit_text(f"🔍 Scanning **all subjects** — {label}...")
-            await run_scan_and_reply(client, chat_id, None, None, None, label)
+            await cb.message.edit_text(
+                f"🔍 Scanning **all subjects** — {label}..."
+            )
+            await run_scan_and_reply(
+                client, chat_id, None, None, None, label
+            )
             await cb.answer()
         else:
             session.date_input_pending = True
             session.subject_filter = subject_key
-            
-            from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            
+
             kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📅 Today", callback_data="date_btn:today"),
-                 InlineKeyboardButton("📅 This Week", callback_data="date_btn:this week")],
-                [InlineKeyboardButton("♾️ All Time", callback_data="date_btn:all")]
+                [
+                    InlineKeyboardButton(
+                        "📅 Today", callback_data="date_btn:today"
+                    ),
+                    InlineKeyboardButton(
+                        "📅 This Week", callback_data="date_btn:this week"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "♾️ All Time", callback_data="date_btn:all"
+                    ),
+                ],
             ])
-            
+
             prompt = (
                 f"📚 **{subject_key}** selected.\n\n"
                 "**Select Date Range**\n"
@@ -126,111 +161,107 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
     async def handle_date_btn(client: Client, cb: CallbackQuery):
         chat_id = cb.message.chat.id
         session = state.get_session(chat_id)
-        
+
         if not session.date_input_pending:
             await cb.answer("Date selection expired.", show_alert=True)
             return
-            
+
         action = cb.data.split(":", 1)[1]
         session.date_input_pending = False
-        
+
         if action == "all":
             label = "All Time"
-            await cb.message.edit_text(f"🔍 Scanning **{session.subject_filter or 'All Subjects'}** — {label}...")
-            await run_scan_and_reply(client, chat_id, session.subject_filter, None, None, label)
+            await cb.message.edit_text(
+                f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
+                f" — {label}..."
+            )
+            await run_scan_and_reply(
+                client, chat_id, session.subject_filter, None, None, label
+            )
             await cb.answer()
             return
-            
+
         parsed = _parse_date_input(action)
         if parsed:
             ds, de, label = parsed
-            await cb.message.edit_text(f"🔍 Scanning **{session.subject_filter or 'All Subjects'}** — {label}...")
-            await run_scan_and_reply(client, chat_id, session.subject_filter, ds, de, label)
-            
+            await cb.message.edit_text(
+                f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
+                f" — {label}..."
+            )
+            await run_scan_and_reply(
+                client, chat_id, session.subject_filter, ds, de, label
+            )
+
         await cb.answer()
 
     @app.on_callback_query(filters.regex(r"^date:change") & owner_only)
-    async def handle_change_date(client: Client, cb: CallbackQuery):
+    async def handle_date_change(client: Client, cb: CallbackQuery):
         chat_id = cb.message.chat.id
         session = state.get_session(chat_id)
         session.date_input_pending = True
-        
-        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        
+
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📅 Today", callback_data="date_btn:today"),
-             InlineKeyboardButton("📅 This Week", callback_data="date_btn:this week")],
-            [InlineKeyboardButton("♾️ All Time", callback_data="date_btn:all")]
+            [
+                InlineKeyboardButton(
+                    "📅 Today", callback_data="date_btn:today"
+                ),
+                InlineKeyboardButton(
+                    "📅 This Week", callback_data="date_btn:this week"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "♾️ All Time", callback_data="date_btn:all"
+                ),
+            ],
         ])
-        
+
         await cb.message.edit_text(
-            "📅 **Change Date Filter**\n\n"
+            "**Change Date Range**\n\n"
             "Tap a button below, or type a custom date like `2026-04-01`.\n"
             "_Type `cancel` to exit._",
-            reply_markup=kb
+            reply_markup=kb,
         )
         await cb.answer()
 
-    @app.on_message(filters.text & filters.private & owner_only)
+    @app.on_message(
+        filters.text & filters.private & owner_only, group=2
+    )
     async def handle_date_input(client: Client, message: Message):
         chat_id = message.chat.id
         session = state.get_session(chat_id)
-        
-        # Don't hijack if searching or renaming
-        if session.is_searching_teams or session.pending_rename_idx is not None:
+
+        if not session.date_input_pending:
             message.continue_propagation()
-            
-        text = message.text.strip()
-        parsed = _parse_date_input(text)
-        
-        if session.date_input_pending:
-            if text.lower() == "cancel":
-                session.date_input_pending = False
-                await message.reply("❌ Date selection cancelled.")
-                return
-                
-            if not parsed:
-                await message.reply("❌ Couldn't parse that date.\nType `cancel` to exit.")
-                return
-                
-            session.date_input_pending = False
-            ds, de, label = parsed
-            
-            if de:
-                valid, err = _validate_date_range(ds, de)
-                if not valid:
-                    await message.reply(err)
-                    return
-                    
-            subj_label = session.subject_filter or "All Subjects"
-            await message.reply(f"🔍 Scanning **{subj_label}** — {label}...")
-            await run_scan_and_reply(client, chat_id, session.subject_filter, ds, de, label)
             return
 
-        # Direct global shortcuts
-        if parsed:
-            ds, de, label = parsed
-            if de:
-                valid, err = _validate_date_range(ds, de)
-                if not valid:
-                    await message.reply(err)
-                    return
-            await message.reply(f"🔍 Scanning **all subjects** — {label}...")
-            await run_scan_and_reply(client, chat_id, None, ds, de, label)
+        text = message.text.strip()
+
+        if text.lower() == "cancel":
+            session.date_input_pending = False
+            session.subject_filter = None
+            await message.reply("❌ Date selection cancelled.")
             return
-            
-        # Try direct subject match
-        subjects = scanner.load_subjects()
-        matched = None
-        for s in subjects:
-            if text.lower() in [s.name.lower(), s.short.lower()] + [k.lower() for k in s.keywords]:
-                matched = s.name
-                break
-                
-        if matched:
-            session.date_input_pending = True
-            session.subject_filter = matched
-            await message.reply(f"📚 **{matched}** selected.\n\n📅 **Select Date Range** (e.g., `today`, `this week`)")
+
+        parsed = _parse_date_input(text)
+        if parsed is None:
+            await message.reply(
+                "❌ Could not understand that date. Try:\n"
+                "• `2026-04-01`\n"
+                "• `2026-04-01 to 2026-04-07`\n"
+                "• `today`\n"
+                "• `this week`\n"
+                "• `march 2026`"
+            )
             return
-            
-        message.continue_propagation()
+
+        session.date_input_pending = False
+        ds, de, label = parsed
+
+        await message.reply(
+            f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
+            f" — {label}..."
+        )
+        await run_scan_and_reply(
+            client, chat_id, session.subject_filter, ds, de, label
+        )
