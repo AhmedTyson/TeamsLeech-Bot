@@ -101,7 +101,7 @@ class ScannerService:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             items = []
-            for ext, res in zip(extensions, results):
+            for ext, res in zip(extensions, results, strict=True):
                 if not isinstance(res, Exception):
                     for i in res.get("value", []):
                         name = i.get("name", "").lower()
@@ -212,13 +212,14 @@ class ScannerService:
 
                 async def bounded_process(
                     team: Team,
+                    _sem=sem,
                     _subject=subject,
                     _last_run=last_run,
                     _date_start=date_start,
                     _date_end=date_end,
                     _seen_ids=seen_ids,
                 ):
-                    async with sem:
+                    async with _sem:
                         return await self._process_team(
                             team,
                             _subject,
