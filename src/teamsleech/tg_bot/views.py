@@ -37,6 +37,41 @@ def format_duration(duration_ms: int | float | str) -> str:
     except (ValueError, TypeError):
         return ""
 
+def _build_header(scan_label: str, n_video: int, n_doc: int) -> list[str]:
+    lines = ["📡 **Scan Results**"]
+    if scan_label:
+        lines.append(f"📅 _{scan_label}_")
+    parts = []
+    if n_video:
+        parts.append(f"🎬 {n_video} recording{'s' if n_video != 1 else ''}")
+    if n_doc:
+        parts.append(f"📄 {n_doc} file{'s' if n_doc != 1 else ''}")
+    if parts:
+        lines.append("  |  ".join(parts))
+    lines.append(DIVIDER_THICK)
+    return lines
+
+def _format_recording_item(idx: int, rec: Recording, override_name: str | None = None) -> str:
+    display_name = clean_filename(override_name or rec.name)
+    date_short = format_date_short(rec.created)
+    time_display = f", {rec.time}" if rec.time else ""
+    icon = "🎬" if rec.is_video else "📄"
+    duration_str = (
+        f"  |  ⏱ {format_duration(rec.duration_ms)}"
+        if rec.is_video and rec.duration_ms
+        else ""
+    )
+    return (
+        f"{num_label(idx + 1)} 👥 **{rec.team_name}**\n"
+        f"   🗓 {date_short}{time_display}  |  💾 {rec.size_mb} MB{duration_str}\n"
+        f"   {icon} `{display_name}`\n"
+    )
+
+def _build_footer(total: int, n_video: int, n_doc: int) -> str:
+    if n_video and n_doc:
+        return f"📊 **{total}** files — {n_video} 🎬 + {n_doc} 📄. Select to upload:"
+    return f"📊 **{total}** file(s). Select to upload:"
+
 def build_checklist_text(
     results: dict[str, list[Recording]],
     scan_label: str = "",
@@ -52,24 +87,11 @@ def build_checklist_text(
 
     overrides = rename_overrides or {}
     is_multi = len(results) > 1
-
     flat = [r for recs in results.values() for r in recs]
     n_video = sum(1 for r in flat if r.is_video)
     n_doc = total - n_video
 
-    lines = ["📡 **Scan Results**"]
-    if scan_label:
-        lines.append(f"📅 _{scan_label}_")
-
-    parts = []
-    if n_video:
-        parts.append(f"🎬 {n_video} recording{'s' if n_video != 1 else ''}")
-    if n_doc:
-        parts.append(f"📄 {n_doc} file{'s' if n_doc != 1 else ''}")
-    if parts:
-        lines.append("  |  ".join(parts))
-
-    lines.append(DIVIDER_THICK)
+    lines = _build_header(scan_label, n_video, n_doc)
 
     idx = 0
     for subj_name, recs in results.items():
@@ -77,41 +99,19 @@ def build_checklist_text(
             if is_multi:
                 lines.append(f"\n📚 **{subj_name}** — ✅ No new files")
             continue
-
         if is_multi:
             lines.append(f"\n📚 **{subj_name}**")
             lines.append(DIVIDER_THIN)
-
         for rec in recs:
-            display_name = clean_filename(overrides.get(idx, rec.name))
-            num = num_label(idx + 1)
-            date_short = format_date_short(rec.created)
-            time_display = f", {rec.time}" if rec.time else ""
-
-            icon = "🎬" if rec.is_video else "📄"
-            duration_str = (
-                f"  |  ⏱ {format_duration(rec.duration_ms)}"
-                if rec.is_video and rec.duration_ms
-                else ""
-            )
-
-            lines.append(
-                f"{num} 👥 **{rec.team_name}**\n"
-                f"   🗓 {date_short}{time_display}  |  💾 {rec.size_mb} MB{duration_str}\n"
-                f"   {icon} `{display_name}`\n"
-            )
+            lines.append(_format_recording_item(idx, rec, overrides.get(idx)))
             idx += 1
 
     lines.append(DIVIDER_THICK)
-    if n_video and n_doc:
-        lines.append(f"📊 **{total}** files — {n_video} 🎬 + {n_doc} 📄. Select to upload:")
-    else:
-        lines.append(f"📊 **{total}** file(s). Select to upload:")
+    lines.append(_build_footer(total, n_video, n_doc))
 
     full_text = "\n".join(lines)
     if len(full_text) <= 4000:
         return full_text
-
     cutoff = full_text.rfind("\n", 0, 3900)
     return (
         full_text[: cutoff if cutoff != -1 else 3900]
