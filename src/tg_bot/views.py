@@ -10,7 +10,9 @@ def num_label(n: int) -> str:
     return str(n)
 
 def clean_filename(name: str) -> str:
-    return re.sub(r"-Meeting Recording", "", name)
+    name = re.sub(r"-Meeting Recording", "", name)
+    # Don't strip extensions here, we'll handle it during upload/formatting to ensure we keep track of .pdf vs .mp4
+    return name
 
 def format_date_short(date_str: str) -> str:
     try:
@@ -64,12 +66,14 @@ def build_checklist_text(
             num = num_label(idx + 1)
             date_short = format_date_short(rec.created)
             time_display = f" at {rec.time}" if rec.time else ""
-            duration_str = f"  •  {format_duration(rec.duration_ms)}" if rec.duration_ms else ""
+            
+            icon = "📕" if rec.is_pdf else "📄"
+            duration_str = f"  •  {format_duration(rec.duration_ms)}" if not rec.is_pdf and rec.duration_ms else ""
 
             lines.append(
                 f"\n{num}. 👥 **{rec.team_name}**\n"
                 f"   {date_short}{time_display}  •  💾 {rec.size_mb} MB{duration_str}\n"
-                f"   📄 {display_name}\n{DIVIDER_THIN}"
+                f"   {icon} {display_name}\n{DIVIDER_THIN}"
             )
             idx += 1
 

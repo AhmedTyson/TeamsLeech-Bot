@@ -10,7 +10,7 @@ class SubjectConfig(BaseModel):
     keywords: List[str] = Field(default_factory=list)
 
 class Recording(BaseModel):
-    """Strict schema for a Microsoft Graph video recording."""
+    """Strict schema for a Microsoft Graph file (video or document)."""
     name: str
     size_mb: float
     created: str  # e.g., YYYY-MM-DD
@@ -20,6 +20,7 @@ class Recording(BaseModel):
     item_id: str
     team_name: str
     subject_name: str
+    is_pdf: bool = False
 
 class Team(BaseModel):
     """Represents a Microsoft Team from the Graph API."""

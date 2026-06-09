@@ -88,9 +88,19 @@ class ScannerService:
         # 3. Search Drives Concurrently
         async def search_drive(drive_id: str):
             try:
-                data = await self.graph.get(f"/drives/{drive_id}/root/search(q='.mp4')")
-                return drive_id, [item for item in data.get("value", []) if item.get("name", "").lower().endswith(".mp4")]
-            except GraphAPIError:
+                # Fire both .mp4 and .pdf searches concurrently
+                task_mp4 = self.graph.get(f"/drives/{drive_id}/root/search(q='.mp4')")
+                task_pdf = self.graph.get(f"/drives/{drive_id}/root/search(q='.pdf')")
+                res_mp4, res_pdf = await asyncio.gather(task_mp4, task_pdf, return_exceptions=True)
+                
+                items = []
+                if not isinstance(res_mp4, Exception):
+                    items.extend([i for i in res_mp4.get("value", []) if i.get("name", "").lower().endswith(".mp4")])
+                if not isinstance(res_pdf, Exception):
+                    items.extend([i for i in res_pdf.get("value", []) if i.get("name", "").lower().endswith(".pdf")])
+                    
+                return drive_id, items
+            except Exception:
                 return drive_id, []
 
         drive_tasks = [search_drive(d["id"]) for d in drives]
@@ -125,6 +135,7 @@ class ScannerService:
 
                 size_bytes = item.get("size", 0)
                 duration_ms = item.get("video", {}).get("duration", 0)
+                is_pdf = item.get("name", "").lower().endswith(".pdf")
 
                 recordings.append(Recording(
                     name=item["name"],
@@ -135,7 +146,8 @@ class ScannerService:
                     drive_id=drive_id,
                     item_id=item_id,
                     team_name=team.display_name,
-                    subject_name=subject.name
+                    subject_name=subject.name,
+                    is_pdf=is_pdf
                 ))
 
         return recordings
