@@ -1,6 +1,7 @@
 import logging
-import httpx
 from typing import Any
+
+import httpx
 
 from teamsleech.core.constants import GRAPH_BASE_URL
 

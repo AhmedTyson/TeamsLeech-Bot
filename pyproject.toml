@@ -38,10 +38,15 @@ packages = ["src/teamsleech"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "I", "UP"]
-ignore = []
+ignore = ["E501"]
+extend-exclude = ["scripts/"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["teamsleech"]
 
 [tool.mypy]
 python_version = "3.11"

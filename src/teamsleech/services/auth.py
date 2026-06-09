@@ -1,7 +1,7 @@
 import base64
 import logging
-import httpx
 
+import httpx
 from nacl import public
 
 from teamsleech.core.config import settings
