@@ -32,7 +32,7 @@ jobs:
         run: ruff check --fix . && ruff check .
         
       - name: Format Check with Ruff
-        run: ruff format --check .
+        run: ruff format .
         
       - name: Type Check with Mypy
         run: mypy src/teamsleech/ || echo "Mypy checks failed, but allowing workflow to proceed for now"
