@@ -38,15 +38,13 @@ def build_subject_keyboard(subjects: list[SubjectConfig]) -> InlineKeyboardMarku
     ])
     return InlineKeyboardMarkup(buttons)
 
-def build_checklist_keyboard(
-    flat: list[Recording],
-    selections: set[int],
-    rename_overrides: dict[int, str] | None = None,
-) -> InlineKeyboardMarkup:
-    buttons = []
-    current_row = []
+MAX_TOGGLE_ITEMS = 45
+TOGGLES_PER_ROW = 4
 
-    for i in range(min(len(flat), 45)):
+def _build_toggle_rows(flat: list[Recording], selections: set[int]) -> list[list[InlineKeyboardButton]]:
+    buttons: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for i in range(min(len(flat), MAX_TOGGLE_ITEMS)):
         mark = "✅" if i in selections else "⬛️"
         current_row.append(
             InlineKeyboardButton(text=f"{mark} {i + 1}", callback_data=f"sel:{i}")
@@ -54,50 +52,50 @@ def build_checklist_keyboard(
         current_row.append(
             InlineKeyboardButton(text="✏️", callback_data=f"ren:{i}")
         )
-
-        if len(current_row) >= 4:
+        if len(current_row) >= TOGGLES_PER_ROW:
             buttons.append(current_row)
             current_row = []
-
     if current_row:
         buttons.append(current_row)
+    return buttons
 
+def _build_upload_button(flat: list[Recording], selections: set[int]) -> list[InlineKeyboardButton]:
     if not selections:
-        upload_label = "📤 Upload (Select items first)"
+        label = "📤 Upload (Select items first)"
     else:
         total_mb = sum(flat[i].size_mb for i in selections if i < len(flat))
-        upload_label = (
-            f"🚀 Upload Selected ({len(selections)} files, {total_mb:.0f} MB)"
-        )
+        label = f"🚀 Upload Selected ({len(selections)} files, {total_mb:.0f} MB)"
+    return [InlineKeyboardButton(text=label, callback_data="upload:confirm")]
 
-    buttons.append([
-        InlineKeyboardButton(text=upload_label, callback_data="upload:confirm")
-    ])
-
+def _build_filter_row(flat: list[Recording], selections: set[int]) -> list[InlineKeyboardButton]:
     n_video = sum(1 for r in flat if r.is_video)
     n_doc = len(flat) - n_video
-
-    filter_row = []
+    row: list[InlineKeyboardButton] = []
     if n_doc > 0:
-        n_selected_doc = sum(1 for i in selections if i < len(flat) and not flat[i].is_video)
-        filter_row.append(
-            InlineKeyboardButton(text=f"📄 PDFs {n_selected_doc}/{n_doc}", callback_data="sel:pdfs")
-        )
+        n_sel = sum(1 for i in selections if i < len(flat) and not flat[i].is_video)
+        row.append(InlineKeyboardButton(text=f"📄 PDFs {n_sel}/{n_doc}", callback_data="sel:pdfs"))
     if n_video > 0:
-        n_selected_vid = sum(1 for i in selections if i < len(flat) and flat[i].is_video)
-        filter_row.append(
-            InlineKeyboardButton(text=f"🎬 Videos {n_selected_vid}/{n_video}", callback_data="sel:videos")
-        )
+        n_sel = sum(1 for i in selections if i < len(flat) and flat[i].is_video)
+        row.append(InlineKeyboardButton(text=f"🎬 Videos {n_sel}/{n_video}", callback_data="sel:videos"))
     all_selected = len(selections) == len(flat) and len(flat) > 0
-    select_label = "➖ All" if all_selected else "➕ All"
-    filter_row.append(
-        InlineKeyboardButton(text=select_label, callback_data="sel:all")
-    )
-    buttons.append(filter_row)
+    label = "➖ All" if all_selected else "➕ All"
+    row.append(InlineKeyboardButton(text=label, callback_data="sel:all"))
+    return row
 
-    buttons.append([
+def _build_action_row() -> list[InlineKeyboardButton]:
+    return [
         InlineKeyboardButton(text="📅 Change Date", callback_data="date:change"),
         InlineKeyboardButton(text="❌ Cancel", callback_data="cancel:check"),
-    ])
+    ]
 
+def build_checklist_keyboard(
+    flat: list[Recording],
+    selections: set[int],
+    rename_overrides: dict[int, str] | None = None,
+) -> InlineKeyboardMarkup:
+    buttons: list[list[InlineKeyboardButton]] = []
+    buttons.extend(_build_toggle_rows(flat, selections))
+    buttons.append(_build_upload_button(flat, selections))
+    buttons.append(_build_filter_row(flat, selections))
+    buttons.append(_build_action_row())
     return InlineKeyboardMarkup(buttons)
