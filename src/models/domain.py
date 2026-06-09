@@ -25,6 +25,8 @@ class Team(BaseModel):
     """Represents a Microsoft Team from the Graph API."""
     id: str
     display_name: str = Field(alias="displayName")
+    
+    model_config = {"populate_by_name": True}
 
 class UserSession(BaseModel):
     """
