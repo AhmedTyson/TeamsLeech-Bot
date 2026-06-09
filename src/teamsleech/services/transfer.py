@@ -62,7 +62,7 @@ class TransferService:
                         fmt = data.get("format", {})
                         dur = fmt.get("duration", 0)
                     return int(float(dur)), w, h
-        except Exception as exc:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
             log.warning("ffprobe failed: %s", exc)
         return 0, 1280, 720
 
@@ -81,7 +81,7 @@ class TransferService:
             )
             if os.path.exists(thumb_path):
                 return thumb_path
-        except Exception as exc:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             log.warning("Thumbnail extraction failed: %s", exc)
         return None
 
