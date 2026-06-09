@@ -55,3 +55,5 @@ branch = "main"
 upload_to_pypi = false
 upload_to_release = true
 commit_message = "chore(release): {version} [skip ci]"
+changelog_folder = "."
+changelog_file = "CHANGELOG.md"
