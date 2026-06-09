@@ -39,11 +39,14 @@ packages = ["src/teamsleech"]
 line-length = 100
 target-version = "py311"
 src = ["src"]
+exclude = ["scripts/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "I", "UP"]
 ignore = ["E501"]
-extend-exclude = ["scripts/"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E501", "I001", "E402", "UP015"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["teamsleech"]
