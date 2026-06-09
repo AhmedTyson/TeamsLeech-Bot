@@ -195,6 +195,129 @@ class TransferService:
 
         return sent_msg
 
+    async def _consumer_loop(
+        self,
+        queue: asyncio.Queue[dict | None],
+        results: list[dict],
+        progress_cb: Callable | None,
+    ) -> None:
+        while True:
+            item = await queue.get()
+            if item is None:
+                queue.task_done()
+                break
+
+            i = item["index"]
+            rec = item["rec"]
+            tmp_path = item["tmp_path"]
+            file_size = item["file_size"]
+            start_time_file = item["start_time_file"]
+            last_progress_time = asyncio.get_event_loop().time()
+            last_progress_bytes = 0
+
+            async def _tg_progress(
+                current: int,
+                total: int,
+                _i=i,
+                _rec=rec,
+            ):
+                if total == 0:
+                    return
+                pct = int((current / total) * 100)
+                if pct % 5 == 0 and progress_cb:
+                    nonlocal last_progress_time, last_progress_bytes
+                    now = asyncio.get_event_loop().time()
+                    elapsed_chunk = now - last_progress_time
+                    speed_mbps = (
+                        ((current - last_progress_bytes)
+                         / (1024 * 1024))
+                        / elapsed_chunk
+                        if elapsed_chunk > 0
+                        else 0.0
+                    )
+                    last_progress_time, last_progress_bytes = (
+                        now,
+                        current,
+                    )
+                    await progress_cb(
+                        "file_progress",
+                        {
+                            "index": _i,
+                            "name": _rec.name,
+                            "percent": pct,
+                            "speed_mbps": speed_mbps,
+                        },
+                    )
+
+            try:
+                await self._upload_to_telegram(
+                    tmp_path, rec.name, rec.is_video, _tg_progress
+                )
+                elapsed_file = (
+                    asyncio.get_event_loop().time() - start_time_file
+                )
+
+                rec_time_str = (
+                    f"{rec.created}T{rec.time or '00:00'}:00+00:00"
+                )
+                try:
+                    rec_date = datetime.fromisoformat(rec_time_str)
+                    if rec_date > self.state.get_last_run(
+                        rec.subject_name
+                    ):
+                        await self.state.save_last_run(
+                            rec.subject_name, rec_date
+                        )
+                        await self.state.save_last_lecture(
+                            rec.subject_name,
+                            self.state.get_last_lecture(
+                                rec.subject_name
+                            ) + 1,
+                        )
+                except ValueError:
+                    await self.state.save_last_run(
+                        rec.subject_name
+                    )
+                    await self.state.save_last_lecture(
+                        rec.subject_name,
+                        self.state.get_last_lecture(
+                            rec.subject_name
+                        ) + 1,
+                    )
+
+                if progress_cb:
+                    await progress_cb(
+                        "file_done",
+                        {
+                            "index": i,
+                            "name": rec.name,
+                            "size_mb": file_size / (1024 * 1024),
+                            "elapsed_s": elapsed_file,
+                        },
+                    )
+                results.append(
+                    {"name": rec.name, "success": True, "error": None}
+                )
+            except (TelegramUploadError, OSError) as e:
+                if progress_cb:
+                    await progress_cb(
+                        "error",
+                        {
+                            "index": i,
+                            "name": rec.name,
+                            "error": str(e),
+                        },
+                    )
+                results.append(
+                    {"name": rec.name, "success": False, "error": str(e)}
+                )
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                queue.task_done()
+
     async def upload_recordings(
         self,
         recordings: list[Recording],
@@ -287,138 +410,9 @@ class TransferService:
 
             await queue.put(None)
 
-        async def _consumer():
-            while True:
-                item = await queue.get()
-                if item is None:
-                    queue.task_done()
-                    break
-
-                i = item["index"]
-                rec = item["rec"]
-                tmp_path = item["tmp_path"]
-                file_size = item["file_size"]
-                start_time_file = item["start_time_file"]
-                last_progress_time = asyncio.get_event_loop().time()
-                last_progress_bytes = 0
-
-                async def _tg_progress(
-                    current: int,
-                    total: int,
-                    _i=i,
-                    _rec=rec,
-                ):
-                    if total == 0:
-                        return
-                    pct = int((current / total) * 100)
-                    if pct % 5 == 0 and progress_cb:
-                        nonlocal last_progress_time, last_progress_bytes
-                        now = asyncio.get_event_loop().time()
-                        elapsed_chunk = now - last_progress_time
-                        speed_mbps = (
-                            ((current - last_progress_bytes)
-                             / (1024 * 1024))
-                            / elapsed_chunk
-                            if elapsed_chunk > 0
-                            else 0.0
-                        )
-                        last_progress_time, last_progress_bytes = (
-                            now,
-                            current,
-                        )
-                        await progress_cb(
-                            "file_progress",
-                            {
-                                "index": _i,
-                                "name": _rec.name,
-                                "percent": pct,
-                                "speed_mbps": speed_mbps,
-                            },
-                        )
-
-                try:
-                    await self._upload_to_telegram(
-                        tmp_path, rec.name, rec.is_video, _tg_progress
-                    )
-                    elapsed_file = (
-                        asyncio.get_event_loop().time()
-                        - start_time_file
-                    )
-
-                    rec_time_str = (
-                        f"{rec.created}T{rec.time or '00:00'}:00+00:00"
-                    )
-                    try:
-                        rec_date = datetime.fromisoformat(rec_time_str)
-                        if rec_date > self.state.get_last_run(
-                            rec.subject_name
-                        ):
-                            await self.state.save_last_run(
-                                rec.subject_name, rec_date
-                            )
-                            await self.state.save_last_lecture(
-                                rec.subject_name,
-                                self.state.get_last_lecture(
-                                    rec.subject_name
-                                )
-                                + 1,
-                            )
-                    except ValueError:
-                        await self.state.save_last_run(
-                            rec.subject_name
-                        )
-                        await self.state.save_last_lecture(
-                            rec.subject_name,
-                            self.state.get_last_lecture(
-                                rec.subject_name
-                            )
-                            + 1,
-                        )
-
-                    if progress_cb:
-                        await progress_cb(
-                            "file_done",
-                            {
-                                "index": i,
-                                "name": rec.name,
-                                "size_mb": file_size / (1024 * 1024),
-                                "elapsed_s": elapsed_file,
-                            },
-                        )
-                    results.append(
-                        {
-                            "name": rec.name,
-                            "success": True,
-                            "error": None,
-                        }
-                    )
-                except (TelegramUploadError, OSError) as e:
-                    if progress_cb:
-                        await progress_cb(
-                            "error",
-                            {
-                                "index": i,
-                                "name": rec.name,
-                                "error": str(e),
-                            },
-                        )
-                    results.append(
-                        {
-                            "name": rec.name,
-                            "success": False,
-                            "error": str(e),
-                        }
-                    )
-                finally:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-                    queue.task_done()
-
         await asyncio.gather(
             asyncio.create_task(_producer()),
-            asyncio.create_task(_consumer()),
+            asyncio.create_task(self._consumer_loop(queue, results, progress_cb)),
         )
 
         if progress_cb:
