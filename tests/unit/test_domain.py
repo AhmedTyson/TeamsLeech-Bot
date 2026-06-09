@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 
 import pytest
+
 from teamsleech.models.domain import Recording, SubjectConfig, Team, UserSession
 
 def test_subject_config_defaults():

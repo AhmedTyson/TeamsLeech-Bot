@@ -1,13 +1,13 @@
 from pyrogram import Client
 
-from teamsleech.services.scanner import ScannerService
-from teamsleech.services.transfer import TransferService
-from teamsleech.services.state import StateManager
 from teamsleech.services.discovery import DiscoveryService
+from teamsleech.services.scanner import ScannerService
+from teamsleech.services.state import StateManager
+from teamsleech.services.transfer import TransferService
 
 from .commands import register_commands
-from .search_inputs import register_search_inputs
 from .scanner_ui import register_scanner_ui
+from .search_inputs import register_search_inputs
 from .upload_ui import register_upload_ui
 
 def register_all_handlers(

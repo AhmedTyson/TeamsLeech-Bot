@@ -1,4 +1,5 @@
 from pyrogram import filters
+
 from teamsleech.core.config import settings
 
 async def _owner_check(_, __, msg_or_cb):
