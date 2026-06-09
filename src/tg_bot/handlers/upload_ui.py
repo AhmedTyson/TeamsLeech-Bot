@@ -86,13 +86,13 @@ def register_upload_ui(app: Client, transfer: TransferService, state: StateManag
             session.pending_suggestion = suggested_name
             
             sug_kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton(f"✅ Accept: {suggested_name}", callback_data=f"sug:{idx}")
+                InlineKeyboardButton(f"✨ Accept: {suggested_name}", callback_data=f"sug:{idx}")
             ]])
             
             await cb.message.reply(
-                f"✏️ Send the new caption for:\n**{current_name}**\n\n"
-                f"✨ **Smart Suggestion:** `{suggested_name}`\n\n"
-                f"_Tap the button below to accept, or type your own name._",
+                f"✏️ **Rename File**\n"
+                f"Current name: `{current_name}`\n\n"
+                f"💡 _I've calculated the next lecture number for you. Tap the button below to use it, or type your own name._",
                 reply_markup=sug_kb
             )
         else:

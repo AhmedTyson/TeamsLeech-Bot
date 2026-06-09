@@ -104,18 +104,72 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         else:
             session.date_input_pending = True
             session.subject_filter = subject_key
+            
+            from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📅 Today", callback_data="date_btn:today"),
+                 InlineKeyboardButton("📅 This Week", callback_data="date_btn:this week")],
+                [InlineKeyboardButton("♾️ All Time", callback_data="date_btn:all")]
+            ])
+            
             prompt = (
                 f"📚 **{subject_key}** selected.\n\n"
-                "📅 **Select Date Range**\n"
-                "Send one of:\n"
-                "• `2026-04-01` — single date\n"
-                "• `2026-04-01 to 2026-04-07` — date range\n"
-                "• `today` — today only\n"
-                "• `this week` — current week\n\n"
-                "_Type your choice below:_"
+                "**Select Date Range**\n"
+                "Tap a button below, or type a custom date like `2026-04-01`.\n"
+                "_Type `cancel` to exit._"
             )
-            await cb.message.edit_text(prompt)
+            await cb.message.edit_text(prompt, reply_markup=kb)
             await cb.answer()
+
+    @app.on_callback_query(filters.regex(r"^date_btn:") & owner_only)
+    async def handle_date_btn(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        
+        if not session.date_input_pending:
+            await cb.answer("Date selection expired.", show_alert=True)
+            return
+            
+        action = cb.data.split(":", 1)[1]
+        session.date_input_pending = False
+        
+        if action == "all":
+            label = "All Time"
+            await cb.message.edit_text(f"🔍 Scanning **{session.subject_filter or 'All Subjects'}** — {label}...")
+            await run_scan_and_reply(client, chat_id, session.subject_filter, None, None, label)
+            await cb.answer()
+            return
+            
+        parsed = _parse_date_input(action)
+        if parsed:
+            ds, de, label = parsed
+            await cb.message.edit_text(f"🔍 Scanning **{session.subject_filter or 'All Subjects'}** — {label}...")
+            await run_scan_and_reply(client, chat_id, session.subject_filter, ds, de, label)
+            
+        await cb.answer()
+
+    @app.on_callback_query(filters.regex(r"^date:change") & owner_only)
+    async def handle_change_date(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        session.date_input_pending = True
+        
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 Today", callback_data="date_btn:today"),
+             InlineKeyboardButton("📅 This Week", callback_data="date_btn:this week")],
+            [InlineKeyboardButton("♾️ All Time", callback_data="date_btn:all")]
+        ])
+        
+        await cb.message.edit_text(
+            "📅 **Change Date Filter**\n\n"
+            "Tap a button below, or type a custom date like `2026-04-01`.\n"
+            "_Type `cancel` to exit._",
+            reply_markup=kb
+        )
+        await cb.answer()
 
     @app.on_message(filters.text & filters.private & owner_only)
     async def handle_date_input(client: Client, message: Message):
