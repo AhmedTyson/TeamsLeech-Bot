@@ -1,5 +1,5 @@
 from pyrogram import Client, filters
-from pyrogram.types import Message
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from tg_bot.filters import owner_only
 from tg_bot.keyboards import REPLY_KEYBOARD, build_subject_keyboard
@@ -43,12 +43,21 @@ def register_commands(app: Client, scanner: ScannerService, state: StateManager,
         
         subjects = scanner.load_subjects()
         msg_text = "📚 **Current Subjects Configured:**\n"
-        for s in subjects:
+        
+        buttons = []
+        for i, s in enumerate(subjects):
             doc = s.doctor or "No doctor set"
             msg_text += f"• **{s.name}** (Short: `{s.short}`, Doc: `{doc}`)\n"
+            
+            # Add a delete button for this subject
+            btn_text = f"❌ Delete {s.short or s.name}"
+            buttons.append([InlineKeyboardButton(btn_text, callback_data=f"del_subj:{i}")])
             
         msg_text += "\n🔍 **Find New Courses**\n"
         msg_text += "Send a keyword (at least 3 characters) to search your joined Teams.\n"
         msg_text += "_Type `cancel` to exit search mode._"
         
-        await message.reply(msg_text)
+        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+        
+        await message.reply(msg_text, reply_markup=reply_markup)
+

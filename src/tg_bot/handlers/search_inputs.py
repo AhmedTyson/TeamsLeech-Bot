@@ -113,6 +113,39 @@ def register_search_inputs(app: Client, discovery: DiscoveryService, state: Stat
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply(msg + "\n\n_Tap a team below to configure it, or type a new keyword to search again._", reply_markup=reply_markup)
 
+    @app.on_callback_query(filters.regex(r"^del_subj:") & owner_only)
+    async def handle_del_subj(client: Client, cb: CallbackQuery):
+        idx = int(cb.data.split(":", 1)[1])
+        
+        from services.scanner import ScannerService
+        scanner = ScannerService(discovery.graph, state)
+        existing = scanner.load_subjects()
+        
+        if idx >= len(existing):
+            await cb.answer("Subject not found or already deleted.", show_alert=True)
+            return
+            
+        subj_name = existing[idx].name
+        existing.pop(idx)
+        
+        json_str = json.dumps({"subjects": [s.model_dump() for s in existing]}, indent=2)
+        
+        await cb.message.edit_text(f"⏳ Deleting `{subj_name}` from GitHub Secrets...")
+        
+        try:
+            await rotate_github_secret("SUBJECTS_JSON", json_str)
+            # Update local environment
+            import os
+            from core.config import settings
+            os.environ["SUBJECTS_JSON"] = json_str
+            settings.subjects_json = json_str
+            
+            await cb.message.edit_text(f"✅ Success! **{subj_name}** has been permanently deleted.")
+        except Exception as e:
+            await cb.message.edit_text(f"❌ Failed to delete from GitHub Secrets: {e}")
+            
+        await cb.answer()
+
     @app.on_callback_query(filters.regex(r"^add_team:") & owner_only)
     async def handle_add_team(client: Client, cb: CallbackQuery):
         chat_id = cb.message.chat.id
