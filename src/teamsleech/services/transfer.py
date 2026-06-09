@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime
 import json
 import logging
 import os
@@ -259,34 +258,6 @@ class TransferService:
                     asyncio.get_event_loop().time() - start_time_file
                 )
 
-                rec_time_str = (
-                    f"{rec.created}T{rec.time or '00:00'}:00+00:00"
-                )
-                try:
-                    rec_date = datetime.fromisoformat(rec_time_str)
-                    if rec_date > self.state.get_last_run(
-                        rec.subject_name
-                    ):
-                        await self.state.save_last_run(
-                            rec.subject_name, rec_date
-                        )
-                        await self.state.save_last_lecture(
-                            rec.subject_name,
-                            self.state.get_last_lecture(
-                                rec.subject_name
-                            ) + 1,
-                        )
-                except ValueError:
-                    await self.state.save_last_run(
-                        rec.subject_name
-                    )
-                    await self.state.save_last_lecture(
-                        rec.subject_name,
-                        self.state.get_last_lecture(
-                            rec.subject_name
-                        ) + 1,
-                    )
-
                 if progress_cb:
                     await progress_cb(
                         "file_done",
@@ -298,7 +269,7 @@ class TransferService:
                         },
                     )
                 results.append(
-                    {"name": rec.name, "success": True, "error": None}
+                    {"name": rec.name, "success": True, "error": None, "rec": rec}
                 )
             except (TelegramUploadError, OSError) as e:
                 if progress_cb:
@@ -311,7 +282,7 @@ class TransferService:
                         },
                     )
                 results.append(
-                    {"name": rec.name, "success": False, "error": str(e)}
+                    {"name": rec.name, "success": False, "error": str(e), "rec": rec}
                 )
             finally:
                 try:
@@ -384,7 +355,7 @@ class TransferService:
                         },
                     )
                 results.append(
-                    {"name": rec.name, "success": False, "error": str(e)}
+                    {"name": rec.name, "success": False, "error": str(e), "rec": rec}
                 )
                 try:
                     os.unlink(tmp_path)
