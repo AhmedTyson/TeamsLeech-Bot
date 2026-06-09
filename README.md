@@ -2,7 +2,7 @@
 
 # <img src="https://api.iconify.design/lucide:satellite-dish.svg?color=%238A2BE2" width="32" height="32" align="center" /> TeamsLeech Bot v2.x
 
-> **An enterprise-grade, asynchronous Telegram Bot for discovering and mirroring Microsoft Teams academic recordings.**
+> **An asynchronous Telegram Bot for discovering and mirroring Microsoft Teams academic recordings.**
 > Built for students to eliminate manual downloads and save mobile data, running entirely on free cloud infrastructure with zero local intervention required.
 
 </div>
