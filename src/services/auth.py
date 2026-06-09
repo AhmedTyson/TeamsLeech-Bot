@@ -62,12 +62,12 @@ async def exchange_refresh_token() -> Tuple[str, str]:
     log.info("Token exchange successful — access_token acquired.")
     return data["access_token"], data["refresh_token"]
 
-async def rotate_github_secret(new_refresh_token: str) -> None:
+async def rotate_github_secret(secret_name: str, new_value: str) -> None:
     """
-    Encrypt and write the new refresh_token to GitHub Secrets automatically.
+    Encrypt and write a new value to a GitHub Secret automatically.
     """
     if not settings.gh_pat or not settings.github_repository:
-        log.warning("GH_PAT or GITHUB_REPOSITORY missing. Skipping GitHub secret rotation.")
+        log.warning(f"GH_PAT or GITHUB_REPOSITORY missing. Skipping GitHub secret rotation for {secret_name}.")
         return
 
     headers = {
@@ -77,7 +77,6 @@ async def rotate_github_secret(new_refresh_token: str) -> None:
     }
     
     async with httpx.AsyncClient() as client:
-        # 1. Fetch the repo's public key for secret encryption
         try:
             url = f"{GITHUB_API}/repos/{settings.github_repository}/actions/secrets/public-key"
             resp = await client.get(url, headers=headers, timeout=15)
@@ -89,18 +88,16 @@ async def rotate_github_secret(new_refresh_token: str) -> None:
         pub_key_b64 = key_data["key"]
         key_id = key_data["key_id"]
         
-        # 2. Encrypt the secret using libsodium sealed box
         try:
             pub_key_bytes = base64.b64decode(pub_key_b64)
             sealed_box = public.SealedBox(public.PublicKey(pub_key_bytes))
-            encrypted = sealed_box.encrypt(new_refresh_token.encode("utf-8"))
+            encrypted = sealed_box.encrypt(new_value.encode("utf-8"))
             encrypted_b64 = base64.b64encode(encrypted).decode("utf-8")
         except Exception as exc:
             raise SecretRotationError(f"Encryption failed: {exc}") from exc
             
-        # 3. Write the encrypted secret via API
         try:
-            put_url = f"{GITHUB_API}/repos/{settings.github_repository}/actions/secrets/{SECRET_NAME}"
+            put_url = f"{GITHUB_API}/repos/{settings.github_repository}/actions/secrets/{secret_name}"
             put_resp = await client.put(
                 put_url,
                 headers=headers,
@@ -109,13 +106,13 @@ async def rotate_github_secret(new_refresh_token: str) -> None:
             )
             put_resp.raise_for_status()
         except httpx.RequestError as exc:
-            raise SecretRotationError(f"Failed to update GitHub secret '{SECRET_NAME}': {exc}") from exc
+            raise SecretRotationError(f"Failed to update GitHub secret '{secret_name}': {exc}") from exc
             
-    log.info("Refresh token rotated → GitHub secret '%s' updated.", SECRET_NAME)
+    log.info("GitHub secret '%s' updated successfully.", secret_name)
 
 async def authenticate() -> str:
     """
-    All-in-one entry point: exchange → rotate → return access_token.
+    All-in-one entry point: exchange → rotate TEAMS_REFRESH_TOKEN → return access_token.
     """
     if not settings.teams_refresh_token:
         raise TokenManagerError("TEAMS_REFRESH_TOKEN env var is not set in config.")
@@ -123,7 +120,7 @@ async def authenticate() -> str:
     access_token, new_refresh = await exchange_refresh_token()
     
     try:
-        await rotate_github_secret(new_refresh)
+        await rotate_github_secret(SECRET_NAME, new_refresh)
     except Exception as e:
         log.error("Secret rotation failed (non-fatal): %s", e)
         

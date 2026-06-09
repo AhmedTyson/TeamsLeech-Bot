@@ -45,3 +45,9 @@ class UserSession(BaseModel):
     date_input_pending: bool = False
     scan_label: str = ""
     subject_filter: Optional[str] = None
+    
+    # Subject Adding Flow
+    pending_add_team: Optional[Team] = None
+    pending_add_step: str = ""  # e.g., "ask_name", "ask_short", "ask_doctor"
+    pending_add_data: Dict[str, str] = Field(default_factory=dict)
+
