@@ -57,11 +57,15 @@ strict = true
 ignore_missing_imports = true
 
 [tool.semantic_release]
-version_variable = ["pyproject.toml:version"]
 version_toml = ["pyproject.toml:project.version"]
-branch = "main"
-upload_to_pypi = false
-upload_to_release = true
-commit_message = "chore(release): {version} [skip ci]"
-changelog_folder = "."
+commit_message = "chore(release): v{version} [skip ci]"
+
+[tool.semantic_release.branches.main]
+match = "main"
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = true
+dist_glob_patterns = ["dist/*"]
+
+[tool.semantic_release.changelog]
 changelog_file = "CHANGELOG.md"
