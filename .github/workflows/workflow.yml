@@ -17,6 +17,8 @@
 name: TeamsLeech Bot
 
 on:
+  schedule:
+    - cron: '0 8 * * *'  # Run every day at 08:00 UTC
   workflow_dispatch:
     inputs:
       mode:
@@ -47,6 +49,18 @@ jobs:
       VIRTUAL_ENV:          ${{ github.workspace }}/.venv
 
     steps:
+      # ── 0. Silence Check (Before Sept 10) ─────────────────────
+      - name: Check Date (Silent before Sept 10)
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            CURRENT_DATE=$(date +%Y%m%d)
+            # Assuming year 2026
+            if [ "$CURRENT_DATE" -lt "20260910" ]; then
+              echo "Today is before Sept 10. Staying silent."
+              exit 0
+            fi
+          fi
+
       # ── 1. Checkout code ──────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -103,6 +117,10 @@ jobs:
       # ── 7. Run the bot ────────────────────────────────────────
       - name: Run TeamsLeech Bot
         id: run-bot
-        run: .venv/bin/python src/main.py
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            export AUTO_CHECK=1
+          fi
+          .venv/bin/python src/main.py
         timeout-minutes: 25
 

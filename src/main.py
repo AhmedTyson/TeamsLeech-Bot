@@ -1,42 +1,20 @@
-"""
-Main Orchestrator.
-
-Single entry point that wires all modules together:
-    token_manager → fetcher → bot → uploader
-
-Reads all secrets from environment variables (set by GitHub Actions
-or local .env), creates the Pyrogram bot client, registers handlers
-with real fetcher and uploader callbacks, and starts polling.
-
-Usage
------
-    python src/main.py          # local (uses .env)
-    # — or inside GitHub Actions workflow (env vars injected)
-"""
-
 import os
 import sys
 import asyncio
 import logging
 
-# Ensure the src/ directory is on the path for sibling imports
 sys.path.insert(0, os.path.dirname(__file__))
 
-from dotenv import load_dotenv
-load_dotenv()  # no-op if no .env file exists (e.g. in Actions)
+from pyrogram import Client
 
-from token_manager import (
-    exchange_refresh_token,
-    rotate_github_secret,
-    TokenExpiredError,
-    TokenManagerError,
-)
-from fetcher import fetch_recordings_async, load_subjects
-from bot import create_bot, register_handlers, send_startup_warnings
-from uploader import upload_recordings
-from state_manager import TelegramStateManager
-
-# ───────────────────────── logging ────────────────────────────────
+from core.config import settings
+from services.auth import authenticate, TokenExpiredError
+from services.graph import GraphClient
+from services.state import StateManager
+from services.discovery import DiscoveryService
+from services.scanner import ScannerService
+from services.transfer import TransferService
+from tg_bot.handlers import register_all_handlers
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,177 +23,88 @@ logging.basicConfig(
 )
 log = logging.getLogger("main")
 
-# ───────────────────────── config ─────────────────────────────────
-
-SUBJECTS_PATH = os.environ.get("SUBJECTS_PATH", "subjects_config.json")
-STATE_DIR = os.environ.get("STATE_DIR", ".state")
-
-# ───────────────────────── env validation ─────────────────────────
-
-REQUIRED_ENV = [
-    "TEAMS_REFRESH_TOKEN",
-    "TELEGRAM_API_ID",
-    "TELEGRAM_API_HASH",
-    "TELEGRAM_BOT_TOKEN",
-    "TELEGRAM_CHAT_ID",
-]
-
-
-def _validate_env() -> dict[str, str]:
-    """Check all required env vars are present. Returns them as a dict."""
-    missing = [v for v in REQUIRED_ENV if not os.environ.get(v)]
-    if missing:
-        log.critical("Missing required env vars: %s", ", ".join(missing))
-        sys.exit(1)
-
-    env = {v: os.environ[v].strip() for v in REQUIRED_ENV}
-    log.info("All %d required env vars present.", len(REQUIRED_ENV))
-    return env
-
-# ───────────────────────── auth ───────────────────────────────────
-
-def _authenticate(env: dict[str, str]) -> str:
-    """Exchange refresh_token for access_token and rotate the secret.
-
-    Returns a valid Graph API access_token.
-    On TokenExpiredError, sends a reauth alert via Telegram (Phase 3
-    handles this with /reauth command) and exits.
-    """
-    refresh_token = env["TEAMS_REFRESH_TOKEN"]
-    gh_pat = os.environ.get("GH_PAT", "")
-    repo = os.environ.get("GITHUB_REPOSITORY", "")
-
-    try:
-        access_token, new_refresh_token = exchange_refresh_token(refresh_token)
-    except TokenExpiredError as exc:
-        log.critical("Refresh token expired: %s", exc)
-        # The bot's /reauth handler will guide the user
-        raise
-    except TokenManagerError as exc:
-        log.critical("Token exchange failed: %s", exc)
-        raise
-
-    # Rotate the secret if GH_PAT is available
-    if gh_pat:
-        try:
-            rotate_github_secret(new_refresh_token, repo, gh_pat)
-            log.info("Refresh token rotated successfully.")
-        except Exception as exc:
-            log.error("Secret rotation failed (non-fatal): %s", exc)
-    else:
-        log.warning("GH_PAT not set — skipping secret rotation.")
-
-    return access_token
-
-# ───────────────────────── callback factories ─────────────────────
-
-def _make_on_fetch(access_token: str, state_manager: TelegramStateManager):
-    """Create the async on_fetch callback for bot.register_handlers.
-
-    Signature: await on_fetch(subject_filter, date_start, date_end) → dict
-    """
-    async def on_fetch(
-        subject_filter: str | None = None,
-        date_start: str | None = None,
-        date_end: str | None = None,
-    ) -> dict[str, list[dict]]:
-        return await fetch_recordings_async(
-            access_token=access_token,
-            subjects_path=SUBJECTS_PATH,
-            state_manager=state_manager,
-            subject_filter=subject_filter,
-            date_start=date_start,
-            date_end=date_end,
-        )
-    return on_fetch
-
-
-def _make_on_upload(access_token: str, tg_client, chat_id: int, state_manager: TelegramStateManager):
-    """Create the async on_upload callback for bot.register_handlers.
-
-    Signature: await on_upload(recordings: list[dict], progress_cb) → None
-    """
-    async def on_upload(recordings: list[dict], progress_cb) -> None:
-        await upload_recordings(
-            recordings=recordings,
-            access_token=access_token,
-            tg_client=tg_client,
-            chat_id=chat_id,
-            progress_cb=progress_cb,
-            state_manager=state_manager,
-        )
-    return on_upload
-
-# ───────────────────────── main ───────────────────────────────────
-
-def main() -> None:
-    """Wire all modules and start the bot."""
+def main():
     log.info("=" * 50)
-    log.info("TeamsLeech Bot — starting up")
+    log.info("TeamsLeech Modern App — Booting")
     log.info("=" * 50)
 
-    # 1. Validate environment
-    env = _validate_env()
-    chat_id = int(env["TELEGRAM_CHAT_ID"])
-
-    # 2. Authenticate with Microsoft Graph
-    log.info("Step 1/3: Authenticating...")
-    try:
-        access_token = _authenticate(env)
-    except TokenExpiredError:
-        # Start bot anyway so user can send /reauth
-        log.warning("Starting bot in reauth-only mode.")
-        app = create_bot()
-
-        async def _fetch_disabled(_=None, __=None, ___=None):
-            return {"⚠️ Session Expired": []}
-
-        def _upload_disabled(_=None):
-            raise RuntimeError(
-                "Uploads disabled — session expired. Send /reauth to recover."
-            )
-
-        register_handlers(
-            app,
-            on_fetch=_fetch_disabled,
-            on_upload=_upload_disabled,
-            owner_chat_id=chat_id,
-        )
-        log.info("Bot running in reauth-only mode. Send /reauth in Telegram.")
-        app.run()
-        return
-
-    log.info("Step 2/3: Creating bot client...")
-    app = create_bot()
-
-    # 3. Build callbacks
-    state_manager = TelegramStateManager(app, chat_id)
-    on_fetch = _make_on_fetch(access_token, state_manager)
-    on_upload = _make_on_upload(access_token, app, chat_id, state_manager)
-
-    # 4. Register handlers
-    register_handlers(
-        app,
-        on_fetch=on_fetch,
-        on_upload=on_upload,
-        owner_chat_id=chat_id,
+    # 1. Initialize Pyrogram Client
+    app = Client(
+        name="teamsleech_bot",
+        api_id=settings.telegram_api_id,
+        api_hash=settings.telegram_api_hash,
+        bot_token=settings.telegram_bot_token,
+        in_memory=True,
     )
 
-    # 5. Start polling
-    log.info("Step 3/3: Starting bot polling...")
-    log.info("Bot is live. Send /check in Telegram.")
-    log.info("Press Ctrl+C to stop.")
-
     async def _run():
+        # 2. Authenticate & Rotate Secret
+        log.info("Step 1/3: Authenticating with Microsoft & GitHub...")
+        try:
+            access_token = await authenticate()
+        except TokenExpiredError:
+            log.critical("Microsoft session expired. Please run local setup script and update TEAMS_REFRESH_TOKEN secret.")
+            # Start dummy bot mode to send alert if possible?
+            return
+        except Exception as e:
+            log.critical(f"Auth failed: {e}")
+            return
+            
+        # 3. Initialize Services
+        log.info("Step 2/3: Initializing core services...")
+        graph_client = GraphClient(access_token)
+        state_manager = StateManager(app, settings.telegram_chat_id)
+        discovery_service = DiscoveryService(graph_client)
+        scanner_service = ScannerService(graph_client, state_manager)
+        transfer_service = TransferService(graph_client, state_manager, app, settings.telegram_chat_id)
+        
+        # 4. Register Handlers
+        register_all_handlers(
+            app,
+            scanner=scanner_service,
+            transfer=transfer_service,
+            state=state_manager,
+            discovery=discovery_service
+        )
+        
         await app.start()
         await state_manager.initialize()
-        await send_startup_warnings(app, chat_id)
+        
+        log.info("Step 3/3: Bot is live and listening.")
+        
+        # 5. Scheduled Auto-Check Logic (Silent Mode)
+        if settings.auto_check == "1":
+            log.info("Running automated scheduled check...")
+            try:
+                results = await scanner_service.scan_recordings(None, None, None)
+                total = sum(len(recs) for recs in results.values())
+                if total > 0:
+                    from tg_bot.views import build_checklist_text
+                    from tg_bot.keyboards import build_checklist_keyboard
+                    
+                    label = "Since Last Run"
+                    session = state_manager.get_session(settings.telegram_chat_id)
+                    session.pending_recordings = [r for recs in results.values() for r in recs]
+                    session.scan_label = label
+                    
+                    text = build_checklist_text(results, label)
+                    keyboard = build_checklist_keyboard(session.pending_recordings, session.selected_indices)
+                    
+                    await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
+                    log.info("Auto-check found %d recordings, notification sent.", total)
+                else:
+                    log.info("Auto-check found 0 new recordings. Staying completely silent.")
+            except Exception as e:
+                log.error("Scheduled check failed: %s", e)
+
         from pyrogram import idle
         await idle()
+        
+        # Cleanup
+        await graph_client.close()
         await app.stop()
 
     app.run(_run())
-
 
 if __name__ == "__main__":
     main()
