@@ -11,10 +11,10 @@ from pyrogram import Client
 from pyrogram.errors import BadRequest
 from pyrogram.types import Message
 
-from core.constants import GRAPH_BASE_URL, CHUNK_SIZE_BYTES
-from models.domain import Recording
-from services.graph import GraphClient
-from services.state import StateManager
+from teamsleech.core.constants import GRAPH_BASE_URL, CHUNK_SIZE_BYTES
+from teamsleech.models.domain import Recording
+from teamsleech.services.graph import GraphClient
+from teamsleech.services.state import StateManager
 
 log = logging.getLogger("transfer")
 

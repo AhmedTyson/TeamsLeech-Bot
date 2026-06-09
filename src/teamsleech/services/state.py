@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 
 from pyrogram import Client
 from pyrogram.types import Message
-from models.domain import UserSession
+from teamsleech.models.domain import UserSession
 
 log = logging.getLogger("state_manager")
 

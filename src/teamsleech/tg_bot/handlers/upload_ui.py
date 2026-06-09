@@ -1,12 +1,12 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from tg_bot.filters import owner_only
-from tg_bot.views import build_checklist_text, clean_filename
-from tg_bot.keyboards import build_checklist_keyboard
-from services.transfer import TransferService
-from services.scanner import ScannerService
-from services.state import StateManager
+from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.views import build_checklist_text, clean_filename
+from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from teamsleech.services.transfer import TransferService
+from teamsleech.services.scanner import ScannerService
+from teamsleech.services.state import StateManager
 
 def register_upload_ui(app: Client, transfer: TransferService, state: StateManager, scanner: ScannerService):
 

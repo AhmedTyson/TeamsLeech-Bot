@@ -3,11 +3,11 @@ from datetime import datetime, timezone, date as date_type, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import Message, CallbackQuery
 
-from tg_bot.filters import owner_only
-from tg_bot.views import build_checklist_text, format_date_short
-from tg_bot.keyboards import build_checklist_keyboard
-from services.scanner import ScannerService
-from services.state import StateManager
+from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.views import build_checklist_text, format_date_short
+from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from teamsleech.services.scanner import ScannerService
+from teamsleech.services.state import StateManager
 
 MAX_DATE_RANGE_DAYS = 30
 

@@ -1,11 +1,11 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from tg_bot.filters import owner_only
-from tg_bot.keyboards import REPLY_KEYBOARD, build_subject_keyboard
-from services.scanner import ScannerService
-from services.state import StateManager
-from services.discovery import DiscoveryService
+from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.keyboards import REPLY_KEYBOARD, build_subject_keyboard
+from teamsleech.services.scanner import ScannerService
+from teamsleech.services.state import StateManager
+from teamsleech.services.discovery import DiscoveryService
 
 def register_commands(app: Client, scanner: ScannerService, state: StateManager, discovery: DiscoveryService):
     

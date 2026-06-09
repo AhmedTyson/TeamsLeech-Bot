@@ -1,9 +1,9 @@
 from pyrogram import Client
 
-from services.scanner import ScannerService
-from services.transfer import TransferService
-from services.state import StateManager
-from services.discovery import DiscoveryService
+from teamsleech.services.scanner import ScannerService
+from teamsleech.services.transfer import TransferService
+from teamsleech.services.state import StateManager
+from teamsleech.services.discovery import DiscoveryService
 
 from .commands import register_commands
 from .search_inputs import register_search_inputs

@@ -3,18 +3,16 @@ import sys
 import asyncio
 import logging
 
-sys.path.insert(0, os.path.dirname(__file__))
-
 from pyrogram import Client
 
-from core.config import settings
-from services.auth import authenticate, TokenExpiredError
-from services.graph import GraphClient
-from services.state import StateManager
-from services.discovery import DiscoveryService
-from services.scanner import ScannerService
-from services.transfer import TransferService
-from tg_bot.handlers import register_all_handlers
+from teamsleech.core.config import settings
+from teamsleech.services.auth import authenticate, TokenExpiredError
+from teamsleech.services.graph import GraphClient
+from teamsleech.services.state import StateManager
+from teamsleech.services.discovery import DiscoveryService
+from teamsleech.services.scanner import ScannerService
+from teamsleech.services.transfer import TransferService
+from teamsleech.tg_bot.handlers import register_all_handlers
 
 logging.basicConfig(
     level=logging.INFO,

@@ -5,11 +5,11 @@ import re
 from datetime import datetime, timezone
 from typing import Dict, List, Set, Optional
 
-from core.config import settings
-from core.constants import MAX_CONCURRENT_SEARCHES
-from models.domain import SubjectConfig, Recording, Team
-from services.graph import GraphClient, GraphAPIError
-from services.state import StateManager
+from teamsleech.core.config import settings
+from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES
+from teamsleech.models.domain import SubjectConfig, Recording, Team
+from teamsleech.services.graph import GraphClient, GraphAPIError
+from teamsleech.services.state import StateManager
 
 log = logging.getLogger("scanner")
 

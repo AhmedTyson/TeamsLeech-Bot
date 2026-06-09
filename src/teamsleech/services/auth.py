@@ -4,7 +4,7 @@ import httpx
 from typing import Tuple
 from nacl import public
 
-from core.config import settings
+from teamsleech.core.config import settings
 
 log = logging.getLogger("auth")
 

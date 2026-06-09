@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 import re
-from models.domain import Recording
+from teamsleech.models.domain import Recording
 
 DIVIDER_THIN = "┄" * 20
 DIVIDER_THICK = "━" * 20

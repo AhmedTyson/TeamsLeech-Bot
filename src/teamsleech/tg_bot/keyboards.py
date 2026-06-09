@@ -5,7 +5,7 @@ from pyrogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
 )
-from models.domain import SubjectConfig, Recording
+from teamsleech.models.domain import SubjectConfig, Recording
 
 # Persistent reply keyboard shown at the bottom of every message
 REPLY_KEYBOARD = ReplyKeyboardMarkup(

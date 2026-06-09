@@ -2,7 +2,7 @@ import logging
 import httpx
 from typing import Any, Dict, Optional, List
 
-from core.constants import GRAPH_BASE_URL
+from teamsleech.core.constants import GRAPH_BASE_URL
 
 log = logging.getLogger("graph_api")
 

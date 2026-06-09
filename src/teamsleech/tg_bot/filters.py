@@ -1,5 +1,5 @@
 from pyrogram import filters
-from core.config import settings
+from teamsleech.core.config import settings
 
 async def _owner_check(_, __, msg_or_cb):
     # Depending on whether it's a Message or CallbackQuery

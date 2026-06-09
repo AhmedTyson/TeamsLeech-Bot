@@ -1,8 +1,8 @@
 import logging
 from typing import List, Tuple
 
-from models.domain import Team
-from services.graph import GraphClient
+from teamsleech.models.domain import Team
+from teamsleech.services.graph import GraphClient
 
 log = logging.getLogger("discovery")
 

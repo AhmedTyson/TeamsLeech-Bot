@@ -2,11 +2,11 @@ import json
 from pyrogram import Client, filters
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from tg_bot.filters import owner_only
-from services.discovery import DiscoveryService
-from services.state import StateManager
-from services.auth import rotate_github_secret
-from models.domain import SubjectConfig
+from teamsleech.tg_bot.filters import owner_only
+from teamsleech.services.discovery import DiscoveryService
+from teamsleech.services.state import StateManager
+from teamsleech.services.auth import rotate_github_secret
+from teamsleech.models.domain import SubjectConfig
 
 def register_search_inputs(app: Client, discovery: DiscoveryService, state: StateManager):
     
