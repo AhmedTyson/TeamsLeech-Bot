@@ -6,12 +6,30 @@ from pyrogram.types import (
     Message,
 )
 
+from teamsleech.models.domain import Recording
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
 from teamsleech.tg_bot.views import build_checklist_text
+
+def _get_rename_suggestion(
+    rec: Recording, state: StateManager, scanner: ScannerService
+) -> str | None:
+    subjects = scanner.load_subjects()
+    subj_config = next(
+        (s for s in subjects if s.name == rec.subject_name), None
+    )
+    if not subj_config:
+        return None
+    short = subj_config.short or subj_config.name
+    doc = subj_config.doctor
+    last_lec = state.get_last_lecture(rec.subject_name)
+    name = f"{short} - L{last_lec + 1}"
+    if doc:
+        name += f" - {doc}"
+    return name
 
 def register_upload_ui(
     app: Client, transfer: TransferService, state: StateManager, scanner: ScannerService
@@ -105,19 +123,8 @@ def register_upload_ui(
         rec = session.pending_recordings[idx]
         current_name = session.rename_overrides.get(idx, rec.name)
 
-        subjects = scanner.load_subjects()
-        subj_config = next(
-            (s for s in subjects if s.name == rec.subject_name), None
-        )
-
-        if subj_config:
-            short = subj_config.short or subj_config.name
-            doc = subj_config.doctor
-            last_lec = state.get_last_lecture(rec.subject_name)
-            suggested_name = f"{short} - L{last_lec + 1}"
-            if doc:
-                suggested_name += f" - {doc}"
-
+        suggested_name = _get_rename_suggestion(rec, state, scanner)
+        if suggested_name:
             session.pending_suggestion = suggested_name
 
             sug_kb = InlineKeyboardMarkup([
