@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.3.1 (2026-06-10)
+
+### Bug Fixes
+
+- **github_actions**: Fetch all non-completed runs to accurately report status
+  ([#9](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/9),
+  [`a95459c`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/a95459c3258dc224be91ef4ec8a230b73ddbe463))
+
+
 ## v2.3.0 (2026-06-10)
 
 ### Features
