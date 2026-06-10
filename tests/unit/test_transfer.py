@@ -109,6 +109,7 @@ class TestDownloadRecording:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = AsyncMock()
             resp.__aenter__.return_value = resp
+            resp.raise_for_status = MagicMock()
 
             async def _iter():
                 yield chunk
@@ -141,6 +142,7 @@ class TestDownloadRecording:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = AsyncMock()
             resp.__aenter__.return_value = resp
+            resp.raise_for_status = MagicMock()
 
             async def fail_after_one():
                 yield b"x" * 1024

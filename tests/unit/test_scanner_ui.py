@@ -72,6 +72,7 @@ async def test_scanner_ui_handlers(mock_scanner, mock_state):
     test_msgs = ["2026-04-01", "today", "this week", "invalid"]
     for m in test_msgs:
         msg = AsyncMock()
+        msg.continue_propagation = MagicMock()
         msg.text = m
         msg.chat = MagicMock(spec=Chat)
         msg.chat.id = 123

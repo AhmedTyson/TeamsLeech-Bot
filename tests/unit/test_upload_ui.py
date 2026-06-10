@@ -77,6 +77,7 @@ async def test_upload_ui_handlers(mock_transfer, mock_scanner, mock_state):
     test_msgs = ["NewName", "Cancel", "Skip"]
     for m in test_msgs:
         msg = AsyncMock()
+        msg.continue_propagation = MagicMock()
         msg.text = m
         msg.chat = MagicMock(spec=Chat)
         msg.chat.id = 123

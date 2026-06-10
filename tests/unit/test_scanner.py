@@ -11,10 +11,12 @@ from teamsleech.services.scanner import ScannerService
 
 @pytest.fixture
 def scanner(graph_client):
-    state = AsyncMock()
+    from unittest.mock import MagicMock
+    state = MagicMock()
     state.get_last_run.return_value = (
         datetime.min.replace(tzinfo=UTC)
     )
+    state.save_last_run = AsyncMock()
     return ScannerService(graph_client, state)
 
 
