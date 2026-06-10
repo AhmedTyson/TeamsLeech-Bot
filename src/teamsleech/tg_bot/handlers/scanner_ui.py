@@ -13,6 +13,7 @@ from pyrogram.types import (
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
 from teamsleech.tg_bot.views import build_checklist_text, format_date_short
 
@@ -127,8 +128,9 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         if subject_key == "__ALL__":
             label = "Since Last Run"
-            await cb.message.edit_text(
-                f"🔍 Scanning **all subjects** — {label}..."
+            await safe_edit_text(
+                cb.message,
+                f"🔍 Scanning **all subjects** — {label}...",
             )
             await run_scan_and_reply(
                 client, chat_id, None, None, None, label
@@ -160,7 +162,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
                 "Tap a button below, or type a custom date like `2026-04-01`.\n"
                 "_Type `cancel` to exit._"
             )
-            await cb.message.edit_text(prompt, reply_markup=kb)
+            await safe_edit_text(cb.message, prompt, reply_markup=kb)
             await cb.answer()
 
     @app.on_callback_query(filters.regex(r"^date_btn:") & owner_only)
@@ -177,9 +179,10 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         if action == "all":
             label = "All Time"
-            await cb.message.edit_text(
+            await safe_edit_text(
+                cb.message,
                 f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
-                f" — {label}..."
+                f" — {label}...",
             )
             await run_scan_and_reply(
                 client, chat_id, session.subject_filter, None, None, label
@@ -190,9 +193,10 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         parsed = _parse_date_input(action)
         if parsed:
             ds, de, label = parsed
-            await cb.message.edit_text(
+            await safe_edit_text(
+                cb.message,
                 f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
-                f" — {label}..."
+                f" — {label}...",
             )
             await run_scan_and_reply(
                 client, chat_id, session.subject_filter, ds, de, label
@@ -222,7 +226,8 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             ],
         ])
 
-        await cb.message.edit_text(
+        await safe_edit_text(
+            cb.message,
             "**Change Date Range**\n\n"
             "Tap a button below, or type a custom date like `2026-04-01`.\n"
             "_Type `cancel` to exit._",

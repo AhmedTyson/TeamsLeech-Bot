@@ -15,6 +15,7 @@ from teamsleech.services.auth import rotate_github_secret
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
+from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.filters import owner_only
 
 def register_search_inputs(
@@ -160,7 +161,7 @@ def register_search_inputs(
             {"subjects": [s.model_dump() for s in existing]}, indent=2
         )
 
-        await cb.message.edit_text(
+        await safe_edit_text(cb.message, 
             f"⏳ Deleting `{subj_name}` from GitHub Secrets..."
         )
 
@@ -169,11 +170,11 @@ def register_search_inputs(
             os.environ["SUBJECTS_JSON"] = json_str
             settings.subjects_json = json_str
 
-            await cb.message.edit_text(
+            await safe_edit_text(cb.message, 
                 f"✅ Success! **{subj_name}** has been permanently deleted."
             )
         except Exception as e:
-            await cb.message.edit_text(
+            await safe_edit_text(cb.message, 
                 f"❌ Failed to delete from GitHub Secrets: {e}"
             )
 
@@ -204,7 +205,7 @@ def register_search_inputs(
         session.pending_add_step = "ask_name"
         session.pending_add_team = team
 
-        await cb.message.edit_text(
+        await safe_edit_text(cb.message, 
             f"📌 Adding: **{team.display_name}**\n\n"
             "Let's configure this subject.\n\n"
             "📝 **Step 1:** Send the **Full Name**\n"

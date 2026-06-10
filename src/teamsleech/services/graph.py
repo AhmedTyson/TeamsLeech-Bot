@@ -94,6 +94,7 @@ class GraphClient:
         self, endpoint: str
     ) -> list[dict[str, Any]]:
         items = []
+        seen_links: set[str] = set()
         next_link = (
             endpoint
             if endpoint.startswith("http")
@@ -101,6 +102,10 @@ class GraphClient:
         )
 
         while next_link:
+            if next_link in seen_links:
+                log.warning("Circular pagination detected, breaking loop for: %s", next_link)
+                break
+            seen_links.add(next_link)
             page_data = await self.get(next_link)
             items.extend(page_data.get("value", []))
             next_link = page_data.get("@odata.nextLink")

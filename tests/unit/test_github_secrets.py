@@ -10,12 +10,13 @@ class TestRotateGithubSecret:
             200,
             json={"key": "NWVmNjFhZDAyYzU4NmE3YzE4YjU3ZDUzYzE1MjQzZjY=", "key_id": "k1"},
         )
-        mock_github_api.put(
+        put_route = mock_github_api.put(
             "/repos/user/repo/actions/secrets/MY_SECRET"
-        ).respond(201, json={})
+        )
+        put_route.respond(201, json={})
 
         await rotate_github_secret("MY_SECRET", "new_value")
-        assert mock_github_api["/repos/user/repo/actions/secrets/MY_SECRET"].called
+        assert put_route.called
 
     async def test_no_credentials(self, monkeypatch):
         from teamsleech.core.config import settings

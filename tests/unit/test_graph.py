@@ -70,6 +70,9 @@ class TestGraphClient:
         assert results == [{"id": "u1"}]
 
     async def test_get_all_pages_multi(self, graph_client: GraphClient, mock_graph_api):
+        mock_graph_api.get("/users?$skip=1").respond(
+            200, json={"value": [{"id": "u2"}]}
+        )
         mock_graph_api.get("/users").respond(
             200,
             json={
@@ -77,13 +80,13 @@ class TestGraphClient:
                 "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skip=1",
             },
         )
-        mock_graph_api.get("/users?$skip=1").respond(
-            200, json={"value": [{"id": "u2"}]}
-        )
         results = await graph_client.get_all_pages("/users")
         assert results == [{"id": "u1"}, {"id": "u2"}]
 
     async def test_get_all_pages_absolute_url(self, graph_client: GraphClient, mock_graph_api):
+        mock_graph_api.get("/users?$top=1&$skip=1").respond(
+            200, json={"value": [{"id": "u2"}]}
+        )
         mock_graph_api.get("/users").respond(
             200,
             json={
@@ -91,13 +94,29 @@ class TestGraphClient:
                 "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$top=1&$skip=1",
             },
         )
-        mock_graph_api.get("/users?$top=1&$skip=1").respond(
-            200, json={"value": [{"id": "u2"}]}
-        )
         results = await graph_client.get_all_pages(
             "https://graph.microsoft.com/v1.0/users?$top=1"
         )
         assert results == [{"id": "u1"}, {"id": "u2"}]
+
+    async def test_get_all_pages_infinite_loop_guard(self, graph_client: GraphClient, mock_graph_api):
+        loop_link = "https://graph.microsoft.com/v1.0/users?$skip=1"
+        mock_graph_api.get("/users?$skip=1").respond(
+            200,
+            json={
+                "value": [{"id": "u1"}],
+                "@odata.nextLink": loop_link,
+            },
+        )
+        mock_graph_api.get("/users").respond(
+            200,
+            json={
+                "value": [{"id": "u1"}],
+                "@odata.nextLink": loop_link,
+            },
+        )
+        results = await graph_client.get_all_pages("/users")
+        assert results == [{"id": "u1"}]
 
     async def test_close(self, graph_client: GraphClient):
         await graph_client.close()

@@ -13,6 +13,7 @@ from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.views import build_checklist_text
 
 def _get_rename_suggestion(
@@ -51,7 +52,7 @@ def register_upload_ui(
             session.rename_overrides,
         )
 
-        await message.edit_text(text, reply_markup=keyboard)
+        await safe_edit_text(message, text, reply_markup=keyboard)
 
     @app.on_callback_query(filters.regex(r"^sel:pdfs$") & owner_only)
     async def handle_select_pdfs(client: Client, cb: CallbackQuery):
@@ -102,8 +103,9 @@ def register_upload_ui(
     async def handle_cancel(client: Client, cb: CallbackQuery):
         chat_id = cb.message.chat.id
         state.clear_session(chat_id)
-        await cb.message.edit_text(
-            "❌ **Cancelled.**\n\nSend /check to start again."
+        await safe_edit_text(
+            cb.message,
+            "❌ **Cancelled.**\n\nSend /check to start again.",
         )
         await cb.answer()
 
@@ -172,8 +174,9 @@ def register_upload_ui(
         session.pending_rename_idx = None
         session.pending_suggestion = None
 
-        await cb.message.edit_text(
-            f"✅ Renamed to: **{session.rename_overrides[idx]}**"
+        await safe_edit_text(
+            cb.message,
+            f"✅ Renamed to: **{session.rename_overrides[idx]}**",
         )
         await cb.answer("✅ Name saved!")
 
@@ -217,9 +220,10 @@ def register_upload_ui(
                 if override_name:
                     rec.name = override_name
 
-        await cb.message.edit_text(
+        await safe_edit_text(
+            cb.message,
             f"☁️ **Uploading {len(selected_recs)} file(s)...**\n"
-            "_Please wait — this may take a while._"
+            "_Please wait — this may take a while._",
         )
 
         progress_msg = await cb.message.reply(
@@ -231,15 +235,17 @@ def register_upload_ui(
                 done = data.get("index", 0) + 1
                 name = data.get("name", "file")
                 elapsed = data.get("elapsed_s", 0)
-                await progress_msg.edit_text(
+                await safe_edit_text(
+                    progress_msg,
                     f"📊 Progress: {done} / {len(selected_recs)} files\n"
-                    f"✅ Uploaded: `{name}` ({elapsed:.1f}s)"
+                    f"✅ Uploaded: `{name}` ({elapsed:.1f}s)",
                 )
             elif action == "error":
                 name = data.get("name", "file")
                 err = data.get("error", "unknown")
-                await progress_msg.edit_text(
-                    f"{progress_msg.text}\n❌ `{name}` failed: {err}"
+                await safe_edit_text(
+                    progress_msg,
+                    f"{progress_msg.text}\n❌ `{name}` failed: {err}",
                 )
 
         try:
@@ -277,9 +283,9 @@ def register_upload_ui(
                 f"   ✔ {success} succeeded\n"
                 f"   ✘ {failed} failed"
             )
-            await progress_msg.edit_text(summary)
+            await safe_edit_text(progress_msg, summary)
         except Exception as e:
-            await progress_msg.edit_text(f"❌ Upload failed: {e}")
+            await safe_edit_text(progress_msg, f"❌ Upload failed: {e}")
 
         state.clear_session(chat_id)
         await cb.answer()
