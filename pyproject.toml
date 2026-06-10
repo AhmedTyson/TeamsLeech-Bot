@@ -90,5 +90,5 @@ match = "main"
 upload_to_vcs_release = true
 dist_glob_patterns = ["dist/*"]
 
-[tool.semantic_release.changelog]
+[tool.semantic_release.changelog.default_templates]
 changelog_file = "CHANGELOG.md"
