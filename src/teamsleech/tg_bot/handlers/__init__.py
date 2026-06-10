@@ -7,17 +7,16 @@ from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 
-from .commands import register_commands
-from .scanner_ui import register_scanner_ui
-from .search_inputs import register_search_inputs
-from .upload_ui import register_upload_ui
-
-
 async def safe_edit_text(message: Message, text: str, **kwargs) -> None:
     try:
         await message.edit_text(text, **kwargs)
     except MessageNotModified:
         pass
+
+from .commands import register_commands
+from .scanner_ui import register_scanner_ui
+from .search_inputs import register_search_inputs
+from .upload_ui import register_upload_ui
 
 def register_all_handlers(
     app: Client,
