@@ -42,29 +42,18 @@ async def get_active_runs() -> list[dict]:
         
     url = f"{GH_API_BASE}/repos/{settings.github_repository}/actions/runs"
     
-    active_runs = []
     async with httpx.AsyncClient() as client:
-        # Check for in_progress
-        resp_in_progress = await client.get(
+        resp = await client.get(
             url, 
             headers=_get_headers(), 
-            params={"status": "in_progress"}, 
+            params={"per_page": 20}, 
             timeout=GH_TIMEOUT
         )
-        resp_in_progress.raise_for_status()
-        active_runs.extend(resp_in_progress.json().get("workflow_runs", []))
+        resp.raise_for_status()
+        runs = resp.json().get("workflow_runs", [])
         
-        # Check for queued
-        resp_queued = await client.get(
-            url, 
-            headers=_get_headers(), 
-            params={"status": "queued"}, 
-            timeout=GH_TIMEOUT
-        )
-        resp_queued.raise_for_status()
-        active_runs.extend(resp_queued.json().get("workflow_runs", []))
-        
-    return active_runs
+        # Filter for runs that are not completed (captures queued, in_progress, requested, pending)
+        return [r for r in runs if r.get("status") != "completed"]
 
 @retry_http
 async def cancel_run(run_id: int) -> None:
