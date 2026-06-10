@@ -60,9 +60,9 @@ async def test_upload_ui_handlers(mock_transfer, mock_scanner, mock_state):
     test_datas = ["upload:confirm", "ren:0", "retry:upload", "cancel:upload"]
     
     for d in test_datas:
-        cb = AsyncMock(spec=CallbackQuery)
+        cb = AsyncMock()
         cb.data = d
-        cb.message = AsyncMock(spec=Message)
+        cb.message = AsyncMock()
         cb.message.chat = MagicMock(spec=Chat)
         cb.message.chat.id = 123
         
@@ -74,7 +74,7 @@ async def test_upload_ui_handlers(mock_transfer, mock_scanner, mock_state):
 
     test_msgs = ["NewName", "Cancel", "Skip"]
     for m in test_msgs:
-        msg = AsyncMock(spec=Message)
+        msg = AsyncMock()
         msg.text = m
         msg.chat = MagicMock(spec=Chat)
         msg.chat.id = 123

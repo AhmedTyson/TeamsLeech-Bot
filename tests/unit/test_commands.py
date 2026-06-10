@@ -45,19 +45,19 @@ async def test_commands_handlers(mock_scanner, mock_state, mock_discovery):
     assert "handle_subjects" in handlers
     
     # Test handle_start
-    msg = AsyncMock(spec=Message)
+    msg = AsyncMock()
     await handlers["handle_start"](mock_client, msg)
     msg.reply.assert_called_once()
     assert "𝗧𝗲𝗮𝗺𝘀𝗟𝗲𝗲𝗰𝗵 𝗕𝗼𝘁" in msg.reply.call_args[0][0]
     
     # Test handle_check
-    msg = AsyncMock(spec=Message)
+    msg = AsyncMock()
     await handlers["handle_check"](mock_client, msg)
     msg.reply.assert_called_once()
     assert "What do you want to check?" in msg.reply.call_args[0][0]
     
     # Test handle_subjects
-    msg = AsyncMock(spec=Message)
+    msg = AsyncMock()
     msg.chat = MagicMock(spec=Chat)
     msg.chat.id = 123
     await handlers["handle_subjects"](mock_client, msg)
