@@ -212,6 +212,8 @@ def register_upload_ui(
             )
             return
 
+        await cb.answer("Starting upload...")
+
         selected_recs = []
         for i in sorted(session.selected_indices):
             if i < len(session.pending_recordings):
@@ -290,4 +292,3 @@ def register_upload_ui(
             await safe_edit_text(progress_msg, f"❌ Upload failed: {e}")
 
         state.clear_session(chat_id)
-        await cb.answer()

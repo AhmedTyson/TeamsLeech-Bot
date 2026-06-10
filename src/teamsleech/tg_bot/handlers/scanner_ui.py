@@ -177,6 +177,8 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         action = cb.data.split(":", 1)[1]
         session.date_input_pending = False
+        
+        await cb.answer("Starting scan...")
 
         if action == "all":
             label = "All Time"
@@ -188,7 +190,6 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             await run_scan_and_reply(
                 client, chat_id, session.subject_filter, None, None, label
             )
-            await cb.answer()
             return
 
         parsed = _parse_date_input(action)
@@ -202,8 +203,6 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             await run_scan_and_reply(
                 client, chat_id, session.subject_filter, ds, de, label
             )
-
-        await cb.answer()
 
     @app.on_callback_query(filters.regex(r"^date:change") & owner_only)
     async def handle_date_change(client: Client, cb: CallbackQuery):
