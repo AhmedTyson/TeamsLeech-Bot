@@ -20,7 +20,7 @@ class AppConfig(BaseSettings):
     
     # GitHub (Optional but recommended for secret rotation)
     gh_pat: str = Field("", alias="GH_PAT")
-    github_repository: str = Field("", alias="GITHUB_REPOSITORY")
+    github_repository: str = Field("AhmedTyson/TeamsLeech-Bot", alias="GITHUB_REPOSITORY")
     
     # Internal Config
     subjects_json: str = Field("", alias="SUBJECTS_JSON")
