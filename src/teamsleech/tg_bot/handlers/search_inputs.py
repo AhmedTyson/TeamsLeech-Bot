@@ -19,6 +19,46 @@ from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_edit_text
 
 
+def _build_search_page(teams: list[Team], page: int) -> tuple[str, InlineKeyboardMarkup]:
+    PAGE_SIZE = 5
+    total_pages = max(1, (len(teams) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    
+    start_idx = page * PAGE_SIZE
+    end_idx = start_idx + PAGE_SIZE
+    page_teams = teams[start_idx:end_idx]
+    
+    text_lines = [f"🔍 Found {len(teams)} matching teams:\n", f"Page {page + 1} of {total_pages}:"]
+    
+    number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+    
+    buttons_row = []
+    
+    for i, t in enumerate(page_teams):
+        num_str = number_emojis[i] if i < len(number_emojis) else f"{i+1}."
+        text_lines.append(f"{num_str} {t.display_name}")
+        buttons_row.append(
+            InlineKeyboardButton(f"[ {i+1} ]", callback_data=f"add_team:{t.id}")
+        )
+        
+    text_lines.append("\n_Tap a number below to configure that team_")
+    text_lines.append("_or type a new keyword to search again._")
+    
+    keyboard = []
+    if buttons_row:
+        keyboard.append(buttons_row)
+        
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"srch_pg:{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Next ➡️", callback_data=f"srch_pg:{page + 1}"))
+        
+    if nav_row:
+        keyboard.append(nav_row)
+        
+    return "\n".join(text_lines), InlineKeyboardMarkup(keyboard)
+
 def register_search_inputs(
     app: Client, discovery: DiscoveryService, state: StateManager
 ):
@@ -120,27 +160,31 @@ def register_search_inputs(
             )
             return
 
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    f"➕ Add {t.display_name[:20]}...",
-                    callback_data=f"add_team:{t.id}",
-                )
-            ]
-            for t in matched_teams
-        ]
-
         session.pending_add_data["last_search_results"] = json.dumps(
             [t.model_dump() for t in matched_teams]
         )
 
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await message.reply(
-            msg
-            + "\n\n_Tap a team below to configure it,"
-            " or type a new keyword to search again._",
-            reply_markup=reply_markup,
-        )
+        text, reply_markup = _build_search_page(matched_teams, 0)
+        await message.reply(text, reply_markup=reply_markup)
+
+    @app.on_callback_query(filters.regex(r"^srch_pg:") & owner_only)
+    async def handle_search_page(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        
+        results_str = session.pending_add_data.get("last_search_results")
+        if not results_str:
+            await cb.answer("Search results expired. Please search again.", show_alert=True)
+            return
+            
+        page = int(cb.data.split(":")[1])
+        teams_data = json.loads(results_str)
+        matched_teams = [Team(**t) for t in teams_data]
+        
+        text, reply_markup = _build_search_page(matched_teams, page)
+        
+        await safe_edit_text(cb.message, text, reply_markup=reply_markup)
+        await cb.answer()
 
     @app.on_callback_query(filters.regex(r"^del_subj:") & owner_only)
     async def handle_del_subj(client: Client, cb: CallbackQuery):
