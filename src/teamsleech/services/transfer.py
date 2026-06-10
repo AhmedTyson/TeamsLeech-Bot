@@ -4,15 +4,15 @@ import logging
 import os
 import subprocess
 import tempfile
-from typing import Callable
+from collections.abc import Callable
 
 import httpx
 from pyrogram import Client
 from pyrogram.errors import BadRequest, RPCError
 from pyrogram.types import Message
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
-from teamsleech.core.constants import GRAPH_BASE_URL, CHUNK_SIZE_BYTES
+from teamsleech.core.constants import CHUNK_SIZE_BYTES, GRAPH_BASE_URL
 from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import Recording
 from teamsleech.services.graph import GraphClient
@@ -97,7 +97,10 @@ class TransferService:
                         fmt = data.get("format", {})
                         dur = fmt.get("duration", 0)
                     return int(float(dur)), w, h
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            fmt = data.get("format", {})
+            dur = fmt.get("duration", 0)
+            return int(float(dur)), 1280, 720
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError, OSError, TimeoutError) as exc:
             log.warning("ffprobe failed: %s", exc)
         return 0, 1280, 720
 
@@ -116,7 +119,7 @@ class TransferService:
             )
             if os.path.exists(thumb_path):
                 return thumb_path
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
             log.warning("Thumbnail extraction failed: %s", exc)
         return None
 

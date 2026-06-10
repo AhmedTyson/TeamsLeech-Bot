@@ -1,13 +1,13 @@
 import asyncio
-from datetime import datetime, timezone
 import json
 import logging
 import re
+from datetime import datetime
 
 from teamsleech.core.config import settings
 from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES
-from teamsleech.models.domain import SubjectConfig, Recording, Team
-from teamsleech.services.graph import GraphClient, GraphAPIError
+from teamsleech.models.domain import Recording, SubjectConfig, Team
+from teamsleech.services.graph import GraphAPIError, GraphClient
 from teamsleech.services.state import StateManager
 
 log = logging.getLogger("scanner")
@@ -26,7 +26,7 @@ class ScannerService:
                 log.error("Failed to parse SUBJECTS_JSON env var: %s", e)
 
         try:
-            with open(settings.subjects_path, "r", encoding="utf-8") as f:
+            with open(settings.subjects_path, encoding="utf-8") as f:
                 data = json.load(f)
             return [SubjectConfig(**s) for s in data.get("subjects", [])]
         except Exception as e:
@@ -43,7 +43,7 @@ class ScannerService:
             name_lower = team.display_name.lower()
             for kw in keywords:
                 if kw.isalpha():
-                    if re.search(rf"\b{re.escape(kw)}\b", name_lower):
+                    if re.search(rf"\b{re.escape(kw)}", name_lower):
                         matched.append(team)
                         break
                 else:
@@ -192,8 +192,12 @@ class ScannerService:
 
         from teamsleech.services.discovery import DiscoveryService
 
-        discovery = DiscoveryService(self.graph)
-        all_teams = await discovery.get_all_joined_teams()
+        try:
+            discovery = DiscoveryService(self.graph)
+            all_teams = await discovery.get_all_joined_teams()
+        except GraphAPIError as e:
+            log.error("Failed to fetch teams: %s", e)
+            return {s.name: [] for s in subjects}
 
         for subject in subjects:
             try:

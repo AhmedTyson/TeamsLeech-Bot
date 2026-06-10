@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+
 class Recording(BaseModel):
     name: str
     size_mb: float

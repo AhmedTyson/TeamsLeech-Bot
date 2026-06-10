@@ -5,8 +5,8 @@ from teamsleech.services.auth import (
     TokenExchangeError,
     TokenExpiredError,
     TokenManagerError,
-    exchange_refresh_token,
     authenticate,
+    exchange_refresh_token,
 )
 
 TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
