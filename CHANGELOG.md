@@ -2,6 +2,87 @@
 
 <!-- version list -->
 
+## v2.2.0 (2026-06-10)
+
+### Bug Fixes
+
+- Prevent MESSAGE_NOT_MODIFIED crash, pagination hang, and test failures
+  ([`314e42d`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/314e42da304df63e23fa19a7f36ec9e63b3e5cc0))
+
+- Remove spec=Message from AsyncMock in tests to resolve TypeError on await
+  ([`27a4479`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/27a44798b989e3d637bd56697c4a908911e228f8))
+
+- Rename thumb->thumb_path variable, add missing httpx import
+  ([`25d3303`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/25d3303bc14dbe0672a77b32c8633705415ff1ff))
+
+- Resolve edge cases in scanner, transfer handlers, and failing tests
+  ([`9863017`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/9863017ac153a2afed1a1e15e45da74e0487e300))
+
+- Resolve QUERY_ID_INVALID timeouts and test warnings
+  ([#3](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/3),
+  [`4a70ca4`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/4a70ca47c2c06d1492909e4ad6dbeb91d5f59758))
+
+### Build System
+
+- Implement uv for deterministic and fast CI pipelines
+  ([`391db76`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/391db76581011c02e4548f3d2f0aeeaac9db5c76))
+
+### Chores
+
+- Add missing __init__.py files to all subpackages
+  ([`822bb57`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/822bb57d4fe1ac8d59380a6831966362310faf86))
+
+### Code Style
+
+- Fix ruff linting errors in handlers init and unit tests
+  ([`9c45fd0`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/9c45fd076fd08d1e0156180d95c4a78012c37e63))
+
+### Continuous Integration
+
+- Configure git checkout with GH_PAT for semantic-release
+  ([#6](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/6),
+  [`05c4101`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/05c410119f827de0c7a98f494f85ba2d88c33686))
+
+- Use GH_PAT for semantic-release to bypass branch protection and fix config warning
+  ([#5](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/5),
+  [`6b5e739`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/6b5e739b391294321d6de4d595089a03b0aff42e))
+
+### Documentation
+
+- Heavily update README for v2 architecture and remove obsolete files
+  ([`93e01b0`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/93e01b063e272a37fe213bf11fee008489405c01))
+
+- Remove obsolete generate_session script and marketing filler
+  ([`c7af7e0`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/c7af7e0c33035feb80ec7d511357b0a5c167a5a9))
+
+### Features
+
+- Modernize state storage, add retry resilience, comprehensive test suite, CI coverage enforcement
+  ([`b8aaaf3`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/b8aaaf33617f8ea2efc9fca6cde4a4dcbd486659))
+
+- **ui**: Add /runner command to manage GitHub workflows
+  ([#4](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/4),
+  [`26245c7`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/26245c701a565b1cae99344ddd3983d0d4f65666))
+
+- **ui**: Improve team search results ux with pagination and full text
+  ([#2](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/2),
+  [`040ec63`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/040ec6323c2501954586b262575d55581f07293b))
+
+### Refactoring
+
+- Resolve tech lead audit findings (SRP and typing)
+  ([`fad5321`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/fad53218dc7a003c435ac75d0799c1ce55b45ce2))
+
+### Testing
+
+- Add unit tests for github_actions and actions_ui
+  ([#4](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/4),
+  [`26245c7`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/26245c701a565b1cae99344ddd3983d0d4f65666))
+
+- Add unit tests for telegram bot UI and handlers to increase coverage above 70%
+  ([`5c75cac`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/5c75cacf4bbd842c63d2922a27dc8139ab8dbe0a))
+
+
 ## v2.1.0 (2026-06-09)
 
 ### Bug Fixes
