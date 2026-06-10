@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.3.0 (2026-06-10)
+
+### Features
+
+- **ui**: Add runner command to main keyboard and start menu
+  ([#8](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/8),
+  [`5f700f3`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/5f700f3d65a6aaf578727752a56c370948b6ad78))
+
+
 ## v2.2.1 (2026-06-10)
 
 ### Bug Fixes
