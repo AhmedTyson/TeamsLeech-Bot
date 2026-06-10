@@ -99,3 +99,12 @@ def build_checklist_keyboard(
     buttons.append(_build_filter_row(flat, selections))
     buttons.append(_build_action_row())
     return InlineKeyboardMarkup(buttons)
+
+
+def build_actions_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("▶️ Start Runner", callback_data="act:run")],
+        [InlineKeyboardButton("🔄 Check Status", callback_data="act:status")],
+        [InlineKeyboardButton("🛑 Cancel Active Runs", callback_data="act:cancel")]
+    ])
+
