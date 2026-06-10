@@ -1,9 +1,11 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from pyrogram.types import Message, Chat
 
-from teamsleech.tg_bot.handlers.commands import register_commands
+import pytest
+from pyrogram.types import Chat
+
 from teamsleech.models.domain import SubjectConfig
+from teamsleech.tg_bot.handlers.commands import register_commands
+
 
 @pytest.fixture
 def mock_scanner():

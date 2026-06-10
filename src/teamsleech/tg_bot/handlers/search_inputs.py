@@ -15,8 +15,9 @@ from teamsleech.services.auth import rotate_github_secret
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
-from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.handlers import safe_edit_text
+
 
 def register_search_inputs(
     app: Client, discovery: DiscoveryService, state: StateManager

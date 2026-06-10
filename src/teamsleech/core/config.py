@@ -1,6 +1,7 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class AppConfig(BaseSettings):
     """
     Centralized configuration for TeamsLeech Bot.

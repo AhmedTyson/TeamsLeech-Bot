@@ -1,12 +1,12 @@
-import pytest
+from teamsleech.models.domain import Recording
 from teamsleech.tg_bot.views import (
-    num_label,
+    build_checklist_text,
     clean_filename,
     format_date_short,
     format_duration,
-    build_checklist_text,
+    num_label,
 )
-from teamsleech.models.domain import Recording
+
 
 def test_num_label():
     assert num_label(1) == "1."

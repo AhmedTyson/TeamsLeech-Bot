@@ -8,7 +8,6 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "67890")
 os.environ.setdefault("GH_PAT", "ghp_test")
 os.environ.setdefault("GITHUB_REPOSITORY", "user/repo")
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest

@@ -1,15 +1,15 @@
-from unittest.mock import AsyncMock, patch, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
+from teamsleech.models.domain import Recording
 from teamsleech.services.transfer import (
-    TransferService,
     DownloadError,
     TelegramUploadError,
     TransferError,
+    TransferService,
 )
-from teamsleech.models.domain import Recording
 
 
 @pytest.fixture

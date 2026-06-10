@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from pyrogram import Client, filters
 from pyrogram.types import (
     CallbackQuery,
@@ -12,9 +13,10 @@ from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.filters import owner_only
-from teamsleech.tg_bot.keyboards import build_checklist_keyboard
 from teamsleech.tg_bot.handlers import safe_edit_text
+from teamsleech.tg_bot.keyboards import build_checklist_keyboard
 from teamsleech.tg_bot.views import build_checklist_text
+
 
 def _get_rename_suggestion(
     rec: Recording, state: StateManager, scanner: ScannerService

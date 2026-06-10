@@ -4,15 +4,15 @@ import logging
 import os
 import subprocess
 import tempfile
-from typing import Callable
+from collections.abc import Callable
 
 import httpx
 from pyrogram import Client
 from pyrogram.errors import BadRequest, RPCError
 from pyrogram.types import Message
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
-from teamsleech.core.constants import GRAPH_BASE_URL, CHUNK_SIZE_BYTES
+from teamsleech.core.constants import CHUNK_SIZE_BYTES, GRAPH_BASE_URL
 from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import Recording
 from teamsleech.services.graph import GraphClient

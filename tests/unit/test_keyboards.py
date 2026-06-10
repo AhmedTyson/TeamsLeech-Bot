@@ -1,11 +1,10 @@
-import pytest
-from datetime import datetime
 
+from teamsleech.models.domain import Recording, SubjectConfig
 from teamsleech.tg_bot.keyboards import (
-    build_subject_keyboard,
     build_checklist_keyboard,
+    build_subject_keyboard,
 )
-from teamsleech.models.domain import SubjectConfig, Recording
+
 
 def test_build_subject_keyboard():
     subjects = [

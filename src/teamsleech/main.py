@@ -1,16 +1,14 @@
-import asyncio
 import logging
 import os
-import sys
 
 from pyrogram import Client
 
 from teamsleech.core.config import settings
-from teamsleech.services.auth import authenticate, TokenExpiredError
-from teamsleech.services.graph import GraphClient
-from teamsleech.services.state import StateManager
+from teamsleech.services.auth import TokenExpiredError, authenticate
 from teamsleech.services.discovery import DiscoveryService
+from teamsleech.services.graph import GraphClient
 from teamsleech.services.scanner import ScannerService
+from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.handlers import register_all_handlers
 
@@ -82,8 +80,8 @@ def main():
                 results = await scanner_service.scan_recordings(subject_filter, None, None)
                 total = sum(len(recs) for recs in results.values())
                 if total > 0:
-                    from teamsleech.tg_bot.views import build_checklist_text
                     from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+                    from teamsleech.tg_bot.views import build_checklist_text
 
                     label = "Since Last Run"
                     session = state_manager.get_session(settings.telegram_chat_id)

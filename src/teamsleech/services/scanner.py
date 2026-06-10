@@ -1,13 +1,13 @@
 import asyncio
-from datetime import datetime, timezone
 import json
 import logging
 import re
+from datetime import datetime
 
 from teamsleech.core.config import settings
 from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES
-from teamsleech.models.domain import SubjectConfig, Recording, Team
-from teamsleech.services.graph import GraphClient, GraphAPIError
+from teamsleech.models.domain import Recording, SubjectConfig, Team
+from teamsleech.services.graph import GraphAPIError, GraphClient
 from teamsleech.services.state import StateManager
 
 log = logging.getLogger("scanner")
@@ -26,7 +26,7 @@ class ScannerService:
                 log.error("Failed to parse SUBJECTS_JSON env var: %s", e)
 
         try:
-            with open(settings.subjects_path, "r", encoding="utf-8") as f:
+            with open(settings.subjects_path, encoding="utf-8") as f:
                 data = json.load(f)
             return [SubjectConfig(**s) for s in data.get("subjects", [])]
         except Exception as e:

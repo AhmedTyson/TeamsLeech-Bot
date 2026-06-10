@@ -1,9 +1,11 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from pyrogram.types import Message, CallbackQuery, Chat
 
-from teamsleech.tg_bot.handlers.scanner_ui import register_scanner_ui
+import pytest
+from pyrogram.types import Chat
+
 from teamsleech.models.domain import Recording
+from teamsleech.tg_bot.handlers.scanner_ui import register_scanner_ui
+
 
 @pytest.fixture
 def mock_scanner():
@@ -61,7 +63,7 @@ async def test_scanner_ui_handlers(mock_scanner, mock_state):
         cb.message.chat = MagicMock(spec=Chat)
         cb.message.chat.id = 123
         
-        for name, func in handlers_cb.items():
+        for _, func in handlers_cb.items():
             try:
                 await func(mock_client, cb)
             except Exception:
@@ -74,7 +76,7 @@ async def test_scanner_ui_handlers(mock_scanner, mock_state):
         msg.chat = MagicMock(spec=Chat)
         msg.chat.id = 123
         
-        for name, func in handlers_msg.items():
+        for _, func in handlers_msg.items():
             try:
                 await func(mock_client, msg)
             except Exception:
