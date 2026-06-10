@@ -172,7 +172,7 @@ class TestScanRecordings:
             "teamsleech.services.scanner.settings.subjects_json",
             json.dumps({"subjects": []}),
         )
-        with patch("teamsleech.services.scanner.DiscoveryService") as mock_disc:
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
             mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=[])
             result = await scanner.scan_recordings()
         assert result == {}
@@ -189,7 +189,7 @@ class TestScanRecordings:
                 ]
             }),
         )
-        with patch("teamsleech.services.scanner.DiscoveryService") as mock_disc:
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
             mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=[])
             result = await scanner.scan_recordings(subject_filter="Math")
         assert "Math" in result
@@ -218,7 +218,7 @@ class TestScanRecordings:
                 ]
             }),
         )
-        with patch("teamsleech.services.scanner.DiscoveryService") as mock_disc:
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
             mock_disc.return_value.get_all_joined_teams = AsyncMock(
                 side_effect=GraphAPIError("Teams fetch failed")
             )
@@ -236,7 +236,7 @@ class TestScanRecordings:
                 ]
             }),
         )
-        with patch("teamsleech.services.scanner.DiscoveryService") as mock_disc:
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
             mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=[])
             scanner._match_teams = lambda teams, subject: []
             result = await scanner.scan_recordings()

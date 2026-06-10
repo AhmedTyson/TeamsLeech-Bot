@@ -43,7 +43,7 @@ class ScannerService:
             name_lower = team.display_name.lower()
             for kw in keywords:
                 if kw.isalpha():
-                    if re.search(rf"\b{re.escape(kw)}\b", name_lower):
+                    if re.search(rf"\b{re.escape(kw)}", name_lower):
                         matched.append(team)
                         break
                 else:
@@ -192,8 +192,12 @@ class ScannerService:
 
         from teamsleech.services.discovery import DiscoveryService
 
-        discovery = DiscoveryService(self.graph)
-        all_teams = await discovery.get_all_joined_teams()
+        try:
+            discovery = DiscoveryService(self.graph)
+            all_teams = await discovery.get_all_joined_teams()
+        except GraphAPIError as e:
+            log.error("Failed to fetch teams: %s", e)
+            return {s.name: [] for s in subjects}
 
         for subject in subjects:
             try:

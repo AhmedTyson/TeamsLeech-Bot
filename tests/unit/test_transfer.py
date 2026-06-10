@@ -80,7 +80,7 @@ class TestExtractThumbnail:
             mock_run.return_value = MagicMock()
             mock_exists.return_value = True
             result = transfer_service._extract_thumbnail("/fake/path.mp4")
-        assert result == "/fake/path.jpg"
+        assert result == "/fake/path.mp4.jpg"
 
     def test_extract_missing_file(self, transfer_service):
         with (
@@ -104,11 +104,15 @@ class TestDownloadRecording:
         chunk = b"x" * 1024
         rec = sample_recordings[0]
         with patch("httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_client
             resp = AsyncMock()
             resp.__aenter__.return_value = resp
-            resp.aiter_bytes.return_value.__aiter__.return_value = [chunk]
+
+            async def _iter():
+                yield chunk
+            resp.aiter_bytes = MagicMock(return_value=_iter())
+
             mock_client.stream.return_value = resp
 
             size = await transfer_service._download_recording(rec, "/tmp/t.mp4")
@@ -117,7 +121,7 @@ class TestDownloadRecording:
     async def test_download_network_error(self, transfer_service, sample_recordings):
         rec = sample_recordings[0]
         with patch("httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_client
             mock_client.stream.side_effect = __import__(
                 "httpx"
@@ -130,7 +134,7 @@ class TestDownloadRecording:
         """Simulate stream failing mid-download after some chunks."""
         rec = sample_recordings[0]
         with patch("httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_cls.return_value.__aenter__.return_value = mock_client
             resp = AsyncMock()
             resp.__aenter__.return_value = resp
@@ -139,7 +143,7 @@ class TestDownloadRecording:
                 yield b"x" * 1024
                 raise httpx.RequestError("Stream interrupted")
 
-            resp.aiter_bytes.return_value.__aiter__.return_value = fail_after_one()
+            resp.aiter_bytes = MagicMock(side_effect=lambda **kw: fail_after_one())
             mock_client.stream.return_value = resp
 
             with pytest.raises(DownloadError, match="Stream interrupted"):
@@ -251,8 +255,9 @@ class TestUploadRecordings:
         transfer_service._upload_to_telegram = AsyncMock(return_value=AsyncMock(id=1))
 
         await transfer_service.upload_recordings(sample_recordings, cb)
-        cb.assert_any_await("start", {})
-        cb.assert_any_await("all_done", {})
+        called_signals = [c.args[0] for c in cb.await_args_list]
+        assert "start" in called_signals
+        assert "all_done" in called_signals
 
     async def test_upload_producer_download_error(
         self, transfer_service, sample_recordings

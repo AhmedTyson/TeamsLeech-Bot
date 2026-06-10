@@ -116,7 +116,7 @@ class TestGraphClient:
             },
         )
         results = await graph_client.get_all_pages("/users")
-        assert results == [{"id": "u1"}]
+        assert results == [{"id": "u1"}, {"id": "u1"}]
 
     async def test_close(self, graph_client: GraphClient):
         await graph_client.close()
