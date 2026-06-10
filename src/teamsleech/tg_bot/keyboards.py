@@ -10,6 +10,7 @@ from teamsleech.models.domain import Recording, SubjectConfig
 REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🔍 Check Recordings"), KeyboardButton("📚 Subjects")],
+        [KeyboardButton("⚙️ Background Runner")],
     ],
     resize_keyboard=True,
 )

@@ -8,7 +8,11 @@ from teamsleech.tg_bot.keyboards import build_actions_keyboard
 
 
 def register_actions_ui(app: Client) -> None:
-    @app.on_message(filters.command("runner") & owner_only)
+    @app.on_message(
+        (filters.command("runner") | filters.regex("^⚙️ Background Runner$"))
+        & filters.private
+        & owner_only
+    )
     async def handle_runner_cmd(client: Client, message: Message):
         text = (
             "⚙️ **GitHub Actions Control Panel**\n\n"
