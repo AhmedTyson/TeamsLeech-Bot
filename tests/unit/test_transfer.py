@@ -123,7 +123,8 @@ class TestDownloadRecording:
         rec = sample_recordings[0]
         with patch("httpx.AsyncClient") as mock_cls:
             mock_client = MagicMock()
-            mock_cls.return_value.__aenter__.return_value = mock_client
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             mock_client.stream.side_effect = __import__(
                 "httpx"
             ).RequestError("Connection refused")
