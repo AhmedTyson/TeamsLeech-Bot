@@ -53,11 +53,12 @@ async def test_trigger_workflow_missing_repo(mock_settings):
 async def test_get_active_runs_success(respx_mock, mock_settings):
     url = f"{GH_API_BASE}/repos/fake/repo/actions/runs"
     
-    respx_mock.get(url, params={"status": "in_progress"}).mock(
-        return_value=httpx.Response(200, json={"workflow_runs": [{"id": 1, "status": "in_progress", "name": "Test1"}]})
-    )
-    respx_mock.get(url, params={"status": "queued"}).mock(
-        return_value=httpx.Response(200, json={"workflow_runs": [{"id": 2, "status": "queued", "name": "Test2"}]})
+    respx_mock.get(url, params={"per_page": "20"}).mock(
+        return_value=httpx.Response(200, json={"workflow_runs": [
+            {"id": 1, "status": "in_progress", "name": "Test1"},
+            {"id": 2, "status": "queued", "name": "Test2"},
+            {"id": 3, "status": "completed", "name": "Test3"}
+        ]})
     )
     
     runs = await get_active_runs()
