@@ -14,6 +14,7 @@ async def safe_edit_text(message: Message, text: str, **kwargs) -> None:
     except MessageNotModified:
         pass
 
+from .actions_ui import register_actions_ui  # noqa: E402
 from .commands import register_commands  # noqa: E402
 from .scanner_ui import register_scanner_ui  # noqa: E402
 from .search_inputs import register_search_inputs  # noqa: E402
@@ -34,3 +35,4 @@ def register_all_handlers(
     register_search_inputs(app, discovery, state)
     register_scanner_ui(app, scanner, state)
     register_upload_ui(app, transfer, state, scanner)
+    register_actions_ui(app)
