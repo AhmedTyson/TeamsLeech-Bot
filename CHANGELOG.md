@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.2.1 (2026-06-10)
+
+### Bug Fixes
+
+- **config**: Add default fallback for GITHUB_REPOSITORY
+  ([#7](https://github.com/AhmedTyson/TeamsLeech-Bot/pull/7),
+  [`e4f0718`](https://github.com/AhmedTyson/TeamsLeech-Bot/commit/e4f0718ee73f2925f2c5b9d3b0fb8297b9412e0a))
+
+
 ## v2.2.0 (2026-06-10)
 
 ### Bug Fixes
