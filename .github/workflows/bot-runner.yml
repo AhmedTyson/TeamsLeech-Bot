@@ -36,7 +36,10 @@ jobs:
   run:
     name: Check & Upload Recordings
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 300
+    concurrency:
+      group: bot-runner
+      cancel-in-progress: true
 
     env:
       TEAMS_REFRESH_TOKEN:  ${{ secrets.TEAMS_REFRESH_TOKEN }}
@@ -50,12 +53,12 @@ jobs:
       SUBJECT_NAME:         ${{ github.event.inputs.subject || '' }}
 
     steps:
-      - name: Check Date (Silent before Sept 10)
+      - name: Check Date (Silent before Sept 30)
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             CURRENT_DATE=$(date +%Y%m%d)
-            if [ "$CURRENT_DATE" -lt "20260910" ]; then
-              echo "Today is before Sept 10. Staying silent."
+            if [ "$CURRENT_DATE" -lt "20260930" ]; then
+              echo "Today is before Sept 30. Staying silent."
               exit 0
             fi
           fi

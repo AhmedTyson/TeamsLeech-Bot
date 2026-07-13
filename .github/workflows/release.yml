@@ -1,17 +1,13 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["CI Pipeline"]
-    types:
-      - completed
-    branches:
-      - main
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   release:
     name: Semantic Release
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ github.event.workflow_run.head_branch }}

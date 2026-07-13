@@ -84,6 +84,17 @@ TeamsLeech-Bot/
 
 ---
 
+## <img src="https://api.iconify.design/lucide:refresh-cw.svg?color=%238A2BE2" width="24" height="24" align="center" /> Manual Trigger & Token Rotation
+
+If the bot encounters auth failures or you need an immediate check outside the schedule:
+1. **Manual Trigger**: Go to **Actions** → **TeamsLeech Bot** → **Run workflow**.
+2. **Refresh Token**: 
+   - Run `python scripts/get_teams_token.py` locally.
+   - Complete the browser OAuth login.
+   - Copy the new refresh token and update the `TEAMS_REFRESH_TOKEN` secret in the repository settings.
+
+---
+
 ## <img src="https://api.iconify.design/lucide:rocket.svg?color=%238A2BE2" width="24" height="24" align="center" /> Local Development
 
 To develop or test locally:
