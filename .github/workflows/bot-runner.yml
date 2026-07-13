@@ -14,8 +14,8 @@
 name: TeamsLeech Bot
 
 on:
-  schedule:
-    - cron: '0 8 * * *'
+  # schedule:
+  #   - cron: '0 8 * * *'  # Resumes Sept 30, uncomment then
   workflow_dispatch:
     inputs:
       mode:
