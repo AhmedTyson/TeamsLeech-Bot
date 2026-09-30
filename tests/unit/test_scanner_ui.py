@@ -49,10 +49,10 @@ async def test_subject_all_reports_no_files(mock_scanner, mock_state):
     handlers_cb = {}
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock()
-    mock_client.on_callback_query.side_effect = lambda *a, **k: lambda f: handlers_cb.setdefault(
-        f.__name__, f
+    mock_client.on_callback_query.side_effect = lambda *a, **k: (
+        lambda f: handlers_cb.setdefault(f.__name__, f)
     )
-    mock_client.on_message.side_effect = lambda *a, **k: (lambda f: f)
+    mock_client.on_message.side_effect = lambda *a, **k: lambda f: f
     register_scanner_ui(mock_client, mock_scanner, mock_state)
 
     cb = AsyncMock()
@@ -72,10 +72,10 @@ async def test_scan_error_surfaced_to_chat(mock_state):
     handlers_cb = {}
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock()
-    mock_client.on_callback_query.side_effect = lambda *a, **k: lambda f: handlers_cb.setdefault(
-        f.__name__, f
+    mock_client.on_callback_query.side_effect = lambda *a, **k: (
+        lambda f: handlers_cb.setdefault(f.__name__, f)
     )
-    mock_client.on_message.side_effect = lambda *a, **k: (lambda f: f)
+    mock_client.on_message.side_effect = lambda *a, **k: lambda f: f
     register_scanner_ui(mock_client, scanner, mock_state)
 
     cb = AsyncMock()
@@ -145,8 +145,8 @@ async def test_concurrent_scans_single_flight():
 
     cbs = {}
     app = MagicMock()
-    app.on_callback_query.side_effect = lambda *a, **k: (lambda f: cbs.setdefault(f.__name__, f))
-    app.on_message.side_effect = lambda *a, **k: (lambda f: f)
+    app.on_callback_query.side_effect = lambda *a, **k: lambda f: cbs.setdefault(f.__name__, f)
+    app.on_message.side_effect = lambda *a, **k: lambda f: f
     register_scanner_ui(app, scanner, state)
 
     client = MagicMock()

@@ -89,8 +89,7 @@ class StateManager:
         key = self._resolve_key(subject_name)
         if key != _normalize_key(subject_name):
             log.warning(
-                "Subject key collision: %r shares normalized key with another "
-                "subject; using %r.",
+                "Subject key collision: %r shares normalized key with another subject; using %r.",
                 subject_name,
                 key,
             )
@@ -166,7 +165,7 @@ class StateManager:
                 json_str = (
                     text.split("#TEAMSLEECH_STATE\n")[1]
                     .replace(
-                        "⚠️ DO NOT DELETE THIS MESSAGE\n" "This acts as the database for the bot.\n",
+                        "⚠️ DO NOT DELETE THIS MESSAGE\nThis acts as the database for the bot.\n",
                         "",
                     )
                     .strip()

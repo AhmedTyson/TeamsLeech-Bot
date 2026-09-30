@@ -229,7 +229,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             label = "All Time"
             await safe_edit_text(
                 cb.message,
-                f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**" f" — {label}...",
+                f"🔍 Scanning **{session.subject_filter or 'All Subjects'}** — {label}...",
             )
             await run_scan_and_reply(client, chat_id, session.subject_filter, None, None, label)
             return
@@ -239,7 +239,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             ds, de, label = parsed
             await safe_edit_text(
                 cb.message,
-                f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**" f" — {label}...",
+                f"🔍 Scanning **{session.subject_filter or 'All Subjects'}** — {label}...",
             )
             await run_scan_and_reply(client, chat_id, session.subject_filter, ds, de, label)
 
@@ -312,6 +312,6 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             return
 
         await message.reply(
-            f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**" f" — {label}..."
+            f"🔍 Scanning **{session.subject_filter or 'All Subjects'}** — {label}..."
         )
         await run_scan_and_reply(client, chat_id, session.subject_filter, ds, de, label)

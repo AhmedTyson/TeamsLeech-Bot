@@ -87,7 +87,7 @@ def parse_recording_date(rec: Recording) -> datetime | None:
 def build_upload_summary(results: list[dict[str, Any]]) -> str:
     success = sum(1 for r in results if r.get("success"))
     failed = sum(1 for r in results if not r.get("success"))
-    return "✅ **Upload complete!**\n" f"   ✔ {success} succeeded\n" f"   ✘ {failed} failed"
+    return f"✅ **Upload complete!**\n   ✔ {success} succeeded\n   ✘ {failed} failed"
 
 
 def make_transfer_progress_cb(progress_msg: Message, total: int) -> ProgressCallback:
@@ -98,7 +98,7 @@ def make_transfer_progress_cb(progress_msg: Message, total: int) -> ProgressCall
             elapsed = data.get("elapsed_s", 0)
             await safe_edit_text(
                 progress_msg,
-                f"📊 Progress: {done} / {total} files\n" f"✅ Uploaded: `{name}` ({elapsed:.1f}s)",
+                f"📊 Progress: {done} / {total} files\n✅ Uploaded: `{name}` ({elapsed:.1f}s)",
             )
         elif action == "error":
             name = data.get("name", "file")
@@ -292,7 +292,7 @@ def register_upload_ui(
                 session.pending_rename_idx = None
                 session.pending_suggestion = None
                 await message.reply(
-                    "❌ That recording is gone — the list changed. " "Tap rename again."
+                    "❌ That recording is gone — the list changed. Tap rename again."
                 )
                 return
             session.rename_overrides[idx] = message.text.strip()

@@ -48,9 +48,9 @@ def _build_search_page(teams: list[Team], page: int) -> tuple[str, InlineKeyboar
     buttons_row = []
 
     for i, t in enumerate(page_teams):
-        num_str = number_emojis[i] if i < len(number_emojis) else f"{i+1}."
+        num_str = number_emojis[i] if i < len(number_emojis) else f"{i + 1}."
         text_lines.append(f"{num_str} {t.display_name}")
-        buttons_row.append(InlineKeyboardButton(f"[ {i+1} ]", callback_data=f"add_team:{t.id}"))
+        buttons_row.append(InlineKeyboardButton(f"[ {i + 1} ]", callback_data=f"add_team:{t.id}"))
 
     text_lines.append("\n_Tap a number below to configure that team_")
     text_lines.append("_or type a new keyword to search again._")
@@ -100,7 +100,7 @@ def register_search_inputs(app: Client, discovery: DiscoveryService, state: Stat
             session.pending_add_data["name"] = text
             session.pending_add_step = "ask_short"
             await message.reply(
-                "📝 Got it.\n\n" "Now, send a **Short Name** (e.g., `DB` for Database)."
+                "📝 Got it.\n\nNow, send a **Short Name** (e.g., `DB` for Database)."
             )
             return
 
@@ -147,8 +147,7 @@ def register_search_inputs(app: Client, discovery: DiscoveryService, state: Stat
                 )
             except Exception as e:
                 await message.reply(
-                    f"❌ Failed to save to GitHub Secrets: {e}\n\n"
-                    "Make sure your GH_PAT is valid."
+                    f"❌ Failed to save to GitHub Secrets: {e}\n\nMake sure your GH_PAT is valid."
                 )
 
             session.is_searching_teams = False

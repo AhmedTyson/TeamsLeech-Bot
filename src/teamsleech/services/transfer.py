@@ -195,7 +195,7 @@ class TransferService:
             return None
         location = resp.headers.get("location")
         if not location:
-            msg = f"Graph download redirect for {rec_name} " "missing Location header."
+            msg = f"Graph download redirect for {rec_name} missing Location header."
             raise DownloadError(msg)
         nxt: str = urljoin(target, location)
         if urlparse(nxt).scheme != "https":
@@ -212,12 +212,12 @@ class TransferService:
         if declared is not None:
             try:
                 if int(declared) > TELEGRAM_MAX_FILE_BYTES:
-                    msg = f"File {rec.name} ({declared} bytes) exceeds " "Telegram 2 GB limit."
+                    msg = f"File {rec.name} ({declared} bytes) exceeds Telegram 2 GB limit."
                     raise DownloadError(msg)
             except ValueError:
                 pass
         total_written = 0
-        with open(dest_path, "wb") as f:  # noqa: ASYNC101 - local temp file, chunked writes
+        with open(dest_path, "wb") as f:  # noqa: ASYNC101,ASYNC230 - local temp file, chunked writes
             async for chunk in resp.aiter_bytes(chunk_size=CHUNK_SIZE_BYTES):
                 f.write(chunk)
                 total_written += len(chunk)
@@ -257,7 +257,7 @@ class TransferService:
         except DownloadError:
             raise
         except httpx.HTTPStatusError as exc:
-            msg = f"Graph download failed " f"[{exc.response.status_code}]: {exc}"
+            msg = f"Graph download failed [{exc.response.status_code}]: {exc}"
             raise DownloadError(msg) from exc
         except httpx.RequestError as exc:
             msg = f"Graph download failed: {exc}"
@@ -329,7 +329,7 @@ class TransferService:
             msg = f"Upload failed: {exc}"
             raise TelegramUploadError(msg) from exc
         finally:
-            if thumb_path and os.path.exists(thumb_path):
+            if thumb_path and os.path.exists(thumb_path):  # noqa: ASYNC240 - local temp file stat
                 try:
                     os.unlink(thumb_path)
                 except OSError:

@@ -47,10 +47,10 @@ def mock_state():
 async def test_rename_btn_rejects_malformed_data(mock_transfer, mock_scanner, mock_state):
     handlers_cb = {}
     mock_client = MagicMock()
-    mock_client.on_callback_query.side_effect = lambda *a, **k: lambda f: handlers_cb.setdefault(
-        f.__name__, f
+    mock_client.on_callback_query.side_effect = lambda *a, **k: (
+        lambda f: handlers_cb.setdefault(f.__name__, f)
     )
-    mock_client.on_message.side_effect = lambda *a, **k: (lambda f: f)
+    mock_client.on_message.side_effect = lambda *a, **k: lambda f: f
     register_upload_ui(mock_client, mock_transfer, mock_state, mock_scanner)
 
     cb = AsyncMock()
@@ -92,10 +92,10 @@ async def test_upload_confirm_batches_state_without_mutating(
 
     handlers_cb = {}
     mock_client = MagicMock()
-    mock_client.on_callback_query.side_effect = lambda *a, **k: lambda f: handlers_cb.setdefault(
-        f.__name__, f
+    mock_client.on_callback_query.side_effect = lambda *a, **k: (
+        lambda f: handlers_cb.setdefault(f.__name__, f)
     )
-    mock_client.on_message.side_effect = lambda *a, **k: (lambda f: f)
+    mock_client.on_message.side_effect = lambda *a, **k: lambda f: f
     register_upload_ui(mock_client, transfer, state, mock_scanner)
 
     cb = AsyncMock()
