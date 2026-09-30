@@ -23,7 +23,7 @@ from teamsleech.core.constants import (
 )
 from teamsleech.core.retry import retry_on, retry_tg
 from teamsleech.models.domain import Recording
-from teamsleech.services.graph import GraphClient, quote_id
+from teamsleech.services.graph import GraphAPIError, GraphClient, quote_id
 from teamsleech.services.state import StateManager
 
 log = logging.getLogger("transfer")
@@ -39,6 +39,10 @@ class TransferError(Exception):
 
 class DownloadError(TransferError):
     pass
+
+
+class DownloadAuthError(DownloadError):
+    """Auth rejected: retrying the same credentials can never succeed."""
 
 
 class TelegramUploadError(TransferError):
@@ -65,7 +69,7 @@ class TransferService:
         self._progress_last_bytes: int = 0
         self._progress_last_pct: int = -1
 
-    _retry_download = retry_on(DownloadError)
+    _retry_download = retry_on(DownloadError, exclude=(DownloadAuthError,))
 
     @retry_tg
     async def _tg_send_document(
@@ -234,18 +238,41 @@ class TransferService:
                     raise DownloadError(msg)
         return total_written
 
-    async def _download_with_redirects(self, rec: Recording, url: str, dest_path: str) -> int:
+    async def _fetch_download_url(self, rec: Recording) -> str | None:
+        """Pre-signed content URL: carries its own auth, needs no headers.
+
+        The /content endpoint 302-redirects to a SharePoint download.aspx
+        link that rejects our token (wrong audience), so prefer this.
+        """
+        try:
+            meta = await self.graph.get(
+                f"/drives/{quote_id(rec.drive_id)}/items/{quote_id(rec.item_id)}"
+                "?$select=id,name,size,@microsoft.graph.downloadUrl"
+            )
+        except GraphAPIError as e:
+            log.warning("Could not fetch downloadUrl for %s: %s", rec.name, e)
+            return None
+        url = meta.get("@microsoft.graph.downloadUrl")
+        return url if isinstance(url, str) else None
+
+    async def _download_with_redirects(
+        self,
+        rec: Recording,
+        url: str,
+        dest_path: str,
+        headers: dict[str, str] | None,
+    ) -> int:
         target = url
-        headers = dict(self.graph.headers)
+        send_headers = dict(headers) if headers else {}
         for _ in range(4):
             async with self.graph.client.stream(
                 "GET",
                 target,
-                headers=headers,
+                headers=send_headers,
                 timeout=60.0,
                 follow_redirects=False,
             ) as resp:
-                nxt = self._redirect_target(resp, rec.name, target, headers)
+                nxt = self._redirect_target(resp, rec.name, target, send_headers)
                 if nxt is None:
                     resp.raise_for_status()
                     return await self._store_stream(resp, rec, dest_path)
@@ -261,10 +288,20 @@ class TransferService:
         )
 
         try:
-            downloaded = await self._download_with_redirects(rec, url, dest_path)
+            direct = await self._fetch_download_url(rec)
+            if direct is not None:
+                log.info("Downloading %s via pre-signed URL.", rec.name)
+                downloaded = await self._download_with_redirects(rec, direct, dest_path, None)
+            else:
+                downloaded = await self._download_with_redirects(
+                    rec, url, dest_path, dict(self.graph.headers)
+                )
         except DownloadError:
             raise
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                msg = f"Download unauthorized (401) for {rec.name}: token rejected."
+                raise DownloadAuthError(msg) from exc
             msg = f"Graph download failed [{exc.response.status_code}]: {exc}"
             raise DownloadError(msg) from exc
         except httpx.RequestError as exc:
