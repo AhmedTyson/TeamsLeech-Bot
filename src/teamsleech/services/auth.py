@@ -116,6 +116,55 @@ async def exchange_sharepoint_token(host: str) -> tuple[str, str]:
     return data["access_token"], data["refresh_token"]
 
 
+V1_TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/token"
+
+
+async def exchange_sharepoint_token_v1(host: str) -> tuple[str, str | None]:
+    """v1 resource-style token for SharePoint setups rejecting v2 tokens.
+
+    Returns (access_token, new_refresh_token|None). A missing refresh
+    token keeps the current chain untouched by the caller.
+    """
+    payload = {
+        "client_id": settings.teams_client_id,
+        "grant_type": "refresh_token",
+        "refresh_token": settings.teams_refresh_token,
+        "resource": f"https://{host}",
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(V1_TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
+    except httpx.RequestError as exc:
+        msg = f"Network error during v1 exchange: {exc}"
+        raise TokenExchangeError(msg) from exc
+
+    if resp.status_code != 200:
+        try:
+            body = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}
+        except (json.JSONDecodeError, ValueError):
+            body = {}
+        error_code = body.get("error", "") or f"http_{resp.status_code}"
+        error_desc = body.get("error_description", "") or error_code
+        if error_code == "invalid_grant":
+            msg = f"Refresh token expired or revoked.\n{error_desc}"
+            raise TokenExpiredError(msg)
+        msg = f"SharePoint v1 exchange failed [{resp.status_code}]: {error_code}"
+        raise TokenExchangeError(msg)
+
+    try:
+        data = resp.json()
+    except (json.JSONDecodeError, ValueError) as exc:
+        msg = f"SharePoint v1 response was not valid JSON: {exc}"
+        raise TokenExchangeError(msg) from exc
+
+    access = data.get("access_token")
+    if not isinstance(access, str):
+        msg = "SharePoint v1 response missing access_token."
+        raise TokenExchangeError(msg)
+    new_refresh = data.get("refresh_token")
+    return access, new_refresh if isinstance(new_refresh, str) else None
+
+
 async def authenticate() -> str:
     """
     All-in-one entry point: exchange → rotate TEAMS_REFRESH_TOKEN → return access_token.

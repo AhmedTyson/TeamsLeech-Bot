@@ -29,6 +29,7 @@ from teamsleech.services.auth import (
     TokenExchangeError,
     TokenExpiredError,
     exchange_sharepoint_token,
+    exchange_sharepoint_token_v1,
 )
 from teamsleech.services.github_secrets import rotate_github_secret
 from teamsleech.services.graph import GraphAPIError, GraphClient, quote_id
@@ -307,6 +308,25 @@ class TransferService:
             log.exception("SharePoint rotation failed — kept in-process only.")
         return access
 
+    async def _sharepoint_token_v1(self, host: str) -> str | None:
+        """v1-style token attempt; None when the setup rejects it."""
+        try:
+            access, new_refresh = await exchange_sharepoint_token_v1(host)
+        except (TokenExpiredError, TokenExchangeError) as e:
+            log.warning("SharePoint v1 exchange failed for %s: %s", host, e)
+            return None
+        self._sp_tokens[host] = access
+        if new_refresh is not None:
+            settings.teams_refresh_token = new_refresh
+            os.environ["TEAMS_REFRESH_TOKEN"] = new_refresh
+            try:
+                await rotate_github_secret(SECRET_NAME, new_refresh)
+            except Exception:
+                log.exception("SharePoint v1 rotation failed — kept in-process only.")
+        else:
+            log.warning("SharePoint v1 gave no new refresh token; chain unchanged.")
+        return access
+
     async def _download_with_redirects(
         self,
         rec: Recording,
@@ -336,6 +356,8 @@ class TransferService:
                 ):
                     host = urlparse(target).hostname or ""
                     sp_token = await self._sharepoint_token(host)
+                    if sp_token is None:
+                        sp_token = await self._sharepoint_token_v1(host)
                     if sp_token is not None:
                         log.warning(
                             "Download 401 for %s, retrying with SharePoint token.",
