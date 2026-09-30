@@ -280,6 +280,90 @@ class TestDownloadRecording:
             await transfer_service._download_recording(rec, dest)
         assert transfer_service.graph.client.stream.call_count == 1
 
+    async def test_sharepoint_401_retried_once_with_forwarded_auth(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        target = "https://tenant.sharepoint.com/sites/X/download.aspx?UniqueId=1"
+        req = httpx.Request("GET", target)
+        denied = AsyncMock()
+        denied.__aenter__.return_value = denied
+        denied.status_code = 401
+        denied.headers = {}
+        denied.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "401 Unauthorized", request=req, response=httpx.Response(401, request=req)
+            )
+        )
+        chunk = b"z" * 64
+        granted = AsyncMock()
+        granted.__aenter__.return_value = granted
+        granted.status_code = 200
+        granted.headers = {}
+        granted.raise_for_status = MagicMock()
+
+        async def _iter(**kw):
+            yield chunk
+
+        granted.aiter_bytes = MagicMock(side_effect=lambda **kw: _iter())
+
+        def _cm(resp):
+            cm = AsyncMock()
+            cm.__aenter__.return_value = resp
+            cm.__aexit__.return_value = None
+            return cm
+
+        seen: list[dict] = []
+
+        def _stream(method, url, **kwargs):
+            seen.append(dict(kwargs.get("headers", {})))
+            return _cm(denied) if len(seen) == 1 else _cm(granted)
+
+        transfer_service.graph.client.stream = MagicMock(side_effect=_stream)
+        transfer_service.graph.get = AsyncMock(
+            return_value={"@microsoft.graph.downloadUrl": target}
+        )
+
+        size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        assert "Authorization" not in seen[0]
+        assert seen[1]["Authorization"].startswith("Bearer ")
+
+    async def test_sharepoint_401_twice_still_fails_fast(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
+        from teamsleech.services.transfer import DownloadAuthError
+
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        target = "https://tenant.sharepoint.com/sites/X/download.aspx?UniqueId=1"
+        req = httpx.Request("GET", target)
+        denied = AsyncMock()
+        denied.__aenter__.return_value = denied
+        denied.status_code = 401
+        denied.headers = {}
+        denied.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "401 Unauthorized", request=req, response=httpx.Response(401, request=req)
+            )
+        )
+
+        def _cm(resp):
+            cm = AsyncMock()
+            cm.__aenter__.return_value = resp
+            cm.__aexit__.return_value = None
+            return cm
+
+        transfer_service.graph.client.stream = MagicMock(return_value=_cm(denied))
+        transfer_service.graph.get = AsyncMock(
+            return_value={"@microsoft.graph.downloadUrl": target}
+        )
+
+        with pytest.raises(DownloadAuthError, match="401"):
+            await transfer_service._download_recording(rec, dest)
+        assert transfer_service.graph.client.stream.call_count == 2
+
     async def test_download_redirect_strips_auth_cross_host(
         self, transfer_service, sample_recordings, tmp_path
     ):

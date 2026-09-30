@@ -192,6 +192,10 @@ class TransferService:
         return None
 
     @staticmethod
+    def _is_sharepoint_target(target: str) -> bool:
+        return (urlparse(target).hostname or "").endswith("sharepoint.com")
+
+    @staticmethod
     def _redirect_target(
         resp: httpx.Response,
         rec_name: str,
@@ -253,7 +257,14 @@ class TransferService:
             log.warning("Could not fetch downloadUrl for %s: %s", rec.name, e)
             return None
         url = meta.get("@microsoft.graph.downloadUrl")
-        return url if isinstance(url, str) else None
+        if not isinstance(url, str):
+            log.info(
+                "No downloadUrl facet for %s; meta keys=%s. Falling back to /content.",
+                rec.name,
+                sorted(str(k) for k in meta.keys()),
+            )
+            return None
+        return url
 
     async def _download_with_redirects(
         self,
@@ -264,7 +275,8 @@ class TransferService:
     ) -> int:
         target = url
         send_headers = dict(headers) if headers else {}
-        for _ in range(4):
+        auth_forwarded = False
+        for _ in range(5):
             async with self.graph.client.stream(
                 "GET",
                 target,
@@ -273,10 +285,37 @@ class TransferService:
                 follow_redirects=False,
             ) as resp:
                 nxt = self._redirect_target(resp, rec.name, target, send_headers)
-                if nxt is None:
-                    resp.raise_for_status()
-                    return await self._store_stream(resp, rec, dest_path)
-                target = nxt
+                if nxt is not None:
+                    target = nxt
+                    continue
+                if (
+                    resp.status_code == 401
+                    and not auth_forwarded
+                    and self._is_sharepoint_target(target)
+                ):
+                    www = resp.headers.get("www-authenticate", "")
+                    diag = resp.headers.get("x-ms-diagnostics", "")
+                    log.warning(
+                        "Download 401 for %s (retrying once with forwarded auth): "
+                        "www-authenticate=%r diagnostics=%r",
+                        rec.name,
+                        www[:300],
+                        diag[:300],
+                    )
+                    auth_forwarded = True
+                    send_headers = dict(self.graph.headers)
+                    continue
+                if resp.status_code == 401:
+                    www = resp.headers.get("www-authenticate", "")
+                    diag = resp.headers.get("x-ms-diagnostics", "")
+                    log.warning(
+                        "Download 401 for %s: www-authenticate=%r diagnostics=%r",
+                        rec.name,
+                        www[:300],
+                        diag[:300],
+                    )
+                resp.raise_for_status()
+                return await self._store_stream(resp, rec, dest_path)
         msg = f"Graph download for {rec.name} exceeded redirect limit."
         raise DownloadError(msg)
 
