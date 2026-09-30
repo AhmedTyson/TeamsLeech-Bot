@@ -14,6 +14,7 @@ from pyrogram.errors import BadRequest
 from pyrogram.errors.rpc_error import RPCError
 from pyrogram.types import Message
 
+from teamsleech.core.config import settings
 from teamsleech.core.constants import (
     CHUNK_SIZE_BYTES,
     GRAPH_BASE_URL,
@@ -23,6 +24,13 @@ from teamsleech.core.constants import (
 )
 from teamsleech.core.retry import retry_on, retry_tg
 from teamsleech.models.domain import Recording
+from teamsleech.services.auth import (
+    SECRET_NAME,
+    TokenExchangeError,
+    TokenExpiredError,
+    exchange_sharepoint_token,
+)
+from teamsleech.services.github_secrets import rotate_github_secret
 from teamsleech.services.graph import GraphAPIError, GraphClient, quote_id
 from teamsleech.services.state import StateManager
 
@@ -65,6 +73,7 @@ class TransferService:
         # User sessions (MTProto) upload up to 2 GB; plain bot tokens
         # are capped at 50 MB by the Bot API.
         self._upload_client = upload_client
+        self._sp_tokens: dict[str, str] = {}
         self._progress_last_time: float = 0.0
         self._progress_last_bytes: int = 0
         self._progress_last_pct: int = -1
@@ -257,14 +266,46 @@ class TransferService:
             log.warning("Could not fetch downloadUrl for %s: %s", rec.name, e)
             return None
         url = meta.get("@microsoft.graph.downloadUrl")
+        if isinstance(url, str):
+            return url
+        try:
+            plain = await self.graph.get(
+                f"/drives/{quote_id(rec.drive_id)}/items/{quote_id(rec.item_id)}"
+            )
+        except GraphAPIError as e:
+            log.warning("Plain metadata fetch failed for %s: %s", rec.name, e)
+            return None
+        url = plain.get("@microsoft.graph.downloadUrl")
         if not isinstance(url, str):
             log.info(
                 "No downloadUrl facet for %s; meta keys=%s. Falling back to /content.",
                 rec.name,
-                sorted(str(k) for k in meta.keys()),
+                sorted(str(k) for k in plain.keys()),
             )
             return None
         return url
+
+    async def _sharepoint_token(self, host: str) -> str | None:
+        """Access token with SharePoint audience, cached per host.
+
+        Consumes the refresh-token chain, so the rotated refresh token
+        is persisted (secret rotation) immediately like at boot.
+        """
+        if host in self._sp_tokens:
+            return self._sp_tokens[host]
+        try:
+            access, new_refresh = await exchange_sharepoint_token(host)
+        except (TokenExpiredError, TokenExchangeError) as e:
+            log.warning("SharePoint token exchange failed for %s: %s", host, e)
+            return None
+        self._sp_tokens[host] = access
+        settings.teams_refresh_token = new_refresh
+        os.environ["TEAMS_REFRESH_TOKEN"] = new_refresh
+        try:
+            await rotate_github_secret(SECRET_NAME, new_refresh)
+        except Exception:
+            log.exception("SharePoint rotation failed — kept in-process only.")
+        return access
 
     async def _download_with_redirects(
         self,
@@ -293,18 +334,19 @@ class TransferService:
                     and not auth_forwarded
                     and self._is_sharepoint_target(target)
                 ):
-                    www = resp.headers.get("www-authenticate", "")
-                    diag = resp.headers.get("x-ms-diagnostics", "")
-                    log.warning(
-                        "Download 401 for %s (retrying once with forwarded auth): "
-                        "www-authenticate=%r diagnostics=%r",
-                        rec.name,
-                        www[:300],
-                        diag[:300],
-                    )
-                    auth_forwarded = True
-                    send_headers = dict(self.graph.headers)
-                    continue
+                    host = urlparse(target).hostname or ""
+                    sp_token = await self._sharepoint_token(host)
+                    if sp_token is not None:
+                        log.warning(
+                            "Download 401 for %s, retrying with SharePoint token.",
+                            rec.name,
+                        )
+                        auth_forwarded = True
+                        send_headers = {
+                            "Authorization": f"Bearer {sp_token}",
+                            "Accept": "application/json",
+                        }
+                        continue
                 if resp.status_code == 401:
                     www = resp.headers.get("www-authenticate", "")
                     diag = resp.headers.get("x-ms-diagnostics", "")
