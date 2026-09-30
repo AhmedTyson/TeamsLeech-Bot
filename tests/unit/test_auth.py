@@ -61,6 +61,16 @@ class TestExchangeRefreshToken:
         with pytest.raises(TokenExchangeError, match="not valid JSON"):
             await exchange_refresh_token()
 
+    async def test_sharepoint_scope_targets_host(self, mock_login_api):
+        from teamsleech.services.auth import exchange_sharepoint_token
+
+        route = mock_login_api.post(TOKEN_URL)
+        route.respond(200, json={"access_token": "sp_at", "refresh_token": "rt2"})
+        access, refresh = await exchange_sharepoint_token("tenant.sharepoint.com")
+        assert (access, refresh) == ("sp_at", "rt2")
+        body = route.calls.last.request.content.decode()
+        assert "tenant.sharepoint.com" in body
+
     async def test_throttled_then_succeeds(self, mock_login_api):
         route = mock_login_api.post(TOKEN_URL)
         route.side_effect = [

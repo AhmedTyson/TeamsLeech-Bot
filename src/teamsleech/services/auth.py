@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from typing import Any, cast
 
 import httpx
 
@@ -41,15 +42,12 @@ async def _post_token(payload: dict[str, str]) -> httpx.Response:
         return resp
 
 
-async def exchange_refresh_token() -> tuple[str, str]:
-    """
-    Exchange the configured refresh_token for a fresh (access_token, new_refresh_token).
-    """
+async def _exchange_token(scope: str) -> dict[str, Any]:
     payload = {
         "client_id": settings.teams_client_id,
         "grant_type": "refresh_token",
         "refresh_token": settings.teams_refresh_token,
-        "scope": SCOPE,
+        "scope": scope,
     }
 
     try:
@@ -84,11 +82,37 @@ async def exchange_refresh_token() -> tuple[str, str]:
         msg = f"Token response was not valid JSON: {exc}"
         raise TokenExchangeError(msg) from exc
 
+    return cast("dict[str, Any]", data)
+
+
+async def exchange_refresh_token() -> tuple[str, str]:
+    """
+    Exchange the configured refresh_token for a fresh (access_token, new_refresh_token).
+    """
+    data = await _exchange_token(SCOPE)
+
     if not data.get("access_token") or not data.get("refresh_token"):
         msg = "Token response missing access_token or refresh_token."
         raise TokenExchangeError(msg)
 
     log.info("Token exchange successful — access_token acquired.")
+    return data["access_token"], data["refresh_token"]
+
+
+async def exchange_sharepoint_token(host: str) -> tuple[str, str]:
+    """Access token with SharePoint audience plus rotated refresh token.
+
+    Same refresh-token chain as the Graph exchange: the caller must
+    persist the returned refresh token (secret rotation) immediately,
+    or the next boot reuses a stale token.
+    """
+    data = await _exchange_token(f"https://{host}/.default offline_access")
+
+    if not data.get("access_token") or not data.get("refresh_token"):
+        msg = "SharePoint token response missing access_token or refresh_token."
+        raise TokenExchangeError(msg)
+
+    log.info("SharePoint token exchange successful for %s.", host)
     return data["access_token"], data["refresh_token"]
 
 
