@@ -1,10 +1,13 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pyrogram.types import Chat
 
 from teamsleech.models.domain import Recording
-from teamsleech.tg_bot.handlers.scanner_ui import register_scanner_ui
+from teamsleech.tg_bot.handlers.scanner_ui import (
+    _parse_date_input,
+    _validate_date_range,
+    register_scanner_ui,
+)
 
 
 @pytest.fixture
@@ -12,14 +15,23 @@ def mock_scanner():
     scanner = MagicMock()
     scanner.scan_recordings = AsyncMock()
     scanner.scan_recordings.return_value = {
-        "Math": [Recording(
-            id="1", name="Vid1", url="http", 
-            is_video=True, size_mb=10.0, 
-            created="2026-04-01", team_name="T1",
-            drive_id="d1", item_id="i1", subject_name="Math"
-        )]
+        "Math": [
+            Recording(
+                id="1",
+                name="Vid1",
+                url="http",
+                is_video=True,
+                size_mb=10.0,
+                created="2026-04-01",
+                team_name="T1",
+                drive_id="d1",
+                item_id="i1",
+                subject_name="Math",
+            )
+        ]
     }
     return scanner
+
 
 @pytest.fixture
 def mock_state():
@@ -27,58 +39,134 @@ def mock_state():
     session_mock = MagicMock()
     session_mock.pending_recordings = []
     session_mock.selected_indices = set()
+    session_mock.scan_in_progress = False
     state.get_session.return_value = session_mock
     return state
 
-@pytest.mark.asyncio
-async def test_scanner_ui_handlers(mock_scanner, mock_state):
+
+async def test_subject_all_reports_no_files(mock_scanner, mock_state):
+    mock_scanner.scan_recordings = AsyncMock(return_value={})
     handlers_cb = {}
-    handlers_msg = {}
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock()
-    
-    def on_cb_decorator(*args, **kwargs):
-        def wrapper(func):
-            handlers_cb[func.__name__] = func
-            return func
-        return wrapper
-
-    def on_msg_decorator(*args, **kwargs):
-        def wrapper(func):
-            handlers_msg[func.__name__] = func
-            return func
-        return wrapper
-        
-    mock_client.on_callback_query.side_effect = on_cb_decorator
-    mock_client.on_message.side_effect = on_msg_decorator
-    
+    mock_client.on_callback_query.side_effect = lambda *a, **k: lambda f: handlers_cb.setdefault(
+        f.__name__, f
+    )
+    mock_client.on_message.side_effect = lambda *a, **k: (lambda f: f)
     register_scanner_ui(mock_client, mock_scanner, mock_state)
-    
-    test_datas = ["subj:Math", "sel:0", "sel:all", "sel:pdfs", "sel:videos", "date:change", "cancel:check"]
-    
-    for d in test_datas:
-        cb = AsyncMock()
-        cb.data = d
-        cb.message = AsyncMock()
-        cb.message.chat = MagicMock(spec=Chat)
-        cb.message.chat.id = 123
-        
-        for _, func in handlers_cb.items():
-            try:
-                await func(mock_client, cb)
-            except Exception:
-                pass
 
-    test_msgs = ["2026-04-01", "today", "this week", "invalid"]
-    for m in test_msgs:
-        msg = AsyncMock()
-        msg.continue_propagation = MagicMock()
-        msg.text = m
-        msg.chat = MagicMock(spec=Chat)
-        msg.chat.id = 123
-        
-        for _, func in handlers_msg.items():
-            try:
-                await func(mock_client, msg)
-            except Exception:
-                pass
+    cb = AsyncMock()
+    cb.data = "subj:__ALL__"
+    cb.message = AsyncMock()
+    cb.message.chat.id = 123
+    await handlers_cb["handle_subject_select"](mock_client, cb)
+
+    mock_scanner.scan_recordings.assert_awaited_once_with(None, None, None)
+    sent = mock_client.send_message.await_args.args[1]
+    assert "No new files" in sent
+
+
+async def test_scan_error_surfaced_to_chat(mock_state):
+    scanner = MagicMock()
+    scanner.scan_recordings = AsyncMock(side_effect=RuntimeError("graph down"))
+    handlers_cb = {}
+    mock_client = MagicMock()
+    mock_client.send_message = AsyncMock()
+    mock_client.on_callback_query.side_effect = lambda *a, **k: lambda f: handlers_cb.setdefault(
+        f.__name__, f
+    )
+    mock_client.on_message.side_effect = lambda *a, **k: (lambda f: f)
+    register_scanner_ui(mock_client, scanner, mock_state)
+
+    cb = AsyncMock()
+    cb.data = "subj:__ALL__"
+    cb.message = AsyncMock()
+    cb.message.chat.id = 123
+    await handlers_cb["handle_subject_select"](mock_client, cb)
+
+    sent = mock_client.send_message.await_args.args[1]
+    assert "Fetch error" in sent
+
+
+class TestValidateDateRange:
+    def test_valid_single_day(self):
+        ok, _ = _validate_date_range("2026-04-01", "2026-04-01")
+        assert ok
+
+    def test_valid_range(self):
+        ok, _ = _validate_date_range("2026-04-01", "2026-04-07")
+        assert ok
+
+    def test_rejects_inverted(self):
+        ok, msg = _validate_date_range("2026-04-07", "2026-04-01")
+        assert not ok and "before" in msg
+
+    def test_rejects_over_30_days(self):
+        ok, msg = _validate_date_range("2020-01-01", "2020-03-15")
+        assert not ok and "30" in msg
+
+    def test_rejects_bad_format(self):
+        ok, _ = _validate_date_range("2026-13-99", "2026-13-99")
+        assert not ok
+
+
+class TestParseDateInput:
+    def test_range_to_and_dash(self):
+        assert _parse_date_input("2026-04-01 to 2026-04-07")[:2] == ("2026-04-01", "2026-04-07")
+        assert _parse_date_input("2026-04-01 - 2026-04-07")[:2] == ("2026-04-01", "2026-04-07")
+        assert _parse_date_input("2026-04-01-2026-04-07")[:2] == ("2026-04-01", "2026-04-07")
+
+    def test_single_date(self):
+        ds, de, _ = _parse_date_input("2026-04-01")
+        assert (ds, de) == ("2026-04-01", None)
+
+    def test_month_year_bounds(self):
+        assert _parse_date_input("jan 99999999") is None
+        assert _parse_date_input("jan 1999") is None
+        assert _parse_date_input("march 2026") is not None
+
+
+async def test_concurrent_scans_single_flight():
+    import asyncio
+
+    from teamsleech.services.state import StateManager
+
+    release = asyncio.Event()
+
+    async def slow_scan(*args, **kwargs):
+        await release.wait()
+        return {}
+
+    scanner = MagicMock()
+    scanner.scan_recordings = AsyncMock(side_effect=slow_scan)
+    state = StateManager(MagicMock(), 999)
+    session = state.get_session(123)
+    session.date_input_pending = True
+
+    cbs = {}
+    app = MagicMock()
+    app.on_callback_query.side_effect = lambda *a, **k: (lambda f: cbs.setdefault(f.__name__, f))
+    app.on_message.side_effect = lambda *a, **k: (lambda f: f)
+    register_scanner_ui(app, scanner, state)
+
+    client = MagicMock()
+    client.send_message = AsyncMock()
+
+    def _cb(data):
+        cb = AsyncMock()
+        cb.data = data
+        cb.message = AsyncMock()
+        cb.message.chat.id = 123
+        return cb
+
+    t1 = asyncio.create_task(cbs["handle_date_btn"](client, _cb("date_btn:today")))
+    await asyncio.sleep(0.2)
+    assert session.scan_in_progress is True
+    await cbs["handle_subject_select"](client, _cb("subj:__ALL__"))
+    release.set()
+    await asyncio.wait_for(t1, timeout=10)
+
+    assert scanner.scan_recordings.await_count == 1
+    assert session.scan_in_progress is False
+    sent = [c.args[1] for c in client.send_message.await_args_list]
+    assert any("already running" in str(s) for s in sent)

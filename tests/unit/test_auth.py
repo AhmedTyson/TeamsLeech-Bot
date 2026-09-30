@@ -23,9 +23,7 @@ class TestExchangeRefreshToken:
         assert refresh == "rt_new"
 
     async def test_network_error(self, mock_login_api):
-        mock_login_api.post(TOKEN_URL).mock(
-            side_effect=httpx.RequestError("DNS failure")
-        )
+        mock_login_api.post(TOKEN_URL).mock(side_effect=httpx.RequestError("DNS failure"))
         with pytest.raises(TokenExchangeError, match="DNS failure"):
             await exchange_refresh_token()
 
@@ -58,10 +56,26 @@ class TestExchangeRefreshToken:
         with pytest.raises(TokenExchangeError, match="400"):
             await exchange_refresh_token()
 
+    async def test_non_json_success_response(self, mock_login_api):
+        mock_login_api.post(TOKEN_URL).respond(200, text="ok")
+        with pytest.raises(TokenExchangeError, match="not valid JSON"):
+            await exchange_refresh_token()
+
+    async def test_throttled_then_succeeds(self, mock_login_api):
+        route = mock_login_api.post(TOKEN_URL)
+        route.side_effect = [
+            httpx.Response(429, text="throttled"),
+            httpx.Response(200, json={"access_token": "at", "refresh_token": "rt"}),
+        ]
+        access, refresh = await exchange_refresh_token()
+        assert (access, refresh) == ("at", "rt")
+        assert route.call_count == 2
+
 
 class TestAuthenticate:
     async def test_no_refresh_token(self, monkeypatch):
         from teamsleech.core.config import settings
+
         monkeypatch.setattr(settings, "teams_refresh_token", "")
         with pytest.raises(TokenManagerError, match="not set"):
             await authenticate()
@@ -75,16 +89,14 @@ class TestAuthenticate:
             200,
             json={"key": "dGVzdA==", "key_id": "k1"},
         )
-        mock_github_api.put(
-            "/repos/user/repo/actions/secrets/TEAMS_REFRESH_TOKEN"
-        ).respond(200, text="ok")
+        mock_github_api.put("/repos/user/repo/actions/secrets/TEAMS_REFRESH_TOKEN").respond(
+            200, text="ok"
+        )
 
         token = await authenticate()
         assert token == "at"
 
-    async def test_secret_rotation_failure_is_nonfatal(
-        self, mock_login_api, mock_github_api
-    ):
+    async def test_secret_rotation_failure_is_nonfatal(self, mock_login_api, mock_github_api):
         mock_login_api.post(TOKEN_URL).respond(
             200,
             json={"access_token": "at", "refresh_token": "rt"},
@@ -95,3 +107,23 @@ class TestAuthenticate:
 
         token = await authenticate()
         assert token == "at"
+
+    async def test_secret_rotation_failure_persists_token_locally(
+        self, mock_login_api, mock_github_api
+    ):
+        import os
+
+        from teamsleech.core.config import settings
+
+        mock_login_api.post(TOKEN_URL).respond(
+            200,
+            json={"access_token": "at", "refresh_token": "rt_new"},
+        )
+        mock_github_api.get("/repos/user/repo/actions/secrets/public-key").mock(
+            side_effect=httpx.RequestError("GitHub down")
+        )
+
+        token = await authenticate()
+        assert token == "at"
+        assert settings.teams_refresh_token == "rt_new"
+        assert os.environ["TEAMS_REFRESH_TOKEN"] == "rt_new"

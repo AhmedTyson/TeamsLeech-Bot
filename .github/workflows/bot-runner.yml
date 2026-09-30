@@ -13,6 +13,9 @@
 
 name: TeamsLeech Bot
 
+permissions:
+  contents: read
+
 on:
   # schedule:
   #   - cron: '0 8 * * *'  # Resumes Sept 30, uncomment then
@@ -64,10 +67,10 @@ jobs:
           fi
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71929bbe5b1630ceea73a6140943180c9f60 # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -78,7 +81,7 @@ jobs:
       - name: Install ffmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg=7:*
 
       - name: Install dependencies
         run: uv sync --no-dev

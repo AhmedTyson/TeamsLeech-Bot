@@ -1,32 +1,45 @@
+import json
 import logging
+import os
 
 import httpx
 
 from teamsleech.core.config import settings
-from teamsleech.core.retry import retry_http
+from teamsleech.core.retry import _http_status_error, honor_retry_after, retry_http
 from teamsleech.services.github_secrets import rotate_github_secret
 
 log = logging.getLogger("auth")
 
-class TokenManagerError(Exception): 
+
+class TokenManagerError(Exception):
     """Base exception for all token_manager failures."""
 
-class TokenExpiredError(TokenManagerError): 
+
+class TokenExpiredError(TokenManagerError):
     """Raised when the refresh_token is fully expired (~90 days)."""
 
-class TokenExchangeError(TokenManagerError): 
+
+class TokenExchangeError(TokenManagerError):
     """Raised for non-expiry auth failures (network, bad response, etc.)."""
+
 
 TENANT_ID = "common"
 TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
 SCOPE = "https://graph.microsoft.com/.default offline_access"
-SECRET_NAME = "TEAMS_REFRESH_TOKEN"
+SECRET_NAME = "TEAMS_REFRESH_TOKEN"  # noqa: S105 - secret *name*, not a value
 MS_TIMEOUT = 30.0
+
 
 @retry_http
 async def _post_token(payload: dict[str, str]) -> httpx.Response:
     async with httpx.AsyncClient() as client:
-        return await client.post(TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
+        resp = await client.post(TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
+        if resp.status_code == 429 or resp.status_code >= 500:
+            await honor_retry_after(resp)
+            msg = f"Token endpoint throttled [{resp.status_code}]"
+            raise _http_status_error(msg, resp)
+        return resp
+
 
 async def exchange_refresh_token() -> tuple[str, str]:
     """
@@ -38,42 +51,66 @@ async def exchange_refresh_token() -> tuple[str, str]:
         "refresh_token": settings.teams_refresh_token,
         "scope": SCOPE,
     }
-    
+
     try:
         resp = await _post_token(payload)
+    except httpx.HTTPStatusError as exc:
+        msg = f"Token endpoint failed after retries: {exc}"
+        raise TokenExchangeError(msg) from exc
     except httpx.RequestError as exc:
-        raise TokenExchangeError(f"Network error during exchange: {exc}") from exc
+        msg = f"Network error during exchange: {exc}"
+        raise TokenExchangeError(msg) from exc
 
     if resp.status_code != 200:
-        body = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}
-        error_code = body.get("error", "")
-        error_desc = body.get("error_description", resp.text[:200])
-        
+        content_type = resp.headers.get("content-type", "")
+        try:
+            body = resp.json() if "application/json" in content_type else {}
+        except (json.JSONDecodeError, ValueError):
+            body = {}
+        error_code = body.get("error", "") or f"http_{resp.status_code}"
+        # Structured OAuth error fields only — never echo raw bodies.
+        error_desc = body.get("error_description", "") or error_code
+
         if error_code == "invalid_grant":
-            raise TokenExpiredError(f"Refresh token expired or revoked.\n{error_desc}")
-            
-        raise TokenExchangeError(f"Token exchange failed [{resp.status_code}]: {error_code} - {error_desc}")
-        
-    data = resp.json()
-    
+            msg = f"Refresh token expired or revoked.\n{error_desc}"
+            raise TokenExpiredError(msg)
+
+        msg = f"Token exchange failed [{resp.status_code}]: {error_code}"
+        raise TokenExchangeError(msg)
+
+    try:
+        data = resp.json()
+    except (json.JSONDecodeError, ValueError) as exc:
+        msg = f"Token response was not valid JSON: {exc}"
+        raise TokenExchangeError(msg) from exc
+
     if not data.get("access_token") or not data.get("refresh_token"):
-        raise TokenExchangeError("Token response missing access_token or refresh_token.")
-        
+        msg = "Token response missing access_token or refresh_token."
+        raise TokenExchangeError(msg)
+
     log.info("Token exchange successful — access_token acquired.")
     return data["access_token"], data["refresh_token"]
+
 
 async def authenticate() -> str:
     """
     All-in-one entry point: exchange → rotate TEAMS_REFRESH_TOKEN → return access_token.
     """
     if not settings.teams_refresh_token:
-        raise TokenManagerError("TEAMS_REFRESH_TOKEN env var is not set in config.")
-        
+        msg = "TEAMS_REFRESH_TOKEN env var is not set in config."
+        raise TokenManagerError(msg)
+
     access_token, new_refresh = await exchange_refresh_token()
-    
+
     try:
         await rotate_github_secret(SECRET_NAME, new_refresh)
-    except Exception as e:
-        log.error("Secret rotation failed (non-fatal): %s", e)
-        
+    except Exception:
+        settings.teams_refresh_token = new_refresh
+        os.environ["TEAMS_REFRESH_TOKEN"] = new_refresh
+        log.exception(
+            "Secret rotation failed — new refresh token kept in-process only. "
+            "Update TEAMS_REFRESH_TOKEN manually or next restart reuses "
+            "the stale token."
+        )
+
     return access_token

@@ -2,6 +2,7 @@ import httpx
 import pytest
 import respx
 
+from teamsleech.services.auth import TokenExpiredError
 from teamsleech.services.graph import GraphAPIError, GraphClient
 
 
@@ -12,15 +13,15 @@ class TestGraphClient:
         assert result == {"id": "user1"}
 
     async def test_get_with_params(self, graph_client: GraphClient, mock_graph_api):
-        mock_graph_api.get("/users").respond(
-            200, json={"value": [{"id": "u1"}]}
-        )
+        mock_graph_api.get("/users").respond(200, json={"value": [{"id": "u1"}]})
         result = await graph_client.get("/users", params={"$top": "10"})
         assert result == {"value": [{"id": "u1"}]}
 
-    async def test_get_http_error(self, graph_client: GraphClient, mock_graph_api):
+    async def test_get_unauthorized_raises_token_expired(
+        self, graph_client: GraphClient, mock_graph_api
+    ):
         mock_graph_api.get("/me").respond(401, text="Unauthorized")
-        with pytest.raises(GraphAPIError, match="401"):
+        with pytest.raises(TokenExpiredError, match="401"):
             await graph_client.get("/me")
 
     async def test_get_http_error_truncates_body(self, graph_client: GraphClient, mock_graph_api):
@@ -36,10 +37,20 @@ class TestGraphClient:
             with pytest.raises(GraphAPIError, match="Network error"):
                 await graph_client.get("/me")
 
-    async def test_get_custom_absolute_url(self, graph_client: GraphClient, mock_graph_api):
-        mock_graph_api.get("https://other.api.com/endpoint").respond(200, json={"ok": True})
-        result = await graph_client.get("https://other.api.com/endpoint")
+    async def test_get_rejects_non_graph_url(self, graph_client: GraphClient):
+        with pytest.raises(GraphAPIError, match="non-Graph"):
+            await graph_client.get("https://other.api.com/endpoint")
+
+    async def test_get_graph_absolute_url(self, graph_client: GraphClient, mock_graph_api):
+        mock_graph_api.get("/endpoint").respond(200, json={"ok": True})
+        result = await graph_client.get("https://graph.microsoft.com/v1.0/endpoint")
         assert result == {"ok": True}
+
+    async def test_quote_id(self):
+        from teamsleech.services.graph import quote_id
+
+        assert quote_id("b!abcXYZ") == "b!abcXYZ"
+        assert quote_id("a'b\"c") == "a%27b%22c"
 
     async def test_post_success(self, graph_client: GraphClient, mock_graph_api):
         mock_graph_api.post("/items").respond(201, json={"id": "new_item"})
@@ -70,9 +81,7 @@ class TestGraphClient:
         assert results == [{"id": "u1"}]
 
     async def test_get_all_pages_multi(self, graph_client: GraphClient, mock_graph_api):
-        mock_graph_api.get("/users?$skip=1").respond(
-            200, json={"value": [{"id": "u2"}]}
-        )
+        mock_graph_api.get("/users?$skip=1").respond(200, json={"value": [{"id": "u2"}]})
         mock_graph_api.get("/users").respond(
             200,
             json={
@@ -84,9 +93,7 @@ class TestGraphClient:
         assert results == [{"id": "u1"}, {"id": "u2"}]
 
     async def test_get_all_pages_absolute_url(self, graph_client: GraphClient, mock_graph_api):
-        mock_graph_api.get("/users?$top=1&$skip=1").respond(
-            200, json={"value": [{"id": "u2"}]}
-        )
+        mock_graph_api.get("/users?$top=1&$skip=1").respond(200, json={"value": [{"id": "u2"}]})
         mock_graph_api.get("/users").respond(
             200,
             json={
@@ -94,12 +101,12 @@ class TestGraphClient:
                 "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$top=1&$skip=1",
             },
         )
-        results = await graph_client.get_all_pages(
-            "https://graph.microsoft.com/v1.0/users?$top=1"
-        )
+        results = await graph_client.get_all_pages("https://graph.microsoft.com/v1.0/users?$top=1")
         assert results == [{"id": "u1"}, {"id": "u2"}]
 
-    async def test_get_all_pages_infinite_loop_guard(self, graph_client: GraphClient, mock_graph_api):
+    async def test_get_all_pages_infinite_loop_guard(
+        self, graph_client: GraphClient, mock_graph_api
+    ):
         loop_link = "https://graph.microsoft.com/v1.0/users?$skip=1"
         mock_graph_api.get("/users?$skip=1").respond(
             200,
@@ -117,6 +124,46 @@ class TestGraphClient:
         )
         results = await graph_client.get_all_pages("/users")
         assert results == [{"id": "u1"}, {"id": "u1"}]
+
+    async def test_get_retries_throttled_then_succeeds(
+        self, graph_client: GraphClient, mock_graph_api
+    ):
+        route = mock_graph_api.get("/me")
+        route.side_effect = [
+            httpx.Response(429, text="throttled"),
+            httpx.Response(200, json={"id": "user1"}),
+        ]
+        result = await graph_client.get("/me")
+        assert result == {"id": "user1"}
+        assert route.call_count == 2
+
+    async def test_get_all_pages_forwards_params(self, graph_client: GraphClient, mock_graph_api):
+        route = mock_graph_api.get("/users", params={"$top": "1"})
+        route.respond(200, json={"value": [{"id": "u1"}]})
+        results = await graph_client.get_all_pages("/users", params={"$top": "1"})
+        assert results == [{"id": "u1"}]
+        assert route.called
+
+    async def test_get_all_pages_caps_runaway_pagination(
+        self, graph_client: GraphClient, mock_graph_api
+    ):
+        mock_graph_api.get("/users?$skip=2").respond(200, json={"value": [{"id": "u3"}]})
+        mock_graph_api.get("/users?$skip=1").respond(
+            200,
+            json={
+                "value": [{"id": "u2"}],
+                "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skip=2",
+            },
+        )
+        mock_graph_api.get("/users").respond(
+            200,
+            json={
+                "value": [{"id": "u1"}],
+                "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skip=1",
+            },
+        )
+        results = await graph_client.get_all_pages("/users", max_pages=2)
+        assert results == [{"id": "u1"}, {"id": "u2"}]
 
     async def test_close(self, graph_client: GraphClient):
         await graph_client.close()
