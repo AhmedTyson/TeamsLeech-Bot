@@ -88,7 +88,7 @@ def main() -> None:
                 total = sum(len(recs) for recs in results.values())
                 if total > 0:
                     from teamsleech.tg_bot.keyboards import build_checklist_keyboard
-                    from teamsleech.tg_bot.views import build_checklist_text
+                    from teamsleech.tg_bot.views import build_checklist_text, escape_markdown
 
                     label = "Since Last Run"
                     session = state_manager.get_session(settings.telegram_chat_id)
@@ -96,6 +96,12 @@ def main() -> None:
                     session.scan_label = label
 
                     text = build_checklist_text(results, label)
+                    unmatched = getattr(scanner_service, "last_unmatched", None)
+                    if isinstance(unmatched, list) and unmatched:
+                        names = ", ".join(escape_markdown(t.display_name) for t in unmatched[:10])
+                        text += (
+                            f"\n\n⚠️ _Teams not tracked by any subject ({len(unmatched)}): {names}_"
+                        )
                     keyboard = build_checklist_keyboard(
                         session.pending_recordings, session.selected_indices
                     )

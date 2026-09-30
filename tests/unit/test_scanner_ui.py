@@ -88,6 +88,35 @@ async def test_scan_error_surfaced_to_chat(mock_state):
     assert "Fetch error" in sent
 
 
+async def test_untracked_teams_appended_to_message():
+    from teamsleech.models.domain import Team
+
+    scanner = MagicMock()
+    scanner.scan_recordings = AsyncMock(return_value={})
+    scanner.last_unmatched = [Team(id="9", display_name="free_group")]
+    state = MagicMock()
+    session = MagicMock()
+    session.pending_recordings = []
+    session.selected_indices = set()
+    session.scan_in_progress = False
+    state.get_session.return_value = session
+    app = MagicMock()
+    cbs = {}
+    app.on_callback_query.side_effect = lambda *a, **k: lambda f: cbs.setdefault(f.__name__, f)
+    app.on_message.side_effect = lambda *a, **k: lambda f: f
+    register_scanner_ui(app, scanner, state)
+    client = MagicMock()
+    client.send_message = AsyncMock()
+    cb = AsyncMock()
+    cb.data = "subj:__ALL__"
+    cb.message = AsyncMock()
+    cb.message.chat.id = 123
+    await cbs["handle_subject_select"](client, cb)
+    sent = client.send_message.await_args.args[1]
+    assert "not tracked by any subject" in sent
+    assert "free\\_group" in sent
+
+
 class TestValidateDateRange:
     def test_valid_single_day(self):
         ok, _ = _validate_date_range("2026-04-01", "2026-04-01")

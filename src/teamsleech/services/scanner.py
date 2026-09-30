@@ -29,6 +29,7 @@ EXTENSIONS = [
 class ScannerService:
     def __init__(self, graph_client: GraphClient, state_manager: StateManager):
         self.graph = graph_client
+        self.last_unmatched: list[Team] = []
         self.state = state_manager
 
     def load_subjects(self) -> list[SubjectConfig]:
@@ -185,6 +186,7 @@ class ScannerService:
             return []
         site_id = site.get("id")
         if not site_id:
+            log.info("Team '%s' has no SharePoint site, skipping.", team.display_name)
             return []
         try:
             drives_data = await self.graph.get(f"/sites/{quote_id(site_id)}/drives")
@@ -366,6 +368,23 @@ class ScannerService:
         except GraphAPIError:
             log.exception("Failed to fetch teams")
             return {s.name: [] for s in subjects}
+
+        log.info(
+            "Joined teams: %d (%s)",
+            len(all_teams),
+            ", ".join(t.display_name for t in all_teams[:20]),
+        )
+        matched_ids: set[str] = set()
+        for subject in subjects:
+            for team in self._match_teams(all_teams, subject):
+                matched_ids.add(team.id)
+        self.last_unmatched = [t for t in all_teams if t.id not in matched_ids]
+        if self.last_unmatched:
+            log.warning(
+                "Teams not tracked by any subject (%d): %s",
+                len(self.last_unmatched),
+                ", ".join(t.display_name for t in self.last_unmatched[:20]),
+            )
 
         for subject in subjects:
             try:

@@ -18,7 +18,7 @@ from teamsleech.tg_bot.callbacks import callback_text
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
-from teamsleech.tg_bot.views import build_checklist_text, format_date_short
+from teamsleech.tg_bot.views import build_checklist_text, escape_markdown, format_date_short
 
 MAX_DATE_RANGE_DAYS = 30
 
@@ -152,6 +152,10 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         session.scan_label = label
 
         text = build_checklist_text(results, label)
+        unmatched = getattr(scanner, "last_unmatched", None)
+        if isinstance(unmatched, list) and unmatched:
+            names = ", ".join(escape_markdown(t.display_name) for t in unmatched[:10])
+            text += f"\n\n⚠️ _Teams not tracked by any subject ({len(unmatched)}): {names}_"
         if not session.pending_recordings:
             await client.send_message(chat_id, text)
             return

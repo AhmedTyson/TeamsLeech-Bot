@@ -505,6 +505,28 @@ class TestScanRecordings:
         )
         assert [r.item_id for r in recordings] == ["i1"]
 
+    async def test_unmatched_teams_reported(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps(
+                {
+                    "subjects": [
+                        {"name": "Math", "short": "MTH", "keywords": ["math"]},
+                    ]
+                }
+            ),
+        )
+        teams = [
+            Team(id="1", display_name="math group"),
+            Team(id="2", display_name="history club"),
+        ]
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=teams)
+            scanner._process_team = AsyncMock(return_value=[])
+            result = await scanner.scan_recordings()
+        assert result == {"Math": []}
+        assert [t.id for t in scanner.last_unmatched] == ["2"]
+
     async def test_team_exception_isolated(self, scanner, monkeypatch):
         monkeypatch.setattr(
             "teamsleech.services.scanner.settings.subjects_json",
