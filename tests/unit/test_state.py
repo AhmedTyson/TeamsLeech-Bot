@@ -134,7 +134,9 @@ class TestInitialize:
             "#TEAMSLEECH_STATE\n"
             "**⚠️ DO NOT DELETE THIS MESSAGE**\n"
             "_This acts as the database for the bot._\n\n"
-            '=====JSON_START=====\n{"math": {"last_run": "2024-06-01T00:00:00+00:00"}}\n=====JSON_END====='
+            "=====JSON_START=====\n"
+            '{"math": {"last_run": "2024-06-01T00:00:00+00:00"}}\n'
+            "=====JSON_END====="
         )
         chat.pinned_message = msg
         state_manager.client.get_chat = AsyncMock(return_value=chat)
@@ -166,6 +168,82 @@ class TestPushToTelegram:
         state_manager.client.delete_messages = AsyncMock()
 
         await state_manager._push_to_telegram()
-        state_manager.client.delete_messages.assert_awaited_once_with(
-            FAKE_CHAT_ID, 5
+        state_manager.client.delete_messages.assert_awaited_once_with(FAKE_CHAT_ID, 5)
+
+
+class TestCorruptState:
+    async def test_corrupt_document_backed_up_not_wiped(self, state_manager):
+        state_manager._initialized = False
+        buf = BytesIO(b"{not json")
+        chat = AsyncMock()
+        doc = AsyncMock()
+        doc.id = 7
+        doc.document.file_name = "teamsleech_state.json"
+        chat.pinned_message = doc
+        state_manager.client.get_chat = AsyncMock(return_value=chat)
+        state_manager._download_document = AsyncMock(return_value=buf)
+        state_manager._send_state_doc = AsyncMock()
+        sent = AsyncMock()
+        sent.id = 8
+        state_manager._send_state_doc.return_value = sent
+        state_manager.client.delete_messages = AsyncMock()
+
+        await state_manager.initialize()
+
+        assert state_manager._subject_cache == {}
+        assert state_manager._initialized
+        captions = [
+            c.kwargs.get("caption", "") for c in state_manager._send_state_doc.await_args_list
+        ]
+        assert any("BACKUP" in c for c in captions)
+        state_manager.client.delete_messages.assert_not_called()
+
+    async def test_pin_failure_removes_orphan_keeps_old(self, state_manager):
+        state_manager._msg_id = 5
+        sent_msg = AsyncMock()
+        sent_msg.id = 100
+        sent_msg.pin.side_effect = Exception("pin down")
+        state_manager._send_state_doc = AsyncMock(return_value=sent_msg)
+        state_manager.client.delete_messages = AsyncMock()
+
+        ok = await state_manager._push_to_telegram()
+
+        assert ok is False
+        assert state_manager._msg_id == 5
+        state_manager.client.delete_messages.assert_awaited_once_with(FAKE_CHAT_ID, 100)
+
+    async def test_init_failure_save_raises(self, mock_pyrogram_client):
+        sm = StateManager(mock_pyrogram_client, FAKE_CHAT_ID)
+        sm.client.get_chat = AsyncMock(side_effect=Exception("net down"))
+        with pytest.raises(RuntimeError, match="not initialized"):
+            await sm.save_last_run("Math")
+
+
+class TestBatchAndKeys:
+    async def test_save_subject_state_single_push(self, state_manager):
+        state_manager._push_locked = AsyncMock(return_value=True)
+        ts = datetime(2024, 6, 15, 10, 30, tzinfo=UTC)
+        await state_manager.save_subject_state("Math", ts, 3)
+        assert state_manager._push_locked.await_count == 1
+        assert state_manager.get_last_run("Math") == ts
+        assert state_manager.get_last_lecture("Math") == 3
+
+    async def test_concurrent_saves_merge(self, state_manager):
+        import asyncio
+
+        state_manager._push_locked = AsyncMock(return_value=True)
+        t1 = datetime(2024, 6, 15, 10, 30, tzinfo=UTC)
+        t2 = datetime(2024, 6, 16, 10, 30, tzinfo=UTC)
+        await asyncio.gather(
+            state_manager.save_subject_state("Math", t1, 1),
+            state_manager.save_subject_state("Math", t2, 2),
         )
+        assert state_manager.get_last_run("Math") == t2
+        assert state_manager.get_last_lecture("Math") == 3
+
+    async def test_key_collision_suffixed(self, state_manager):
+        state_manager._push_locked = AsyncMock(return_value=True)
+        await state_manager.save_last_run("data_base", datetime(2024, 1, 1, tzinfo=UTC))
+        await state_manager.save_last_run("Data Base", datetime(2024, 2, 1, tzinfo=UTC))
+        assert state_manager.get_last_run("data_base") == datetime(2024, 1, 1, tzinfo=UTC)
+        assert state_manager.get_last_run("Data Base") == datetime(2024, 2, 1, tzinfo=UTC)

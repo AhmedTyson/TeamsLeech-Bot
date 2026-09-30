@@ -41,14 +41,21 @@ packages = ["src/teamsleech"]
 line-length = 100
 target-version = "py311"
 src = ["src"]
-exclude = ["scripts/"]
 
 [tool.ruff.lint]
-select = ["E", "F", "B", "I", "UP"]
-ignore = ["E501"]
+select = ["E", "F", "B", "I", "UP", "S", "DTZ", "TRY", "EM", "ASYNC", "C901"]
+# TRY003 ignored: owner-facing errors intentionally carry operational detail
+# (file names, statuses) that short exception-class messages would destroy.
+ignore = ["TRY003"]
+flake8-quotes = { inline-quotes = "double" }
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/*" = ["E501", "I001", "E402", "UP015"]
+"src/teamsleech/tg_bot/handlers/*.py" = ["C901"]
+# transfer.py is the only subprocess user: list-form calls with PATH
+# binaries (ffmpeg/ffprobe) from the runner image.
+"src/teamsleech/services/transfer.py" = ["S603", "S607"]
+# Test fixtures inherently use fake credentials/paths.
+"tests/*" = ["S101", "S105", "S106", "S108"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["teamsleech"]
@@ -56,6 +63,12 @@ known-first-party = ["teamsleech"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = ["--cov=src/teamsleech", "--cov-fail-under=85", "--strict-markers", "--strict-config"]
+xfail_strict = true
+filterwarnings = [
+    "error",
+    "ignore:There is no current event loop:DeprecationWarning",
+]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
@@ -65,7 +78,7 @@ source = ["src/teamsleech"]
 omit = ["*/__pycache__/*"]
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 85
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -78,6 +91,7 @@ exclude_lines = [
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
+mypy_path = "src"
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]

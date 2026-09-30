@@ -15,6 +15,7 @@ class Recording(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+
 class SubjectConfig(BaseModel):
     name: str
     short: str = ""
@@ -23,11 +24,13 @@ class SubjectConfig(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+
 class Team(BaseModel):
     id: str
     display_name: str = Field(alias="displayName")
 
     model_config = {"populate_by_name": True, "extra": "ignore"}
+
 
 class UserSession(BaseModel):
     is_searching_teams: bool = False
@@ -41,6 +44,7 @@ class UserSession(BaseModel):
     date_input_pending: bool = False
     subject_filter: str | None = None
     scan_label: str = ""
+    scan_in_progress: bool = False
 
     pending_recordings: list[Recording] = Field(default_factory=list)
     selected_indices: set[int] = Field(default_factory=set)
@@ -63,4 +67,6 @@ class UserSession(BaseModel):
 
     @property
     def all_selected(self) -> bool:
-        return bool(self.pending_recordings) and len(self.selected_indices) == len(self.pending_recordings)
+        return bool(self.pending_recordings) and len(self.selected_indices) == len(
+            self.pending_recordings
+        )

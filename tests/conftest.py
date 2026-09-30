@@ -8,12 +8,14 @@ os.environ.setdefault("TELEGRAM_CHAT_ID", "67890")
 os.environ.setdefault("GH_PAT", "ghp_test")
 os.environ.setdefault("GITHUB_REPOSITORY", "user/repo")
 
-from unittest.mock import AsyncMock
+# NOTE: imports below the env bootstrap (E402) are intentional — the
+# AppConfig singleton reads env at import time, so test stubs must win.
+from unittest.mock import AsyncMock  # noqa: E402
 
-import pytest
-import respx
+import pytest  # noqa: E402
+import respx  # noqa: E402
 
-from teamsleech.core.constants import GRAPH_BASE_URL
+from teamsleech.core.constants import GRAPH_BASE_URL  # noqa: E402
 
 
 @pytest.fixture
@@ -37,6 +39,7 @@ def mock_login_api():
 @pytest.fixture
 def graph_client():
     from teamsleech.services.graph import GraphClient
+
     return GraphClient(access_token="fake_token")
 
 
@@ -53,6 +56,7 @@ def mock_pyrogram_client():
 @pytest.fixture
 def sample_recording():
     from teamsleech.models.domain import Recording
+
     return Recording(
         name="lecture.mp4",
         size_mb=100.0,
@@ -70,6 +74,7 @@ def sample_recording():
 @pytest.fixture
 def sample_pdf_recording():
     from teamsleech.models.domain import Recording
+
     return Recording(
         name="notes.pdf",
         size_mb=5.0,
@@ -87,19 +92,21 @@ def sample_pdf_recording():
 @pytest.fixture
 def sample_subject():
     from teamsleech.models.domain import SubjectConfig
+
     return SubjectConfig(name="Math", short="MTH", keywords=["math", "algebra"])
 
 
 @pytest.fixture
 def sample_team():
     from teamsleech.models.domain import Team
-    return Team(id="team1", display_name="CS-A 2024")
 
+    return Team(id="team1", display_name="CS-A 2024")
 
 
 @pytest.fixture(autouse=True)
 def _patch_settings(monkeypatch):
     from teamsleech.core.config import settings
+
     monkeypatch.setattr(settings, "gh_pat", "ghp_test")
     monkeypatch.setattr(settings, "github_repository", "user/repo")
     monkeypatch.setattr(settings, "teams_refresh_token", "test_rt")

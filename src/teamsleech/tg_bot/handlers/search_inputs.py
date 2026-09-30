@@ -1,7 +1,9 @@
 import json
 import os
+from typing import Any
 
-from pyrogram import Client, filters
+from pyrogram import filters
+from pyrogram.client import Client
 from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -10,71 +12,81 @@ from pyrogram.types import (
 )
 
 from teamsleech.core.config import settings
-from teamsleech.models.domain import SubjectConfig, Team
-from teamsleech.services.auth import rotate_github_secret
+from teamsleech.models.domain import SubjectConfig, Team, UserSession
 from teamsleech.services.discovery import DiscoveryService
+from teamsleech.services.github_secrets import rotate_github_secret
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
+from teamsleech.tg_bot.callbacks import callback_text, is_valid_team_id, parse_callback_index
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_edit_text
+
+
+def search_should_yield(session: UserSession) -> bool:
+    """True when a rename or date wizard owns text input.
+
+    The search handler (group 0) must propagate so the pending
+    wizard in a later group receives the message instead of the
+    search consuming it and stranding that wizard.
+    """
+    return session.pending_rename_idx is not None or session.date_input_pending
 
 
 def _build_search_page(teams: list[Team], page: int) -> tuple[str, InlineKeyboardMarkup]:
     PAGE_SIZE = 5
     total_pages = max(1, (len(teams) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
-    
+
     start_idx = page * PAGE_SIZE
     end_idx = start_idx + PAGE_SIZE
     page_teams = teams[start_idx:end_idx]
-    
+
     text_lines = [f"🔍 Found {len(teams)} matching teams:\n", f"Page {page + 1} of {total_pages}:"]
-    
+
     number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-    
+
     buttons_row = []
-    
+
     for i, t in enumerate(page_teams):
-        num_str = number_emojis[i] if i < len(number_emojis) else f"{i+1}."
+        num_str = number_emojis[i] if i < len(number_emojis) else f"{i + 1}."
         text_lines.append(f"{num_str} {t.display_name}")
-        buttons_row.append(
-            InlineKeyboardButton(f"[ {i+1} ]", callback_data=f"add_team:{t.id}")
-        )
-        
+        buttons_row.append(InlineKeyboardButton(f"[ {i + 1} ]", callback_data=f"add_team:{t.id}"))
+
     text_lines.append("\n_Tap a number below to configure that team_")
     text_lines.append("_or type a new keyword to search again._")
-    
+
     keyboard = []
     if buttons_row:
         keyboard.append(buttons_row)
-        
+
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"srch_pg:{page - 1}"))
     if page < total_pages - 1:
         nav_row.append(InlineKeyboardButton("Next ➡️", callback_data=f"srch_pg:{page + 1}"))
-        
+
     if nav_row:
         keyboard.append(nav_row)
-        
+
     return "\n".join(text_lines), InlineKeyboardMarkup(keyboard)
 
-def register_search_inputs(
-    app: Client, discovery: DiscoveryService, state: StateManager
-):
-    async def is_searching(_, __, message: Message):
+
+def register_search_inputs(app: Client, discovery: DiscoveryService, state: StateManager) -> None:
+    async def is_searching(_: Any, __: Any, message: Message) -> bool:
         session = state.get_session(message.chat.id)
         return session.is_searching_teams or session.pending_add_step != ""
 
     search_filter = filters.create(is_searching)
 
-    @app.on_message(
-        filters.text & filters.private & owner_only & search_filter, group=0
-    )
-    async def handle_search_input(client: Client, message: Message):
+    @app.on_message(filters.text & filters.private & owner_only & search_filter, group=0)
+    async def handle_search_input(client: Client, message: Message) -> None:
         text = message.text.strip()
         chat_id = message.chat.id
         session = state.get_session(chat_id)
+
+        if search_should_yield(session):
+            message.continue_propagation()  # type: ignore[no-untyped-call]
+            return
 
         if text.lower() == "cancel":
             session.is_searching_teams = False
@@ -88,8 +100,7 @@ def register_search_inputs(
             session.pending_add_data["name"] = text
             session.pending_add_step = "ask_short"
             await message.reply(
-                "📝 Got it.\n\n"
-                "Now, send a **Short Name** (e.g., `DB` for Database)."
+                "📝 Got it.\n\nNow, send a **Short Name** (e.g., `DB` for Database)."
             )
             return
 
@@ -108,6 +119,9 @@ def register_search_inputs(
             session.pending_add_data["doctor"] = doc
 
             team = session.pending_add_team
+            if team is None:
+                await message.reply("❌ Subject setup expired. Start again.")
+                return
             new_subject = SubjectConfig(
                 name=session.pending_add_data["name"],
                 short=session.pending_add_data["short"],
@@ -115,16 +129,12 @@ def register_search_inputs(
                 keywords=[team.display_name],
             )
 
-            await message.reply(
-                f"⏳ Saving `{new_subject.name}` to GitHub Secrets..."
-            )
+            await message.reply(f"⏳ Saving `{new_subject.name}` to GitHub Secrets...")
 
             scanner = ScannerService(discovery.graph, state)
             existing = scanner.load_subjects()
             existing.append(new_subject)
-            json_str = json.dumps(
-                {"subjects": [s.model_dump() for s in existing]}, indent=2
-            )
+            json_str = json.dumps({"subjects": [s.model_dump() for s in existing]}, indent=2)
 
             try:
                 await rotate_github_secret("SUBJECTS_JSON", json_str)
@@ -137,8 +147,7 @@ def register_search_inputs(
                 )
             except Exception as e:
                 await message.reply(
-                    f"❌ Failed to save to GitHub Secrets: {e}\n\n"
-                    "Make sure your GH_PAT is valid."
+                    f"❌ Failed to save to GitHub Secrets: {e}\n\nMake sure your GH_PAT is valid."
                 )
 
             session.is_searching_teams = False
@@ -155,9 +164,7 @@ def register_search_inputs(
             return
 
         if not matched_teams:
-            await message.reply(
-                msg + "\nTry a different keyword or `cancel`."
-            )
+            await message.reply(msg + "\nTry a different keyword or `cancel`.")
             return
 
         session.pending_add_data["last_search_results"] = json.dumps(
@@ -167,81 +174,103 @@ def register_search_inputs(
         text, reply_markup = _build_search_page(matched_teams, 0)
         await message.reply(text, reply_markup=reply_markup)
 
-    @app.on_callback_query(filters.regex(r"^srch_pg:") & owner_only)
-    async def handle_search_page(client: Client, cb: CallbackQuery):
+    @app.on_callback_query(filters.regex(r"^srch_pg:\d+$") & owner_only)
+    async def handle_search_page(client: Client, cb: CallbackQuery) -> None:
         chat_id = cb.message.chat.id
         session = state.get_session(chat_id)
-        
+
+        page = parse_callback_index(cb.data)
         results_str = session.pending_add_data.get("last_search_results")
-        if not results_str:
+        if page is None or not results_str:
             await cb.answer("Search results expired. Please search again.", show_alert=True)
             return
-            
-        page = int(cb.data.split(":")[1])
+
         teams_data = json.loads(results_str)
         matched_teams = [Team(**t) for t in teams_data]
-        
+
         text, reply_markup = _build_search_page(matched_teams, page)
-        
+
         await safe_edit_text(cb.message, text, reply_markup=reply_markup)
         await cb.answer()
 
-    @app.on_callback_query(filters.regex(r"^del_subj:") & owner_only)
-    async def handle_del_subj(client: Client, cb: CallbackQuery):
-        idx = int(cb.data.split(":", 1)[1])
+    @app.on_callback_query(filters.regex(r"^del_subj:\d+$") & owner_only)
+    async def handle_del_subj(client: Client, cb: CallbackQuery) -> None:
+        idx = parse_callback_index(cb.data)
 
         scanner = ScannerService(discovery.graph, state)
         existing = scanner.load_subjects()
 
-        if idx >= len(existing):
-            await cb.answer(
-                "Subject not found or already deleted.", show_alert=True
-            )
+        if idx is None or idx < 0 or idx >= len(existing):
+            await cb.answer("Subject not found or already deleted.", show_alert=True)
+            return
+
+        subj_name = existing[idx].name
+        confirm_kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("✔ Yes, delete", callback_data=f"del_confirm:{idx}"),
+                    InlineKeyboardButton("✖ Cancel", callback_data="del_cancel"),
+                ]
+            ]
+        )
+        await safe_edit_text(
+            cb.message,
+            f"⚠️ Delete subject **{subj_name}** permanently?",
+            reply_markup=confirm_kb,
+        )
+        await cb.answer()
+
+    @app.on_callback_query(filters.regex(r"^del_cancel$") & owner_only)
+    async def handle_del_cancel(client: Client, cb: CallbackQuery) -> None:
+        await safe_edit_text(cb.message, "✖ Delete cancelled.")
+        await cb.answer()
+
+    @app.on_callback_query(filters.regex(r"^del_confirm:\d+$") & owner_only)
+    async def handle_del_confirm(client: Client, cb: CallbackQuery) -> None:
+        idx = parse_callback_index(cb.data)
+
+        scanner = ScannerService(discovery.graph, state)
+        existing = scanner.load_subjects()
+
+        if idx is None or idx < 0 or idx >= len(existing):
+            await cb.answer("Subject not found or already deleted.", show_alert=True)
             return
 
         subj_name = existing[idx].name
         existing.pop(idx)
 
-        json_str = json.dumps(
-            {"subjects": [s.model_dump() for s in existing]}, indent=2
-        )
+        json_str = json.dumps({"subjects": [s.model_dump() for s in existing]}, indent=2)
 
-        await safe_edit_text(cb.message, 
-            f"⏳ Deleting `{subj_name}` from GitHub Secrets..."
-        )
+        await safe_edit_text(cb.message, f"⏳ Deleting `{subj_name}` from GitHub Secrets...")
 
         try:
             await rotate_github_secret("SUBJECTS_JSON", json_str)
             os.environ["SUBJECTS_JSON"] = json_str
             settings.subjects_json = json_str
 
-            await safe_edit_text(cb.message, 
-                f"✅ Success! **{subj_name}** has been permanently deleted."
+            await safe_edit_text(
+                cb.message, f"✅ Success! **{subj_name}** has been permanently deleted."
             )
         except Exception as e:
-            await safe_edit_text(cb.message, 
-                f"❌ Failed to delete from GitHub Secrets: {e}"
-            )
+            failure = f"❌ Failed to delete from GitHub Secrets: {e}"  # noqa: S608 - prose, not SQL
+            await safe_edit_text(cb.message, failure)
 
         await cb.answer()
 
     @app.on_callback_query(filters.regex(r"^add_team:") & owner_only)
-    async def handle_add_team(client: Client, cb: CallbackQuery):
+    async def handle_add_team(client: Client, cb: CallbackQuery) -> None:
         chat_id = cb.message.chat.id
         session = state.get_session(chat_id)
-        team_id = cb.data.split(":", 1)[1]
+        raw_data = callback_text(cb.data)
+        team_id = raw_data.split(":", 1)[1] if raw_data is not None and ":" in raw_data else ""
+        if not is_valid_team_id(team_id):
+            await cb.answer("Invalid team id.", show_alert=True)
+            return
 
-        matched_teams_raw = session.pending_add_data.get(
-            "last_search_results", "[]"
-        )
-        matched_teams = [
-            Team(**t)
-            for t in json.loads(matched_teams_raw)
-        ]
+        matched_teams_raw = session.pending_add_data.get("last_search_results", "[]")
+        matched_teams = [Team(**t) for t in json.loads(matched_teams_raw)]
 
-        team = next(
-            (t for t in matched_teams if t.id == team_id), None
-        )
+        team = next((t for t in matched_teams if t.id == team_id), None)
         if not team:
             await cb.answer("Team not found.", show_alert=True)
             return
@@ -250,11 +279,12 @@ def register_search_inputs(
         session.pending_add_step = "ask_name"
         session.pending_add_team = team
 
-        await safe_edit_text(cb.message, 
+        await safe_edit_text(
+            cb.message,
             f"📌 Adding: **{team.display_name}**\n\n"
             "Let's configure this subject.\n\n"
             "📝 **Step 1:** Send the **Full Name**\n"
             "   (e.g., `Database Systems`)\n\n"
-            "_Type `cancel` to exit._"
+            "_Type `cancel` to exit._",
         )
         await cb.answer()

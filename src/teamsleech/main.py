@@ -1,7 +1,8 @@
 import logging
 import os
 
-from pyrogram import Client
+from pyrogram.client import Client
+from pyrogram.methods.utilities.idle import idle
 
 from teamsleech.core.config import settings
 from teamsleech.services.auth import TokenExpiredError, authenticate
@@ -19,7 +20,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("main")
 
-def main():
+
+def main() -> None:
     log.info("=" * 50)
     log.info("TeamsLeech Modern App — Booting")
     log.info("=" * 50)
@@ -33,41 +35,46 @@ def main():
         in_memory=True,
     )
 
-    async def _run():
+    async def _run() -> None:
         # 2. Authenticate & Rotate Secret
         log.info("Step 1/3: Authenticating with Microsoft & GitHub...")
         try:
             access_token = await authenticate()
         except TokenExpiredError:
-            log.critical("Microsoft session expired. Please run local setup script and update TEAMS_REFRESH_TOKEN secret.")
+            log.critical(
+                "Microsoft session expired. Run local setup script and "
+                "update TEAMS_REFRESH_TOKEN secret."
+            )
             # Start dummy bot mode to send alert if possible?
             return
         except Exception as e:
             log.critical(f"Auth failed: {e}")
             return
-            
+
         # 3. Initialize Services
         log.info("Step 2/3: Initializing core services...")
         graph_client = GraphClient(access_token)
         state_manager = StateManager(app, settings.telegram_chat_id)
         discovery_service = DiscoveryService(graph_client)
         scanner_service = ScannerService(graph_client, state_manager)
-        transfer_service = TransferService(graph_client, state_manager, app, settings.telegram_chat_id)
-        
+        transfer_service = TransferService(
+            graph_client, state_manager, app, settings.telegram_chat_id
+        )
+
         # 4. Register Handlers
         register_all_handlers(
             app,
             scanner=scanner_service,
             transfer=transfer_service,
             state=state_manager,
-            discovery=discovery_service
+            discovery=discovery_service,
         )
-        
+
         await app.start()
         await state_manager.initialize()
-        
+
         log.info("Step 3/3: Bot is live and listening.")
-        
+
         # 5. Scheduled Auto-Check Logic (Silent Mode)
         if settings.auto_check == "1":
             log.info("Running automated scheduled check...")
@@ -89,23 +96,25 @@ def main():
                     session.scan_label = label
 
                     text = build_checklist_text(results, label)
-                    keyboard = build_checklist_keyboard(session.pending_recordings, session.selected_indices)
+                    keyboard = build_checklist_keyboard(
+                        session.pending_recordings, session.selected_indices
+                    )
 
                     await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
                     log.info("Auto-check found %d recordings, notification sent.", total)
                 else:
                     log.info("Auto-check found 0 new recordings. Staying completely silent.")
-            except Exception as e:
-                log.error("Scheduled check failed: %s", e)
+            except Exception:
+                log.exception("Scheduled check failed")
 
-        from pyrogram import idle
-        await idle()
-        
+        await idle()  # type: ignore[no-untyped-call]
+
         # Cleanup
         await graph_client.close()
         await app.stop()
 
     app.run(_run())
+
 
 if __name__ == "__main__":
     main()

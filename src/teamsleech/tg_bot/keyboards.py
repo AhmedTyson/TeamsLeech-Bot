@@ -15,15 +15,14 @@ REPLY_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+
 def build_subject_keyboard(subjects: list[SubjectConfig]) -> InlineKeyboardMarkup:
     buttons = []
     row = []
 
     for subj in subjects:
         row.append(
-            InlineKeyboardButton(
-                text=subj.short or subj.name, callback_data=f"subj:{subj.name}"
-            )
+            InlineKeyboardButton(text=subj.short or subj.name, callback_data=f"subj:{subj.name}")
         )
         if len(row) == 3:
             buttons.append(row)
@@ -32,33 +31,32 @@ def build_subject_keyboard(subjects: list[SubjectConfig]) -> InlineKeyboardMarku
     if row:
         buttons.append(row)
 
-    buttons.append([
-        InlineKeyboardButton(
-            text="✅ Check All (since last run)", callback_data="subj:__ALL__"
-        )
-    ])
+    buttons.append(
+        [InlineKeyboardButton(text="✅ Check All (since last run)", callback_data="subj:__ALL__")]
+    )
     return InlineKeyboardMarkup(buttons)
+
 
 MAX_TOGGLE_ITEMS = 45
 TOGGLES_PER_ROW = 4
 
-def _build_toggle_rows(flat: list[Recording], selections: set[int]) -> list[list[InlineKeyboardButton]]:
+
+def _build_toggle_rows(
+    flat: list[Recording], selections: set[int]
+) -> list[list[InlineKeyboardButton]]:
     buttons: list[list[InlineKeyboardButton]] = []
     current_row: list[InlineKeyboardButton] = []
     for i in range(min(len(flat), MAX_TOGGLE_ITEMS)):
         mark = "✅" if i in selections else "⬛️"
-        current_row.append(
-            InlineKeyboardButton(text=f"{mark} {i + 1}", callback_data=f"sel:{i}")
-        )
-        current_row.append(
-            InlineKeyboardButton(text="✏️", callback_data=f"ren:{i}")
-        )
+        current_row.append(InlineKeyboardButton(text=f"{mark} {i + 1}", callback_data=f"sel:{i}"))
+        current_row.append(InlineKeyboardButton(text="✏️", callback_data=f"ren:{i}"))
         if len(current_row) >= TOGGLES_PER_ROW:
             buttons.append(current_row)
             current_row = []
     if current_row:
         buttons.append(current_row)
     return buttons
+
 
 def _build_upload_button(flat: list[Recording], selections: set[int]) -> list[InlineKeyboardButton]:
     if not selections:
@@ -67,6 +65,7 @@ def _build_upload_button(flat: list[Recording], selections: set[int]) -> list[In
         total_mb = sum(flat[i].size_mb for i in selections if i < len(flat))
         label = f"🚀 Upload Selected ({len(selections)} files, {total_mb:.0f} MB)"
     return [InlineKeyboardButton(text=label, callback_data="upload:confirm")]
+
 
 def _build_filter_row(flat: list[Recording], selections: set[int]) -> list[InlineKeyboardButton]:
     n_video = sum(1 for r in flat if r.is_video)
@@ -77,17 +76,21 @@ def _build_filter_row(flat: list[Recording], selections: set[int]) -> list[Inlin
         row.append(InlineKeyboardButton(text=f"📄 PDFs {n_sel}/{n_doc}", callback_data="sel:pdfs"))
     if n_video > 0:
         n_sel = sum(1 for i in selections if i < len(flat) and flat[i].is_video)
-        row.append(InlineKeyboardButton(text=f"🎬 Videos {n_sel}/{n_video}", callback_data="sel:videos"))
+        row.append(
+            InlineKeyboardButton(text=f"🎬 Videos {n_sel}/{n_video}", callback_data="sel:videos")
+        )
     all_selected = len(selections) == len(flat) and len(flat) > 0
     label = "➖ All" if all_selected else "➕ All"
     row.append(InlineKeyboardButton(text=label, callback_data="sel:all"))
     return row
+
 
 def _build_action_row() -> list[InlineKeyboardButton]:
     return [
         InlineKeyboardButton(text="📅 Change Date", callback_data="date:change"),
         InlineKeyboardButton(text="❌ Cancel", callback_data="cancel:check"),
     ]
+
 
 def build_checklist_keyboard(
     flat: list[Recording],
@@ -103,9 +106,10 @@ def build_checklist_keyboard(
 
 
 def build_actions_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("▶️ Start Runner", callback_data="act:run")],
-        [InlineKeyboardButton("🔄 Check Status", callback_data="act:status")],
-        [InlineKeyboardButton("🛑 Cancel Active Runs", callback_data="act:cancel")]
-    ])
-
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("▶️ Start Runner", callback_data="act:run")],
+            [InlineKeyboardButton("🔄 Check Status", callback_data="act:status")],
+            [InlineKeyboardButton("🛑 Cancel Active Runs", callback_data="act:cancel")],
+        ]
+    )

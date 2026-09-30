@@ -11,6 +11,7 @@ def test_subject_config_defaults():
     assert s.doctor == ""
     assert s.keywords == ["math", "algebra"]
 
+
 def test_subject_config_minimal():
     s = SubjectConfig(name="Physics")
     assert s.name == "Physics"
@@ -18,9 +19,11 @@ def test_subject_config_minimal():
     assert s.doctor == ""
     assert s.keywords == []
 
+
 def test_subject_config_invalid():
     with pytest.raises(ValidationError):
         SubjectConfig()
+
 
 def test_recording_defaults():
     r = Recording(
@@ -38,6 +41,7 @@ def test_recording_defaults():
     assert r.is_video is False  # Model doesn't auto-detect; set explicitly
     assert r.size_mb == 100.0
 
+
 def test_recording_non_video():
     r = Recording(
         name="notes.pdf",
@@ -51,14 +55,17 @@ def test_recording_non_video():
     assert r.is_video is False
     assert r.time == ""
 
+
 def test_team_model():
     t = Team(id="team1", display_name="CS-A 2024")
     assert t.id == "team1"
     assert t.display_name == "CS-A 2024"
 
+
 def test_team_populate_by_name():
     t = Team.model_validate({"id": "t1", "displayName": "Math 101"})
     assert t.display_name == "Math 101"
+
 
 def test_user_session_defaults():
     session = UserSession()
