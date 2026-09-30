@@ -122,11 +122,13 @@ class ScannerService:
     ) -> list[tuple[str, list[dict[str, Any]]]]:
         async def search_once(drive_id: str, ext: str) -> dict[str, Any]:
             # OData string escape ('' for ') + URL-encode the drive id.
+            # Paged fetch: drive search caps a single page (~200 hits).
             query = ext.replace("'", "''")
             async with sem:
-                return await self.graph.get(
+                value = await self.graph.get_all_pages(
                     f"/drives/{quote_id(drive_id)}/root/search(q='{query}')"
                 )
+                return {"value": value}
 
         async def search_drive(drive_id: str) -> tuple[str, list[dict[str, Any]]]:
             tasks = [search_once(drive_id, ext) for ext in EXTENSIONS]
@@ -216,25 +218,62 @@ class ScannerService:
         if last_run.tzinfo is None:
             last_run = last_run.replace(tzinfo=UTC)
 
+        excluded = 0
         for drive_id, items in drive_results:
             for item in items:
-                item_id = item["id"]
-                if item_id in local_seen:
-                    continue
-                local_seen.add(item_id)
-
-                created_dt = self._parse_item_datetime(item)
-                if created_dt is None:
-                    continue
-                if not self._passes_date_filter(created_dt, date_start, date_end, last_run):
-                    continue
-
-                rec = self._item_to_recording(item, drive_id, team, subject, created_dt)
-                if rec is not None:
+                rec = self._process_item(
+                    item, drive_id, team, subject, local_seen, date_start, date_end, last_run
+                )
+                if rec is None:
+                    excluded += 1
+                else:
                     recordings.append(rec)
 
         seen_ids.update(local_seen)
+        log.info(
+            "Team '%s': %d recordings kept, %d items excluded.",
+            team.display_name,
+            len(recordings),
+            excluded,
+        )
         return recordings
+
+    def _process_item(
+        self,
+        item: dict[str, Any],
+        drive_id: str,
+        team: Team,
+        subject: SubjectConfig,
+        local_seen: set[str],
+        date_start: str | None,
+        date_end: str | None,
+        last_run: datetime,
+    ) -> Recording | None:
+        """Map one drive item, or None when duplicate/filtered/malformed.
+
+        Never raises: a single bad item (missing id/name, odd types)
+        must not kill the whole team scan.
+        """
+        try:
+            item_id = item["id"]
+            if item_id in local_seen:
+                return None
+            local_seen.add(item_id)
+
+            created_dt = self._parse_item_datetime(item)
+            if created_dt is None:
+                return None
+            if not self._passes_date_filter(created_dt, date_start, date_end, last_run):
+                return None
+            return self._item_to_recording(item, drive_id, team, subject, created_dt)
+        except (KeyError, ValueError, TypeError) as e:
+            log.warning(
+                "Skipping malformed drive item in team '%s': %r (%s)",
+                team.display_name,
+                item.get("name", "?"),
+                e,
+            )
+            return None
 
     async def _scan_subject(
         self,
@@ -281,11 +320,14 @@ class ScannerService:
                 )
 
         tasks = [bounded_process(t) for t in matched_teams]
-        team_results = await asyncio.gather(*tasks)
+        team_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         seen_keys: set[tuple[str, str]] = set()
         recordings: list[Recording] = []
         for batch in team_results:
+            if isinstance(batch, BaseException):
+                log.error("Team scan failed for subject '%s': %s", subject.name, batch)
+                continue
             for r in batch:
                 key = (r.drive_id, r.item_id)
                 if key in seen_keys:

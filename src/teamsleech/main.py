@@ -106,8 +106,9 @@ def main() -> None:
                     log.info("Auto-check found 0 new recordings. Staying completely silent.")
             except Exception:
                 log.exception("Scheduled check failed")
-
-        await idle()  # type: ignore[no-untyped-call]
+            log.info("Auto-check complete, exiting.")
+        else:
+            await idle()  # type: ignore[no-untyped-call]
 
         # Cleanup
         await graph_client.close()

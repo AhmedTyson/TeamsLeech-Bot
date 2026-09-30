@@ -18,6 +18,7 @@ from teamsleech.core.constants import (
     CHUNK_SIZE_BYTES,
     GRAPH_BASE_URL,
     TELEGRAM_MAX_FILE_BYTES,
+    TG_CAPTION_LIMIT,
 )
 from teamsleech.core.retry import retry_on, retry_tg
 from teamsleech.models.domain import Recording
@@ -265,6 +266,26 @@ class TransferService:
         else:
             return downloaded
 
+    @staticmethod
+    def _split_filename(filename: str) -> tuple[str, str, str]:
+        """Split filename into (ext, caption, save_filename).
+
+        Caption is capped at the Telegram limit so oversized names
+        do not fail the upload with BadRequest.
+        """
+        ext = ""
+        if "." in filename:
+            ext = "." + filename.split(".")[-1].lower()
+            caption = filename[: -len(ext)]
+        else:
+            caption = filename
+        if len(caption) > TG_CAPTION_LIMIT:
+            caption = caption[:TG_CAPTION_LIMIT]
+        save_filename = filename
+        if not save_filename.lower().endswith(ext):
+            save_filename += ext
+        return ext, caption, save_filename
+
     async def _upload_to_telegram(
         self,
         file_path: str,
@@ -279,16 +300,7 @@ class TransferService:
             duration, width, height = await asyncio.to_thread(self._probe_video, file_path)
             thumb_path = await asyncio.to_thread(self._extract_thumbnail, file_path)
 
-        ext = ""
-        if "." in filename:
-            ext = "." + filename.split(".")[-1].lower()
-            caption = filename[: -len(ext)]
-        else:
-            caption = filename
-
-        save_filename = filename
-        if not save_filename.lower().endswith(ext):
-            save_filename += ext
+        _ext, caption, save_filename = self._split_filename(filename)
 
         try:
             if not is_video:

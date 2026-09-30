@@ -196,23 +196,23 @@ class TestProcessTeam:
         assert recordings == []
 
     async def test_parses_offset_datetime(self, scanner, sample_subject, sample_team):
-        async def side_effect(endpoint, **kw):
-            if endpoint.endswith("/sites/root"):
-                return {"id": "site1"}
-            if endpoint.endswith("/drives"):
-                return {"value": [{"id": "d1"}]}
-            return {
-                "value": [
-                    {
-                        "id": "i1",
-                        "name": "lec.mp4",
-                        "createdDateTime": "2024-06-15T10:30:00+03:00",
-                        "size": 1024,
-                    }
-                ]
-            }
+        async def search_side_effect(endpoint, **kw):
+            return [
+                {
+                    "id": "i1",
+                    "name": "lec.mp4",
+                    "createdDateTime": "2024-06-15T10:30:00+03:00",
+                    "size": 1024,
+                }
+            ]
 
-        scanner.graph.get = AsyncMock(side_effect=side_effect)
+        scanner.graph.get = AsyncMock(
+            side_effect=[
+                {"id": "site1"},
+                {"value": [{"id": "d1"}]},
+            ]
+        )
+        scanner.graph.get_all_pages = AsyncMock(side_effect=search_side_effect)
         recordings = await scanner._process_team(
             sample_team,
             sample_subject,
@@ -226,29 +226,29 @@ class TestProcessTeam:
         assert recordings[0].time == "10:30"
 
     async def test_none_size_kept_bad_date_skipped(self, scanner, sample_subject, sample_team):
-        async def side_effect(endpoint, **kw):
-            if endpoint.endswith("/sites/root"):
-                return {"id": "site1"}
-            if endpoint.endswith("/drives"):
-                return {"value": [{"id": "d1"}]}
-            return {
-                "value": [
-                    {
-                        "id": "i1",
-                        "name": "notes.pdf",
-                        "createdDateTime": "2024-06-15T10:30:00Z",
-                        "size": None,
-                    },
-                    {
-                        "id": "i2",
-                        "name": "broken.mp4",
-                        "createdDateTime": "not-a-date",
-                        "size": 10,
-                    },
-                ]
-            }
+        async def search_side_effect(endpoint, **kw):
+            return [
+                {
+                    "id": "i1",
+                    "name": "notes.pdf",
+                    "createdDateTime": "2024-06-15T10:30:00Z",
+                    "size": None,
+                },
+                {
+                    "id": "i2",
+                    "name": "broken.mp4",
+                    "createdDateTime": "not-a-date",
+                    "size": 10,
+                },
+            ]
 
-        scanner.graph.get = AsyncMock(side_effect=side_effect)
+        scanner.graph.get = AsyncMock(
+            side_effect=[
+                {"id": "site1"},
+                {"value": [{"id": "d1"}]},
+            ]
+        )
+        scanner.graph.get_all_pages = AsyncMock(side_effect=search_side_effect)
         recordings = await scanner._process_team(
             sample_team,
             sample_subject,
@@ -262,26 +262,26 @@ class TestProcessTeam:
         assert recordings[0].size_mb == 0.0
 
     async def test_ext_error_logged_others_survive(self, scanner, sample_subject, sample_team):
-        async def side_effect(endpoint, **kw):
-            if endpoint.endswith("/sites/root"):
-                return {"id": "site1"}
-            if endpoint.endswith("/drives"):
-                return {"value": [{"id": "d1"}]}
+        async def search_side_effect(endpoint, **kw):
             if "q='.mp4'" in endpoint:
                 msg = "throttled"
                 raise GraphAPIError(msg)
-            return {
-                "value": [
-                    {
-                        "id": "i1",
-                        "name": "notes.pdf",
-                        "createdDateTime": "2024-06-15T10:30:00Z",
-                        "size": 2048,
-                    }
-                ]
-            }
+            return [
+                {
+                    "id": "i1",
+                    "name": "notes.pdf",
+                    "createdDateTime": "2024-06-15T10:30:00Z",
+                    "size": 2048,
+                }
+            ]
 
-        scanner.graph.get = AsyncMock(side_effect=side_effect)
+        scanner.graph.get = AsyncMock(
+            side_effect=[
+                {"id": "site1"},
+                {"value": [{"id": "d1"}]},
+            ]
+        )
+        scanner.graph.get_all_pages = AsyncMock(side_effect=search_side_effect)
         recordings = await scanner._process_team(
             sample_team,
             sample_subject,
@@ -383,23 +383,23 @@ class TestScanRecordings:
             ),
         )
 
-        async def side_effect(endpoint, **kw):
-            if endpoint.endswith("/sites/root"):
-                return {"id": "site1"}
-            if endpoint.endswith("/drives"):
-                return {"value": [{"id": "d1"}]}
-            return {
-                "value": [
-                    {
-                        "id": "i1",
-                        "name": "lec.mp4",
-                        "createdDateTime": "2024-06-15T10:30:00Z",
-                        "size": 1024,
-                    }
-                ]
-            }
+        async def search_side_effect(endpoint, **kw):
+            return [
+                {
+                    "id": "i1",
+                    "name": "lec.mp4",
+                    "createdDateTime": "2024-06-15T10:30:00Z",
+                    "size": 1024,
+                }
+            ]
 
-        scanner.graph.get = AsyncMock(side_effect=side_effect)
+        scanner.graph.get = AsyncMock(
+            side_effect=[
+                {"id": "site1"},
+                {"value": [{"id": "d1"}]},
+            ]
+        )
+        scanner.graph.get_all_pages = AsyncMock(side_effect=search_side_effect)
         with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
             mock_disc.return_value.get_all_joined_teams = AsyncMock(
                 return_value=[Team(id="t1", display_name="math group")]
@@ -443,3 +443,97 @@ class TestScanRecordings:
             scanner._process_team = AsyncMock(side_effect=[[_rec("i1")], [_rec("i1"), _rec("i2")]])
             result = await scanner.scan_recordings()
         assert [r.item_id for r in result["Math"]] == ["i1", "i2"]
+
+    async def test_search_uses_paged_fetch(self, scanner, sample_subject, sample_team):
+        async def search_side_effect(endpoint, **kw):
+            return [
+                {
+                    "id": "i1",
+                    "name": "lec.mp4",
+                    "createdDateTime": "2024-06-15T10:30:00Z",
+                    "size": 1024,
+                }
+            ]
+
+        scanner.graph.get = AsyncMock(
+            side_effect=[
+                {"id": "site1"},
+                {"value": [{"id": "d1"}]},
+            ]
+        )
+        scanner.graph.get_all_pages = AsyncMock(side_effect=search_side_effect)
+        recordings = await scanner._process_team(
+            sample_team,
+            sample_subject,
+            datetime.min.replace(tzinfo=UTC),
+            None,
+            None,
+            set(),
+        )
+        assert len(recordings) == 1
+        assert scanner.graph.get_all_pages.await_count == 9
+
+    async def test_malformed_items_skipped_team_survives(
+        self, scanner, sample_subject, sample_team
+    ):
+        async def search_side_effect(endpoint, **kw):
+            return [
+                {"name": "no-id.mp4", "createdDateTime": "2024-06-15T10:30:00Z"},
+                {
+                    "id": "i1",
+                    "name": "lec.mp4",
+                    "createdDateTime": "2024-06-15T10:30:00Z",
+                    "size": 1024,
+                },
+                {"id": "i2"},
+            ]
+
+        scanner.graph.get = AsyncMock(
+            side_effect=[
+                {"id": "site1"},
+                {"value": [{"id": "d1"}]},
+            ]
+        )
+        scanner.graph.get_all_pages = AsyncMock(side_effect=search_side_effect)
+        recordings = await scanner._process_team(
+            sample_team,
+            sample_subject,
+            datetime.min.replace(tzinfo=UTC),
+            None,
+            None,
+            set(),
+        )
+        assert [r.item_id for r in recordings] == ["i1"]
+
+    async def test_team_exception_isolated(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps(
+                {
+                    "subjects": [
+                        {"name": "Math", "short": "MTH", "keywords": ["team"]},
+                    ]
+                }
+            ),
+        )
+        teams = [
+            Team(id="1", display_name="team A"),
+            Team(id="2", display_name="team B"),
+        ]
+        good = Recording(
+            name="a.mp4",
+            size_mb=1.0,
+            created="2024-01-02",
+            time="10:00",
+            duration_ms=0,
+            drive_id="d",
+            item_id="i1",
+            team_name="t",
+            subject_name="Math",
+            is_video=True,
+        )
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=teams)
+            scanner._process_team = AsyncMock(side_effect=[[good], RuntimeError("boom")])
+            result = await scanner.scan_recordings()
+        assert [r.item_id for r in result["Math"]] == ["i1"]
