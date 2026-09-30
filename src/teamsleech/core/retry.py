@@ -71,14 +71,19 @@ def retry_tg(func: Callable[P, T]) -> Callable[P, T]:
 E = TypeVar("E", bound=BaseException)
 
 
-def retry_on(exc_type: type[E]) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    """Three-attempt retry decorator for a specific exception type."""
+def retry_on(
+    exc_type: type[E], *, exclude: tuple[type[BaseException], ...] = ()
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    """Three-attempt retry decorator, skipping excluded subtypes (e.g. auth)."""
+
+    def _retryable(exc: BaseException) -> bool:
+        return isinstance(exc, exc_type) and not isinstance(exc, exclude)
 
     def deco(func: Callable[P, T]) -> Callable[P, T]:
         return retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential_jitter(initial=1, max=10, jitter=2),
-            retry=retry_if_exception_type(exc_type),
+            retry=retry_if_exception(_retryable),
             reraise=True,
         )(func)
 
