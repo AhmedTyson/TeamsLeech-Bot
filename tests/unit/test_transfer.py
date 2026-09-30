@@ -284,6 +284,16 @@ class TestUploadToTelegram:
             )
         assert msg.id == 43
 
+    async def test_upload_truncates_long_caption(self, transfer_service):
+        sent_msg = AsyncMock()
+        sent_msg.id = 45
+        transfer_service._tg_send_document = AsyncMock(return_value=sent_msg)
+
+        long_name = "n" * 1500 + ".pdf"
+        await transfer_service._upload_to_telegram("/tmp/doc.pdf", long_name, False, AsyncMock())
+        caption = transfer_service._tg_send_document.await_args.args[3]
+        assert len(caption) <= 1024
+
     async def test_upload_video_fallback_to_document(self, transfer_service, sample_recordings):
         sent_msg = AsyncMock()
         sent_msg.id = 44
