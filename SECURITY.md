@@ -41,6 +41,10 @@ Instead, contact the maintainer directly:
 **Risk**: Medium. Can send messages and access bot conversations.
 **Mitigation**: Revoke and regenerate via @BotFather if compromised.
 
+### TELEGRAM_SESSION_STRING
+**Risk**: High. Full user-account access (uploads up to 2 GB, bypasses the 50 MB bot cap).
+**Mitigation**: Mint locally via `python scripts/get_telegram_session.py`, store only as a GitHub Secret, never commit or paste it. Optional — without it, files above 50 MB fail with a clear error instead of uploading.
+
 ## Best Practices
 
 1. **Never commit `.env`** — it is listed in `.gitignore`

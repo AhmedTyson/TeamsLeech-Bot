@@ -18,6 +18,9 @@ class AppConfig(BaseSettings):
     telegram_api_hash: str = Field(..., alias="TELEGRAM_API_HASH")
     telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: int = Field(..., alias="TELEGRAM_CHAT_ID")
+    # Optional user session (exported string) for >50 MB uploads.
+    # Without it, files above the Bot API cap fail with a clear error.
+    telegram_session_string: str = Field("", alias="TELEGRAM_SESSION_STRING")
 
     # GitHub (Optional but recommended for secret rotation)
     gh_pat: str = Field("", alias="GH_PAT")
