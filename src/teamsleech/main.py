@@ -77,6 +77,17 @@ async def _run_auto_check(
         log.exception("Scheduled check failed")
 
 
+async def _run_reauth_mode(app: Client) -> None:
+    """Guided sign-in; raises SystemExit(1) when it fails."""
+    from teamsleech.services.reauth import run_reauth_flow
+
+    await app.start()
+    reauthed = await run_reauth_flow(app, settings.telegram_chat_id)
+    if not reauthed:
+        await app.stop()
+        raise SystemExit(1)
+
+
 def main() -> None:
     log.info("=" * 50)
     log.info("TeamsLeech Modern App — Booting")
@@ -92,16 +103,18 @@ def main() -> None:
     )
 
     async def _run() -> None:
-        # 2. Authenticate & Rotate Secret
+        # 2. Authenticate & Rotate Secret (or guided reauth)
         log.info("Step 1/3: Authenticating with Microsoft & GitHub...")
+        if os.getenv("MODE") == "reauth":
+            await _run_reauth_mode(app)
         try:
             access_token = await authenticate()
         except TokenExpiredError:
             log.critical(
-                "Microsoft session expired. Run local setup script and "
-                "update TEAMS_REFRESH_TOKEN secret."
+                "Microsoft session expired. Re-run the workflow with "
+                "mode=reauth (guided Telegram sign-in), or update "
+                "TEAMS_REFRESH_TOKEN via scripts/get_teams_token.py."
             )
-            # Start dummy bot mode to send alert if possible?
             return
         except Exception as e:
             log.critical(f"Auth failed: {e}")
@@ -131,7 +144,8 @@ def main() -> None:
             discovery=discovery_service,
         )
 
-        await app.start()
+        if not app.is_connected:
+            await app.start()
         await state_manager.initialize()
 
         log.info("Step 3/3: Bot is live and listening.")

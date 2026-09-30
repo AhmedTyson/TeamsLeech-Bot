@@ -55,6 +55,7 @@ jobs:
       TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
       SUBJECTS_JSON:        ${{ secrets.SUBJECTS_JSON }}
       SUBJECT_NAME:         ${{ github.event.inputs.subject || '' }}
+      MODE:                 ${{ github.event.inputs.mode || '' }}
 
     steps:
       - name: Check Date (Silent before Sept 30)
