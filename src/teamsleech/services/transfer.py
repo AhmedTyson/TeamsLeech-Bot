@@ -17,6 +17,7 @@ from pyrogram.types import Message
 from teamsleech.core.constants import (
     CHUNK_SIZE_BYTES,
     GRAPH_BASE_URL,
+    TELEGRAM_BOT_MAX_BYTES,
     TELEGRAM_MAX_FILE_BYTES,
     TG_CAPTION_LIMIT,
 )
@@ -51,11 +52,15 @@ class TransferService:
         state_manager: StateManager,
         tg_client: Client,
         chat_id: int,
+        upload_client: Client | None = None,
     ):
         self.graph = graph_client
         self.state = state_manager
         self.tg = tg_client
         self.chat_id = chat_id
+        # User sessions (MTProto) upload up to 2 GB; plain bot tokens
+        # are capped at 50 MB by the Bot API.
+        self._upload_client = upload_client
         self._progress_last_time: float = 0.0
         self._progress_last_bytes: int = 0
         self._progress_last_pct: int = -1
@@ -81,7 +86,8 @@ class TransferService:
         }
         if thumb is not None:
             kwargs["thumb"] = thumb
-        return cast(Message, await self.tg.send_document(**kwargs))
+        sender = self._upload_client or self.tg
+        return cast(Message, await sender.send_document(**kwargs))
 
     @retry_tg
     async def _tg_send_video(
@@ -109,7 +115,8 @@ class TransferService:
         }
         if thumb is not None:
             kwargs["thumb"] = thumb
-        return cast(Message, await self.tg.send_video(**kwargs))
+        sender = self._upload_client or self.tg
+        return cast(Message, await sender.send_video(**kwargs))
 
     def _probe_video(self, file_path: str) -> tuple[int, int, int]:
         try:
@@ -299,6 +306,19 @@ class TransferService:
         else:
             duration, width, height = await asyncio.to_thread(self._probe_video, file_path)
             thumb_path = await asyncio.to_thread(self._extract_thumbnail, file_path)
+
+        try:
+            file_bytes = os.path.getsize(file_path)  # noqa: ASYNC240 - local temp file stat
+        except OSError:
+            file_bytes = 0
+        if file_bytes > TELEGRAM_BOT_MAX_BYTES and self._upload_client is None:
+            size_mb = file_bytes / (1024 * 1024)
+            msg = (
+                f"{filename} is {size_mb:.0f} MB, above the bot upload limit "
+                "(50 MB). Set TELEGRAM_SESSION_STRING (user session, up to "
+                "2 GB) to upload large files."
+            )
+            raise TelegramUploadError(msg)
 
         _ext, caption, save_filename = self._split_filename(filename)
 

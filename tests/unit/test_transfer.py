@@ -294,6 +294,31 @@ class TestUploadToTelegram:
         caption = transfer_service._tg_send_document.await_args.args[3]
         assert len(caption) <= 1024
 
+    async def test_upload_rejects_over_bot_limit_without_session(self, transfer_service):
+        from teamsleech.services.transfer import TelegramUploadError
+
+        with patch("os.path.getsize", return_value=200 * 1024 * 1024):
+            with pytest.raises(TelegramUploadError, match="TELEGRAM_SESSION_STRING"):
+                await transfer_service._upload_to_telegram(
+                    "/tmp/big.mp4", "big.mp4", False, AsyncMock()
+                )
+
+    async def test_upload_uses_session_client_when_configured(
+        self, graph_client, mock_pyrogram_client
+    ):
+        from teamsleech.services.transfer import TransferService
+
+        user_client = AsyncMock()
+        svc = TransferService(graph_client, AsyncMock(), mock_pyrogram_client, 67890, user_client)
+        sent_msg = AsyncMock()
+        sent_msg.id = 46
+        user_client.send_document = AsyncMock(return_value=sent_msg)
+
+        with patch("os.path.getsize", return_value=500 * 1024 * 1024):
+            msg = await svc._upload_to_telegram("/tmp/big.pdf", "big.pdf", False, AsyncMock())
+        assert msg.id == 46
+        user_client.send_document.assert_awaited_once()
+
     async def test_upload_video_fallback_to_document(self, transfer_service, sample_recordings):
         sent_msg = AsyncMock()
         sent_msg.id = 44

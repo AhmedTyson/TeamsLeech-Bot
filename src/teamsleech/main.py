@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 
@@ -19,6 +20,61 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("main")
+
+
+async def _build_upload_client() -> Client | None:
+    if not settings.telegram_session_string:
+        return None
+    log.info("User session configured: large uploads up to 2 GB.")
+    client = Client(
+        name="teamsleech_user",
+        api_id=settings.telegram_api_id,
+        api_hash=settings.telegram_api_hash,
+        session_string=settings.telegram_session_string,
+        in_memory=True,
+    )
+    await client.start()
+    return client
+
+
+async def _run_auto_check(
+    scanner_service: ScannerService,
+    state_manager: StateManager,
+    app: Client,
+) -> None:
+    log.info("Running automated scheduled check...")
+
+    subject_filter = os.getenv("SUBJECT_NAME") or None
+    if subject_filter:
+        log.info("Filtering to single subject: %s", subject_filter)
+
+    try:
+        results = await scanner_service.scan_recordings(subject_filter, None, None)
+        total = sum(len(recs) for recs in results.values())
+        if total > 0:
+            from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+            from teamsleech.tg_bot.views import build_checklist_text, escape_markdown
+
+            label = "Since Last Run"
+            session = state_manager.get_session(settings.telegram_chat_id)
+            session.pending_recordings = [r for recs in results.values() for r in recs]
+            session.scan_label = label
+
+            text = build_checklist_text(results, label)
+            unmatched = getattr(scanner_service, "last_unmatched", None)
+            if isinstance(unmatched, list) and unmatched:
+                names = ", ".join(escape_markdown(t.display_name) for t in unmatched[:10])
+                text += f"\n\n⚠️ _Teams not tracked by any subject ({len(unmatched)}): {names}_"
+            keyboard = build_checklist_keyboard(
+                session.pending_recordings, session.selected_indices
+            )
+
+            await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
+            log.info("Auto-check found %d recordings, notification sent.", total)
+        else:
+            log.info("Auto-check found 0 new recordings. Staying completely silent.")
+    except Exception:
+        log.exception("Scheduled check failed")
 
 
 def main() -> None:
@@ -56,9 +112,14 @@ def main() -> None:
         graph_client = GraphClient(access_token)
         state_manager = StateManager(app, settings.telegram_chat_id)
         discovery_service = DiscoveryService(graph_client)
+        upload_client = await _build_upload_client()
         scanner_service = ScannerService(graph_client, state_manager)
         transfer_service = TransferService(
-            graph_client, state_manager, app, settings.telegram_chat_id
+            graph_client,
+            state_manager,
+            app,
+            settings.telegram_chat_id,
+            upload_client,
         )
 
         # 4. Register Handlers
@@ -77,47 +138,25 @@ def main() -> None:
 
         # 5. Scheduled Auto-Check Logic (Silent Mode)
         if settings.auto_check == "1":
-            log.info("Running automated scheduled check...")
+            await _run_auto_check(scanner_service, state_manager, app)
 
-            subject_filter = os.getenv("SUBJECT_NAME") or None
-            if subject_filter:
-                log.info("Filtering to single subject: %s", subject_filter)
-
-            try:
-                results = await scanner_service.scan_recordings(subject_filter, None, None)
-                total = sum(len(recs) for recs in results.values())
-                if total > 0:
-                    from teamsleech.tg_bot.keyboards import build_checklist_keyboard
-                    from teamsleech.tg_bot.views import build_checklist_text, escape_markdown
-
-                    label = "Since Last Run"
-                    session = state_manager.get_session(settings.telegram_chat_id)
-                    session.pending_recordings = [r for recs in results.values() for r in recs]
-                    session.scan_label = label
-
-                    text = build_checklist_text(results, label)
-                    unmatched = getattr(scanner_service, "last_unmatched", None)
-                    if isinstance(unmatched, list) and unmatched:
-                        names = ", ".join(escape_markdown(t.display_name) for t in unmatched[:10])
-                        text += (
-                            f"\n\n⚠️ _Teams not tracked by any subject ({len(unmatched)}): {names}_"
-                        )
-                    keyboard = build_checklist_keyboard(
-                        session.pending_recordings, session.selected_indices
-                    )
-
-                    await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
-                    log.info("Auto-check found %d recordings, notification sent.", total)
-                else:
-                    log.info("Auto-check found 0 new recordings. Staying completely silent.")
-            except Exception:
-                log.exception("Scheduled check failed")
+        auto = settings.auto_check == "1"
+        interactive = os.getenv("INTERACTIVE") == "1"
+        if auto and not interactive:
             log.info("Auto-check complete, exiting.")
         else:
-            await idle()  # type: ignore[no-untyped-call]
+            # Stay for Telegram input, bounded so the run exits cleanly
+            # instead of hitting the workflow timeout as a failure.
+            log.info("Listening for Telegram input (up to 45 min).")
+            try:
+                await asyncio.wait_for(idle(), timeout=45 * 60)  # type: ignore[no-untyped-call]
+            except TimeoutError:
+                log.info("Interactive window elapsed, exiting.")
 
         # Cleanup
         await graph_client.close()
+        if upload_client is not None:
+            await upload_client.stop()
         await app.stop()
 
     app.run(_run())

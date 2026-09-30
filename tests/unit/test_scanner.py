@@ -559,3 +559,77 @@ class TestScanRecordings:
             scanner._process_team = AsyncMock(side_effect=[[good], RuntimeError("boom")])
             result = await scanner.scan_recordings()
         assert [r.item_id for r in result["Math"]] == ["i1"]
+
+    async def test_same_name_subjects_merged(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps(
+                {
+                    "subjects": [
+                        {"name": "Data", "short": "D", "doctor": "X", "keywords": ["a"]},
+                        {"name": "Data", "short": "D", "doctor": "Y", "keywords": ["b"]},
+                    ]
+                }
+            ),
+        )
+
+        def _rec(item_id, team):
+            return Recording(
+                name="a.mp4",
+                size_mb=1.0,
+                created="2024-01-02",
+                time="10:00",
+                duration_ms=0,
+                drive_id="d",
+                item_id=item_id,
+                team_name=team,
+                subject_name="Data",
+                is_video=True,
+            )
+
+        teams = [
+            Team(id="1", display_name="a group"),
+            Team(id="2", display_name="b group"),
+        ]
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=teams)
+            scanner._process_team = AsyncMock(side_effect=[[_rec("i1", "a")], [_rec("i2", "b")]])
+            result = await scanner.scan_recordings()
+        assert [r.item_id for r in result["Data"]] == ["i1", "i2"]
+
+    async def test_failed_duplicate_keeps_first_results(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps(
+                {
+                    "subjects": [
+                        {"name": "Data", "short": "D", "doctor": "X", "keywords": ["a"]},
+                        {"name": "Data", "short": "D", "doctor": "Y", "keywords": ["b"]},
+                    ]
+                }
+            ),
+        )
+
+        def _rec(item_id):
+            return Recording(
+                name="a.mp4",
+                size_mb=1.0,
+                created="2024-01-02",
+                time="10:00",
+                duration_ms=0,
+                drive_id="d",
+                item_id=item_id,
+                team_name="t",
+                subject_name="Data",
+                is_video=True,
+            )
+
+        teams = [
+            Team(id="1", display_name="a group"),
+            Team(id="2", display_name="b group"),
+        ]
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=teams)
+            scanner._process_team = AsyncMock(side_effect=[[_rec("i1")], RuntimeError("boom")])
+            result = await scanner.scan_recordings()
+        assert [r.item_id for r in result["Data"]] == ["i1"]

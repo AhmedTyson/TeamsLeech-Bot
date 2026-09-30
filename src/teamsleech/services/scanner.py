@@ -339,6 +339,19 @@ class ScannerService:
         recordings.sort(key=lambda r: r.created, reverse=True)
         return recordings
 
+    @staticmethod
+    def _merge_recordings(existing: list[Recording], new: list[Recording]) -> list[Recording]:
+        """Merge same-named subjects (e.g. different doctors) without loss."""
+        known = {(r.drive_id, r.item_id) for r in existing}
+        merged = list(existing)
+        for r in new:
+            key = (r.drive_id, r.item_id)
+            if key not in known:
+                known.add(key)
+                merged.append(r)
+        merged.sort(key=lambda r: r.created, reverse=True)
+        return merged
+
     async def scan_recordings(
         self,
         subject_filter: str | None = None,
@@ -394,13 +407,15 @@ class ScannerService:
                     "Scan failed for subject '%s'",
                     subject.name,
                 )
-                results[subject.name] = []
+                results.setdefault(subject.name, [])
             else:
-                results[subject.name] = recordings
+                merged = self._merge_recordings(results.get(subject.name, []), recordings)
+                results[subject.name] = merged
                 log.info(
-                    "'%s' scan complete: %d recordings found.",
+                    "'%s' scan complete: %d new, %d total recordings.",
                     subject.name,
                     len(recordings),
+                    len(merged),
                 )
 
         return results
