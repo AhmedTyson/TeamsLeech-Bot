@@ -46,6 +46,8 @@ jobs:
 
     env:
       TEAMS_REFRESH_TOKEN:  ${{ secrets.TEAMS_REFRESH_TOKEN }}
+      TEAMS_CLIENT_ID:      ${{ secrets.TEAMS_CLIENT_ID }}
+      TEAMS_CLIENT_SECRET:  ${{ secrets.TEAMS_CLIENT_SECRET }}
       GH_PAT:               ${{ secrets.GH_PAT }}
       GITHUB_REPOSITORY:    ${{ github.repository }}
       TELEGRAM_API_ID:      ${{ secrets.TELEGRAM_API_ID }}

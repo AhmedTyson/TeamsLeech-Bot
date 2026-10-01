@@ -42,13 +42,20 @@ async def _post_token(payload: dict[str, str]) -> httpx.Response:
         return resp
 
 
-async def _exchange_token(scope: str) -> dict[str, Any]:
+def _token_payload(extra: dict[str, str]) -> dict[str, str]:
     payload = {
         "client_id": settings.teams_client_id,
         "grant_type": "refresh_token",
         "refresh_token": settings.teams_refresh_token,
-        "scope": scope,
     }
+    payload.update(extra)
+    if settings.teams_client_secret:
+        payload["client_secret"] = settings.teams_client_secret
+    return payload
+
+
+async def _exchange_token(scope: str) -> dict[str, Any]:
+    payload = _token_payload({"scope": scope})
 
     try:
         resp = await _post_token(payload)
@@ -125,12 +132,7 @@ async def exchange_sharepoint_token_v1(host: str) -> tuple[str, str | None]:
     Returns (access_token, new_refresh_token|None). A missing refresh
     token keeps the current chain untouched by the caller.
     """
-    payload = {
-        "client_id": settings.teams_client_id,
-        "grant_type": "refresh_token",
-        "refresh_token": settings.teams_refresh_token,
-        "resource": f"https://{host}",
-    }
+    payload = _token_payload({"resource": f"https://{host}"})
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(V1_TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
@@ -172,6 +174,10 @@ async def authenticate() -> str:
     if not settings.teams_refresh_token:
         msg = "TEAMS_REFRESH_TOKEN env var is not set in config."
         raise TokenManagerError(msg)
+    if settings.teams_client_secret:
+        log.info("Auth mode: confidential client (custom Entra app).")
+    else:
+        log.info("Auth mode: public client (Azure CLI).")
 
     access_token, new_refresh = await exchange_refresh_token()
 
