@@ -329,18 +329,30 @@ class TransferService:
 
     @staticmethod
     async def _log_401_diagnostics(rec: Recording, resp: httpx.Response) -> None:
+        import html
+        import re
+
         www = resp.headers.get("www-authenticate", "")
         diag = resp.headers.get("x-ms-diagnostics", "")
+        extra = {
+            k: v
+            for k, v in resp.headers.items()
+            if k.lower().startswith("x-ms-")
+            or k.lower() in ("sprequestguid", "request-id", "client-request-id")
+        }
         try:
             body = await resp.aread()
-            snippet = bytes(body[:500]).decode("utf-8", errors="replace")
+            raw = bytes(body[:4000]).decode("utf-8", errors="replace")
+            text = re.sub(r"<[^>]+>", " ", html.unescape(raw))
+            snippet = re.sub(r"\s+", " ", text).strip()[:1500]
         except Exception:
             snippet = "<unreadable>"
         log.warning(
-            "Download 401 for %s: www-authenticate=%r diagnostics=%r body=%r",
+            "Download 401 for %s: www-authenticate=%r diagnostics=%r extra_headers=%r body=%r",
             rec.name,
             www[:300],
             diag[:300],
+            {k: str(v)[:120] for k, v in extra.items()},
             snippet,
         )
 
