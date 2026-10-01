@@ -56,6 +56,17 @@ class TestDeviceFlow:
         mock_login_api.post(DEVICE_URL).respond(500, text="oops")
         assert await run_device_reauth(AsyncMock()) is None
 
+    async def test_device_code_400_surfaces_error_detail(self, mock_login_api):
+        mock_login_api.post(DEVICE_URL).respond(
+            400,
+            json={
+                "error": "invalid_client",
+                "error_description": "Additional : client is confidential.",
+            },
+        )
+        with pytest.raises(ReauthError, match="invalid_client"):
+            await request_device_code()
+
     async def test_missing_keys_raise(self, mock_login_api):
         mock_login_api.post(DEVICE_URL).respond(200, json={"user_code": "x"})
         with pytest.raises(ReauthError, match="verification_uri"):

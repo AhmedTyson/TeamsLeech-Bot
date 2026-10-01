@@ -36,7 +36,17 @@ async def _post_form(url: str, data: dict[str, str]) -> dict[str, Any]:
     async with httpx.AsyncClient() as client:
         resp = await client.post(url, data=data, timeout=REQUEST_TIMEOUT)
     if resp.status_code != 200:
-        msg = f"Microsoft endpoint [{resp.status_code}]"
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {}
+        if isinstance(body, dict):
+            code = str(body.get("error", ""))
+            desc = str(body.get("error_description", ""))[:300]
+        else:
+            code, desc = "", ""
+        detail = f"{code}: {desc}".strip(": ").strip() or f"HTTP {resp.status_code}"
+        msg = f"Microsoft endpoint [{resp.status_code}] {detail}"[:400]
         raise ReauthError(msg)
     try:
         return cast("dict[str, Any]", resp.json())
