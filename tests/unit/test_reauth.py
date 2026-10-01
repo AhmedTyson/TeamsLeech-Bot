@@ -43,6 +43,25 @@ class TestDeviceFlow:
         assert result == ("at", "rt")
         assert seen == [("https://microsoft.com/devicelogin", "ABCD-1234")]
 
+    async def test_live_shaped_pending_poll_is_quiet_success(self, mock_login_api, caplog):
+        import logging
+
+        mock_login_api.post(DEVICE_URL).respond(200, json=_challenge())
+        route = mock_login_api.post(TOKEN_URL)
+        route.side_effect = [
+            httpx.Response(
+                400,
+                json={
+                    "error": "authorization_pending",
+                    "error_description": "AADSTS70016: not yet authorized.",
+                },
+            ),
+            httpx.Response(200, json={"access_token": "at", "refresh_token": "rt"}),
+        ]
+        with caplog.at_level(logging.WARNING, logger="reauth"):
+            assert await run_device_reauth(AsyncMock()) == ("at", "rt")
+        assert "Device poll failed" not in caplog.text
+
     async def test_declined_returns_none(self, mock_login_api):
         mock_login_api.post(DEVICE_URL).respond(200, json=_challenge())
         mock_login_api.post(TOKEN_URL).respond(200, json={"error": "authorization_declined"})

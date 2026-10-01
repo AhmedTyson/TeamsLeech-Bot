@@ -82,7 +82,14 @@ async def _poll_loop(
                 },
             )
         except (httpx.RequestError, ReauthError) as e:
-            log.warning("Device poll failed, retrying: %s", e)
+            msg = str(e)
+            if "slow_down" in msg:
+                interval += 5.0
+                log.debug("Device poll slowed down, retrying: %s", e)
+            elif "authorization_pending" in msg:
+                log.debug("Device poll pending approval, retrying.")
+            else:
+                log.warning("Device poll failed, retrying: %s", e)
             continue
         error = result.get("error", "")
         if not error:
