@@ -69,6 +69,7 @@ async def run(
     upload_fn = upload_fn or upload_file
     notify_fn = notify_fn or notify
     results: list[FetchResult] = []
+    dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
     with httpx.Client() as client:
         for folder in folders:
             try:
@@ -79,6 +80,11 @@ async def run(
                 continue
             print(f"listed {len(entries)} entries in {folder.name}")
             fresh = [e for e in entries if state_mod.is_new(entry_key(e), state)]
+            if dry_run:
+                for entry in fresh:
+                    print(f"would fetch: {folder.name}: {entry.name} ({entry.size} bytes)")
+                    results.append(FetchResult(folder.name, entry.name, entry.size, None))
+                continue
             for entry in fresh:
                 dest = os.path.join(tmp_dir, entry.name)
                 try:
@@ -99,11 +105,11 @@ async def run(
                 state_mod.mark(state, entry_key(entry), entry.name, msg_id)
                 state_mod.save(state, state_path)
                 results.append(FetchResult(folder.name, entry.name, size, msg_id))
-    if results:
+    if results and not dry_run:
         lines = [f"New content detected ({len(results)}):"]
         lines += [f"- {r.folder}: {r.name}" for r in results]
         notify_fn("\n".join(lines))
-    else:
+    elif not results:
         print("No new files.")
     return results
 
