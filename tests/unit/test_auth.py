@@ -70,6 +70,18 @@ class TestExchangeRefreshToken:
         assert (access, refresh) == ("sp_at", "rt2")
         body = route.calls.last.request.content.decode()
         assert "tenant.sharepoint.com" in body
+        assert "client_secret" not in body
+
+    async def test_client_secret_included_when_configured(self, mock_login_api, monkeypatch):
+        from teamsleech.core.config import settings
+        from teamsleech.services.auth import exchange_sharepoint_token
+
+        monkeypatch.setattr(settings, "teams_client_secret", "s3cr3t")
+        route = mock_login_api.post(TOKEN_URL)
+        route.respond(200, json={"access_token": "sp_at", "refresh_token": "rt2"})
+        await exchange_sharepoint_token("tenant.sharepoint.com")
+        body = route.calls.last.request.content.decode()
+        assert "client_secret=s3cr3t" in body
 
     async def test_throttled_then_succeeds(self, mock_login_api):
         route = mock_login_api.post(TOKEN_URL)

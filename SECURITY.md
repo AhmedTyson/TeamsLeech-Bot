@@ -29,6 +29,26 @@ Instead, contact the maintainer directly:
 **Risk**: High. Grants access to your Microsoft 365 account via the Graph API.
 **Mitigation**: Auto-rotated every workflow run. If compromised, revoke all refresh tokens from [Microsoft account security](https://account.live.com/activity).
 
+### Custom Entra app (TEAMS_CLIENT_ID + TEAMS_CLIENT_SECRET)
+
+**When**: file downloads 401 on SharePoint even with fresh tokens — the
+Azure CLI public client lacks SharePoint grants on your tenant.
+**Risk**: High. A client secret is a password: store only as the
+`TEAMS_CLIENT_SECRET` GitHub Secret, never commit or log it.
+
+One-time setup (Microsoft Entra admin center):
+
+1. App registrations → New registration (single tenant), no redirect URI.
+2. Note the Application (client) ID → `TEAMS_CLIENT_ID` secret.
+3. Certificates & secrets → New client secret → `TEAMS_CLIENT_SECRET`.
+4. API permissions → Add: Graph `Files.ReadWrite.All`, `Sites.ReadWrite.All`,
+   `User.Read`, `offline_access`; SharePoint `AllSites.Full` (delegated).
+5. Grant admin consent for your tenant.
+6. Re-run `mode=reauth` once so the refresh token is issued to your app.
+
+Without the secret the bot keeps working exactly as before (public
+client); the boot log shows which auth mode is active.
+
 ### GH_PAT
 **Risk**: High. Can read/write repository secrets.
 **Mitigation**: Use a fine-grained PAT limited to this repository with `secrets:write` (and `contents:read` for releases) — never a classic `repo`-scoped token. Rotate at least every 90 days. If `GH_PAT`/`GITHUB_REPOSITORY` is missing, `rotate_github_secret` now raises `SecretRotationError` loudly instead of skipping silently; callers log an error and keep the fresh token in-process only, so update the secret before the next restart.
