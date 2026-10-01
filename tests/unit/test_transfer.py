@@ -454,6 +454,82 @@ class TestDownloadRecording:
         assert "GetFileById('1')" in seen[3]["url"]
         assert seen[3]["headers"]["Authorization"] == "Bearer tok_b"
 
+    async def test_bare_download_url_retried_after_ladder(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        base = "https://tenant.sharepoint.com/sites/X/_layouts/15/download.aspx"
+        target = f"{base}?UniqueId=1&Translate=false&ApiVersion=2.0"
+        bare = f"{base}?UniqueId=1"
+        req = httpx.Request("GET", target)
+        denied = AsyncMock()
+        denied.__aenter__.return_value = denied
+        denied.status_code = 401
+        denied.headers = {}
+        denied.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "401 Unauthorized", request=req, response=httpx.Response(401, request=req)
+            )
+        )
+        denied.aread = AsyncMock(return_value=b"err")
+        chunk = b"q" * 32
+        granted = AsyncMock()
+        granted.__aenter__.return_value = granted
+        granted.status_code = 200
+        granted.headers = {}
+        granted.raise_for_status = MagicMock()
+
+        async def _iter(**kw):
+            yield chunk
+
+        granted.aiter_bytes = MagicMock(side_effect=lambda **kw: _iter())
+
+        def _cm(resp):
+            cm = AsyncMock()
+            cm.__aenter__.return_value = resp
+            cm.__aexit__.return_value = None
+            return cm
+
+        seen: list[dict] = []
+
+        def _stream(method, url, **kwargs):
+            seen.append({"url": url, "headers": dict(kwargs.get("headers", {}))})
+            return _cm(granted) if url == bare else _cm(denied)
+
+        transfer_service.graph.client.stream = MagicMock(side_effect=_stream)
+        transfer_service.graph.get = AsyncMock(
+            return_value={"@microsoft.graph.downloadUrl": target}
+        )
+        with (
+            patch(
+                "teamsleech.services.transfer.exchange_sharepoint_token",
+                new=AsyncMock(return_value=("tok_a", "rt_a")),
+            ),
+            patch(
+                "teamsleech.services.transfer.exchange_sharepoint_token_v1",
+                new=AsyncMock(return_value=("tok_b", "rt_b")),
+            ),
+            patch(
+                "teamsleech.services.transfer.rotate_github_secret",
+                new=AsyncMock(),
+            ),
+        ):
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        assert seen[-1]["url"] == bare
+        assert seen[-1]["headers"]["Authorization"] == "Bearer tok_b"
+
+    async def test_bare_download_target_edge_cases(self):
+        from teamsleech.services.transfer import TransferService
+
+        fn = TransferService._bare_download_target
+        assert fn("https://cdn.example.com/f?token=abc") is None
+        assert fn("https://t.sharepoint.com/x/download.aspx?UniqueId=1") is None
+        assert fn("https://t.sharepoint.com/x/download.aspx?other=2") is None
+        got = fn("https://t.sharepoint.com/x/download.aspx?UniqueId=1&Translate=false")
+        assert got == "https://t.sharepoint.com/x/download.aspx?UniqueId=1"
+
     async def test_sharepoint_api_failure_fails_fast(
         self, transfer_service, sample_recordings, tmp_path
     ):
