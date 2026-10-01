@@ -1,0 +1,25 @@
+# TEMPORARY spike (Phase 0): session-transplant GO/NO-GO. Delete after verdict.
+name: Spike Session Transplant
+
+on:
+  workflow_dispatch:
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: spike/session-transplant
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - run: |
+          echo "$MS_COOKIES" > cookies.txt
+          python spike/session_check.py
+        env:
+          MS_COOKIES: ${{ secrets.MS_COOKIES }}
