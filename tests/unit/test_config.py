@@ -30,3 +30,10 @@ def test_missing_required_raises(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     with pytest.raises(ValidationError):
         AppConfig()
+
+
+def test_empty_client_id_falls_back_to_default(monkeypatch):
+    for k, v in _env().items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("TEAMS_CLIENT_ID", "")
+    assert AppConfig().teams_client_id.startswith("04b07795")
