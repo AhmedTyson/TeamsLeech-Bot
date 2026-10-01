@@ -1,5 +1,7 @@
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+AZURE_CLI_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
 
 
 class AppConfig(BaseSettings):
@@ -11,7 +13,7 @@ class AppConfig(BaseSettings):
 
     # Microsoft / Auth
     teams_refresh_token: str = Field(..., alias="TEAMS_REFRESH_TOKEN")
-    teams_client_id: str = Field("04b07795-8ddb-461a-bbee-02f9e1bf7b46", alias="TEAMS_CLIENT_ID")
+    teams_client_id: str = Field(AZURE_CLI_CLIENT_ID, alias="TEAMS_CLIENT_ID")
     # Optional confidential client: set both to use your own Entra app
     # registration (with SharePoint grants) instead of the Azure CLI
     # public client. Never commit the secret.
@@ -39,6 +41,16 @@ class AppConfig(BaseSettings):
     auto_check: str = Field("0", alias="AUTO_CHECK")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("teams_client_id", mode="before")
+    @classmethod
+    def _default_client_id(cls, v: object) -> object:
+        # CI exports TEAMS_CLIENT_ID="" when the secret is unset; an empty
+        # override must not wipe the Azure CLI public-client default or the
+        # device-code request 400s with AADSTS900144 (missing client_id).
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return AZURE_CLI_CLIENT_ID
+        return v
 
 
 # Global singleton configuration object to be imported by other modules
