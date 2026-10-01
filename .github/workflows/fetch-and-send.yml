@@ -73,6 +73,9 @@ jobs:
           rm -f cookies.txt
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state/processed.json
-          git diff --cached --quiet || git commit -m "state: mark delivered files"
-          git pull --rebase && git push
+          if [ -f state/processed.json ]; then
+            git add state/processed.json
+          fi
+          git diff --cached --quiet && echo "No state changes." || (
+            git commit -m "state: mark delivered files" && git pull --rebase && git push
+          )
