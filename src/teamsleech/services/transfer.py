@@ -206,6 +206,23 @@ class TransferService:
         return (urlparse(target).hostname or "").endswith("sharepoint.com")
 
     @staticmethod
+    def _bare_download_target(target: str) -> str | None:
+        """download.aspx with only UniqueId (browser parity, no Translate/ApiVersion).
+
+        A working browser HAR shows plain `download.aspx?UniqueId=...`
+        returning 200/206, while Graph-issued URLs carry extra
+        `Translate=false&ApiVersion=2.0` params. None when already bare.
+        """
+        parsed = urlparse(target)
+        if not parsed.path.endswith("/download.aspx"):
+            return None
+        unique = parse_qs(parsed.query).get("UniqueId", [""])[0]
+        if not unique:
+            return None
+        bare = parsed._replace(query=f"UniqueId={unique}").geturl()
+        return bare if bare != target else None
+
+    @staticmethod
     def _redirect_target(
         resp: httpx.Response,
         rec_name: str,
@@ -390,6 +407,39 @@ class TransferService:
             log.warning("SharePoint API download failed for %s: %s", rec.name, e)
             return None
 
+    async def _maybe_retry_bare(
+        self,
+        rec: Recording,
+        target: str,
+        dest_path: str,
+        last_sp_token: str | None,
+        auth_tried: set[str],
+    ) -> int | None:
+        """Bare download.aspx retry (browser parity); None when not applicable."""
+        if "bare" in auth_tried or last_sp_token is None:
+            return None
+        auth_tried.add("bare")
+        bare = self._bare_download_target(target)
+        if bare is None:
+            return None
+        log.warning("Retrying bare download.aspx URL for %s.", rec.name)
+        return await self._download_with_redirects(
+            rec,
+            bare,
+            dest_path,
+            {"Authorization": f"Bearer {last_sp_token}"},
+        )
+
+    async def _next_sp_token(self, host: str, auth_tried: set[str]) -> tuple[str | None, str]:
+        """Next SharePoint-audience token attempt; (None, '') when exhausted."""
+        if "v2" not in auth_tried:
+            auth_tried.add("v2")
+            return await self._sharepoint_token(host), "v2"
+        if "v1" not in auth_tried:
+            auth_tried.add("v1")
+            return await self._sharepoint_token_v1(host), "v1"
+        return None, ""
+
     async def _download_with_redirects(
         self,
         rec: Recording,
@@ -421,16 +471,7 @@ class TransferService:
                     resp.raise_for_status()
                     return await self._store_stream(resp, rec, dest_path)
                 host = urlparse(target).hostname or ""
-                token: str | None = None
-                label = ""
-                if "v2" not in auth_tried:
-                    auth_tried.add("v2")
-                    token = await self._sharepoint_token(host)
-                    label = "v2"
-                elif "v1" not in auth_tried:
-                    auth_tried.add("v1")
-                    token = await self._sharepoint_token_v1(host)
-                    label = "v1"
+                token, label = await self._next_sp_token(host, auth_tried)
                 if token is not None:
                     last_sp_token = token
                     log.warning("Download 401 for %s, retrying with %s token.", rec.name, label)
@@ -443,6 +484,11 @@ class TransferService:
                     )
                     if got is not None:
                         return got
+                got_bare = await self._maybe_retry_bare(
+                    rec, target, dest_path, last_sp_token, auth_tried
+                )
+                if got_bare is not None:
+                    return got_bare
                 await self._log_401_diagnostics(rec, resp)
                 resp.raise_for_status()
                 return await self._store_stream(resp, rec, dest_path)
