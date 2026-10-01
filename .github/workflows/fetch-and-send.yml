@@ -1,0 +1,78 @@
+# Browser-session fetch worker (Phase 2). Manual dispatch only.
+# Restores MS_COOKIES, lists FOLDERS_JSON folders, downloads new files,
+# sends to Telegram, commits state/processed.json. No Azure, no Graph.
+name: Fetch and Send
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List only (no download/upload)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: fetch-and-send
+      cancel-in-progress: false
+    permissions:
+      contents: write
+
+    env:
+      FOLDERS_JSON: ${{ secrets.FOLDERS_JSON }}
+      MS_COOKIES_FILE: cookies.txt
+      WORKER_STATE: state/processed.json
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv python install 3.11
+
+      - name: Restore cookies
+        run: echo "$MS_COOKIES" > cookies.txt
+        env:
+          MS_COOKIES: ${{ secrets.MS_COOKIES }}
+
+      - name: Validate inputs
+        run: |
+          if [ -z "$FOLDERS_JSON" ]; then
+            echo "::error::FOLDERS_JSON secret is empty."
+            exit 1
+          fi
+          if [ ! -s cookies.txt ]; then
+            echo "::error::MS_COOKIES secret is empty."
+            exit 1
+          fi
+
+      - name: Run worker
+        run: |
+          mkdir -p state tmp
+          PYTHONPATH=src uv run --python 3.11 python -m worker.run
+        env:
+          TMPDIR: ${{ github.workspace }}/tmp
+
+      - name: Commit state
+        run: |
+          rm -f cookies.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/processed.json
+          git diff --cached --quiet || git commit -m "state: mark delivered files"
+          git pull --rebase && git push

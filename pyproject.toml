@@ -35,7 +35,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/teamsleech"]
+packages = ["src/teamsleech", "src/worker"]
 
 [tool.ruff]
 line-length = 100
@@ -58,7 +58,7 @@ flake8-quotes = { inline-quotes = "double" }
 "tests/*" = ["S101", "S105", "S106", "S108"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["teamsleech"]
+known-first-party = ["teamsleech", "worker"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
