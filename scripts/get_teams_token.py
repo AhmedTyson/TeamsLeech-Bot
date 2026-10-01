@@ -8,14 +8,25 @@ never printed — then copy it into TEAMS_REFRESH_TOKEN and delete the file.
 
 Usage
 -----
-    python scripts/get_teams_token.py
+    $env:PYTHONPATH='src'; uv run --python 3.11 python scripts/get_teams_token.py
+
+No .env needed: the device flow uses only the client ID (default Azure CLI
+public client, or TEAMS_CLIENT_ID when set for a custom Entra app).
 """
 
 import asyncio
 import os
 from pathlib import Path
 
-from teamsleech.services.reauth import run_device_reauth
+# Local-only helper: the device flow needs no Telegram/GitHub config, so seed
+# dummy values before app modules build the strict global settings object.
+os.environ.setdefault("TEAMS_REFRESH_TOKEN", "local-bootstrap")
+os.environ.setdefault("TELEGRAM_API_ID", "123456")
+os.environ.setdefault("TELEGRAM_API_HASH", "local-bootstrap")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "local-bootstrap")
+os.environ.setdefault("TELEGRAM_CHAT_ID", "0")
+
+from teamsleech.services.reauth import run_device_reauth  # noqa: E402
 
 
 def _print_code(uri: str, code: str) -> None:
