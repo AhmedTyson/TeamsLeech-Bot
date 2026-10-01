@@ -74,8 +74,10 @@ async def run(
             try:
                 entries = await asyncio.to_thread(list_fn, folder.url, cookies, client)
             except PermissionError as exc:
+                print(f"listing failed for {folder.name}: {exc}")
                 notify_fn(f"Session expired listing {folder.name}: {exc}")
                 continue
+            print(f"listed {len(entries)} entries in {folder.name}")
             fresh = [e for e in entries if state_mod.is_new(entry_key(e), state)]
             for entry in fresh:
                 dest = os.path.join(tmp_dir, entry.name)
@@ -90,6 +92,7 @@ async def run(
                         client,
                     )
                 except PermissionError as exc:
+                    print(f"download failed for {entry.name}: {exc}")
                     notify_fn(f"Session expired downloading {entry.name}: {exc}")
                     continue
                 msg_id = await upload_fn(dest, entry.name)
