@@ -323,7 +323,7 @@ class TestDownloadRecording:
         ):
             with pytest.raises(DownloadError, match="401"):
                 await transfer_service._download_recording(rec, dest)
-        assert transfer_service.graph.client.stream.call_count == 1
+        assert transfer_service.graph.client.stream.call_count == 2
 
     async def test_sharepoint_401_uses_sp_token_and_rotates(
         self, transfer_service, sample_recordings, tmp_path
@@ -365,7 +365,7 @@ class TestDownloadRecording:
 
         def _stream(method, url, **kwargs):
             seen.append(dict(kwargs.get("headers", {})))
-            return _cm(denied) if len(seen) == 1 else _cm(granted)
+            return _cm(denied) if len(seen) <= 2 else _cm(granted)
 
         transfer_service.graph.client.stream = MagicMock(side_effect=_stream)
         transfer_service.graph.get = AsyncMock(
@@ -384,7 +384,8 @@ class TestDownloadRecording:
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
         assert "Authorization" not in seen[0]
-        assert seen[1]["Authorization"] == "Bearer sp_access"
+        assert seen[1]["Authorization"] == "Bearer fake_token"
+        assert seen[2]["Authorization"] == "Bearer sp_access"
         assert settings.teams_refresh_token == "rt_new"
         rotate.assert_awaited_once()
 
@@ -426,7 +427,7 @@ class TestDownloadRecording:
 
         def _stream(method, url, **kwargs):
             seen.append({"url": url, "headers": dict(kwargs.get("headers", {}))})
-            if len(seen) < 4:
+            if len(seen) < 5:
                 return _cm(denied)
             return _cm(granted)
 
@@ -450,9 +451,9 @@ class TestDownloadRecording:
         ):
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
-        assert len(seen) == 4
-        assert "GetFileById('1')" in seen[3]["url"]
-        assert seen[3]["headers"]["Authorization"] == "Bearer tok_b"
+        assert len(seen) == 5
+        assert "GetFileById('1')" in seen[4]["url"]
+        assert seen[4]["headers"]["Authorization"] == "Bearer tok_b"
 
     async def test_bare_download_url_retried_after_ladder(
         self, transfer_service, sample_recordings, tmp_path
@@ -564,7 +565,7 @@ class TestDownloadRecording:
 
         def _stream(method, url, **kwargs):
             calls["n"] += 1
-            if calls["n"] < 4:
+            if calls["n"] < 5:
                 return _cm(denied)
             return _cm(missing)
 
@@ -588,7 +589,7 @@ class TestDownloadRecording:
         ):
             with pytest.raises(DownloadAuthError, match="401"):
                 await transfer_service._download_recording(rec, dest)
-        assert calls["n"] == 4
+        assert calls["n"] == 5
 
     async def test_sharepoint_api_malformed_target_returns_none(self, transfer_service):
         from teamsleech.models.domain import Recording
