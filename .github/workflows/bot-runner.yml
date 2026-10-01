@@ -1,0 +1,135 @@
+# TeamsLeech Bot — GitHub Actions Workflow
+#
+# Trigger:  Manual (workflow_dispatch) or daily schedule at 08:00 UTC
+# Runner:   ubuntu-latest (free tier)
+# Purpose:  Run main.py → authenticate → scan → upload
+#
+# State persistence via Telegram pinned message (not GitHub artifacts).
+# Per-subject checkpointing: if a subject finishes scanning, its state
+# is saved immediately so a timeout mid-upload does not force a re-scan.
+#
+# Single-subject processing: set SUBJECT_NAME input to process only
+# one subject (case-insensitive match on name or short code).
+
+name: TeamsLeech Bot
+
+permissions:
+  contents: read
+
+on:
+  # schedule:
+  #   - cron: '0 8 * * *'  # Resumes Sept 30, uncomment then
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: false
+        default: "normal"
+        type: choice
+        options:
+          - normal
+          - reauth
+      subject:
+        description: "Subject name (optional — process single subject)"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  run:
+    name: Check & Upload Recordings
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    concurrency:
+      group: bot-runner
+      cancel-in-progress: true
+
+    env:
+      TEAMS_REFRESH_TOKEN:  ${{ secrets.TEAMS_REFRESH_TOKEN }}
+      TEAMS_CLIENT_ID:      ${{ secrets.TEAMS_CLIENT_ID }}
+      TEAMS_CLIENT_SECRET:  ${{ secrets.TEAMS_CLIENT_SECRET }}
+      GH_PAT:               ${{ secrets.GH_PAT }}
+      GITHUB_REPOSITORY:    ${{ github.repository }}
+      TELEGRAM_API_ID:      ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH:    ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
+      TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+      SUBJECTS_JSON:        ${{ secrets.SUBJECTS_JSON }}
+      SUBJECT_NAME:         ${{ github.event.inputs.subject || '' }}
+      MODE:                 ${{ github.event.inputs.mode || '' }}
+
+    steps:
+      - name: Check Date (Silent before Sept 30)
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            CURRENT_DATE=$(date +%Y%m%d)
+            if [ "$CURRENT_DATE" -lt "20260930" ]; then
+              echo "Today is before Sept 30. Staying silent."
+              exit 0
+            fi
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg=7:*
+
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      - name: Validate secrets present
+        run: |
+          if [ -z "$TEAMS_REFRESH_TOKEN" ]; then
+            echo "::error title=Secret Missing::TEAMS_REFRESH_TOKEN is empty or not set."
+            exit 1
+          fi
+          if [ -z "$GH_PAT" ]; then
+            echo "::warning title=Secret Warning::GH_PAT is not set — token auto-rotation disabled."
+          fi
+          if [ -z "$TELEGRAM_SESSION_STRING" ]; then
+            echo "::warning title=Upload Limit::TELEGRAM_SESSION_STRING is not set — files above 50 MB cannot be uploaded."
+          fi
+          if [ -n "$SUBJECT_NAME" ]; then
+            echo "::notice title=Single Subject::Processing only: $SUBJECT_NAME"
+          fi
+          echo "Secret presence check passed."
+
+      - name: Run TeamsLeech Bot
+        id: run-bot
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            export AUTO_CHECK=1
+          fi
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.mode }}" == "normal" ]; then
+            export AUTO_CHECK=1
+          fi
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            export INTERACTIVE=1
+          fi
+          if [ -n "$SUBJECT_NAME" ]; then
+            echo "Running single-subject mode for: $SUBJECT_NAME"
+          fi
+          uv run python src/teamsleech/main.py
+        timeout-minutes: 55
+
+      - name: Summarize Result
+        if: always()
+        run: |
+          if [ "${{ steps.run-bot.outcome }}" == "success" ]; then
+            echo "::notice::Bot finished successfully."
+          else
+            echo "::warning::Bot finished with outcome: ${{ steps.run-bot.outcome }}"
+          fi

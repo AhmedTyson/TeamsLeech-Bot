@@ -11,6 +11,9 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+.coverage*
+coverage.xml
+htmlcov/
 
 # Pyrogram sessions
 *.session
@@ -18,6 +21,8 @@ venv/
 
 # Bot state persistence
 .state/
+subjects_config.json
+teams_refresh_token.txt
 
 # IDE / Editor
 .vscode/
@@ -50,3 +55,4 @@ docs/*.md
 docs/*.pdf
 !docs/TeamsLeech_Guide.md
 docs/test2.html
+.serena/

@@ -1,0 +1,57 @@
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+AZURE_CLI_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
+
+
+class AppConfig(BaseSettings):
+    """
+    Centralized configuration for TeamsLeech Bot.
+    Reads from environment variables or a local .env file.
+    Throws a validation error immediately on boot if a required variable is missing.
+    """
+
+    # Microsoft / Auth
+    teams_refresh_token: str = Field(..., alias="TEAMS_REFRESH_TOKEN")
+    teams_client_id: str = Field(AZURE_CLI_CLIENT_ID, alias="TEAMS_CLIENT_ID")
+    # Optional confidential client: set both to use your own Entra app
+    # registration (with SharePoint grants) instead of the Azure CLI
+    # public client. Never commit the secret.
+    teams_client_secret: str = Field("", alias="TEAMS_CLIENT_SECRET")
+
+    # Telegram Bot
+    telegram_api_id: int = Field(..., alias="TELEGRAM_API_ID")
+    telegram_api_hash: str = Field(..., alias="TELEGRAM_API_HASH")
+    telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: int = Field(..., alias="TELEGRAM_CHAT_ID")
+    # Optional user session (exported string) for >50 MB uploads.
+    # Without it, files above the Bot API cap fail with a clear error.
+    telegram_session_string: str = Field("", alias="TELEGRAM_SESSION_STRING")
+
+    # GitHub (Optional but recommended for secret rotation)
+    gh_pat: str = Field("", alias="GH_PAT")
+    github_repository: str = Field("AhmedTyson/TeamsLeech-Bot", alias="GITHUB_REPOSITORY")
+
+    # Internal Config
+    subjects_json: str = Field("", alias="SUBJECTS_JSON")
+    subjects_path: str = Field("subjects_config.json", alias="SUBJECTS_PATH")
+    state_dir: str = Field(".state", alias="STATE_DIR")
+
+    # Execution Flags
+    auto_check: str = Field("0", alias="AUTO_CHECK")
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("teams_client_id", mode="before")
+    @classmethod
+    def _default_client_id(cls, v: object) -> object:
+        # CI exports TEAMS_CLIENT_ID="" when the secret is unset; an empty
+        # override must not wipe the Azure CLI public-client default or the
+        # device-code request 400s with AADSTS900144 (missing client_id).
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return AZURE_CLI_CLIENT_ID
+        return v
+
+
+# Global singleton configuration object to be imported by other modules
+settings = AppConfig()  # type: ignore[call-arg]  # populated from env at runtime

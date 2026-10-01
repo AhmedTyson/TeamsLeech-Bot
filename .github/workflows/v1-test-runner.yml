@@ -1,5 +1,6 @@
-# v1 test runner — manual verification of the v1.0.0 pipeline on GH Actions.
-# Branch: test/v1-runner (v1.0.0 tree + this file only). Main untouched.
+# v1 test runner — manual trial of the v1.0.0 pipeline on GH Actions.
+# Checks out the test/v1-runner branch (v1 tree) and runs it with the live
+# secrets. Temporary file: delete after the trial verdict.
 # Expected: run idles until the 25-min step timeout; verdict comes from the
 # download lines (200 vs 401 + URL host: files.1drv.com vs download.aspx).
 name: v1 Test Runner
