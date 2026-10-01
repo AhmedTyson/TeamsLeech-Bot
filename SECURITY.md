@@ -43,8 +43,11 @@ One-time setup (Microsoft Entra admin center):
 3. Certificates & secrets → New client secret → `TEAMS_CLIENT_SECRET`.
 4. API permissions → Add: Graph `Files.ReadWrite.All`, `Sites.ReadWrite.All`,
    `User.Read`, `offline_access`; SharePoint `AllSites.Full` (delegated).
-5. Grant admin consent for your tenant.
-6. Re-run `mode=reauth` once so the refresh token is issued to your app.
+5. Authentication → Advanced settings → **Allow public client flows → Yes**
+   (required: `mode=reauth` uses the device-code flow, which Microsoft
+   rejects with 400 `invalid_client` when this is off).
+6. Grant admin consent for your tenant.
+7. Re-run `mode=reauth` once so the refresh token is issued to your app.
 
 Without the secret the bot keeps working exactly as before (public
 client); the boot log shows which auth mode is active.
