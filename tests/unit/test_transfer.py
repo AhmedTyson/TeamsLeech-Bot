@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -569,6 +570,40 @@ class TestDownloadRecording:
         assert size == len(chunk)
         assert seen[0]["url"] == "https://cdn.example.com/f"
         assert "Authorization" not in seen[0]["headers"]
+
+    async def test_401_body_logged_for_diagnosis(
+        self, transfer_service, sample_recordings, tmp_path, caplog
+    ):
+        from teamsleech.services.transfer import DownloadAuthError
+
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        target = "https://cdn.example.com/f"
+        req = httpx.Request("GET", target)
+        denied = AsyncMock()
+        denied.__aenter__.return_value = denied
+        denied.status_code = 401
+        denied.headers = {}
+        denied.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "401 Unauthorized", request=req, response=httpx.Response(401, request=req)
+            )
+        )
+        denied.aread = AsyncMock(return_value=b"<error>denied-by-policy</error>")
+
+        def _cm(resp):
+            cm = AsyncMock()
+            cm.__aenter__.return_value = resp
+            cm.__aexit__.return_value = None
+            return cm
+
+        transfer_service.graph.client.stream = MagicMock(return_value=_cm(denied))
+        transfer_service.graph.get = AsyncMock(return_value={})
+
+        with caplog.at_level(logging.WARNING, logger="transfer"):
+            with pytest.raises(DownloadAuthError, match="401"):
+                await transfer_service._download_recording(rec, dest)
+        assert "denied-by-policy" in caplog.text
 
     async def test_download_redirect_strips_auth_cross_host(
         self, transfer_service, sample_recordings, tmp_path
