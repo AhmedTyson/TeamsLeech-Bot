@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout v1 test branch
         uses: actions/checkout@v4
+        with:
+          ref: test/v1-runner
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
