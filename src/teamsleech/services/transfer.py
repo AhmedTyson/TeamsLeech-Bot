@@ -440,6 +440,25 @@ class TransferService:
             return await self._sharepoint_token_v1(host), "v1"
         return None, ""
 
+    async def _next_auth_attempt(
+        self,
+        host: str,
+        auth_tried: set[str],
+        send_headers: dict[str, str],
+    ) -> tuple[dict[str, str] | None, str, str | None]:
+        """Next auth headers: (headers, label, sp_token); (None, '', None) when spent.
+
+        The Graph rung restores June behavior (httpx forwarded the Graph
+        Bearer across the /content 302); current code strips it off-graph.
+        """
+        if "graph" not in auth_tried and "Authorization" not in send_headers:
+            auth_tried.add("graph")
+            return dict(self.graph.headers), "Graph", None
+        token, label = await self._next_sp_token(host, auth_tried)
+        if token is None:
+            return None, "", None
+        return {"Authorization": f"Bearer {token}"}, label, token
+
     async def _download_with_redirects(
         self,
         rec: Recording,
@@ -466,16 +485,19 @@ class TransferService:
                 if resp.status_code != 401:
                     resp.raise_for_status()
                     return await self._store_stream(resp, rec, dest_path)
-                if not self._is_sharepoint_target(target) or len(auth_tried) >= 3:
+                if not self._is_sharepoint_target(target) or len(auth_tried) >= 5:
                     await self._log_401_diagnostics(rec, resp)
                     resp.raise_for_status()
                     return await self._store_stream(resp, rec, dest_path)
                 host = urlparse(target).hostname or ""
-                token, label = await self._next_sp_token(host, auth_tried)
-                if token is not None:
-                    last_sp_token = token
+                headers, label, sp_token = await self._next_auth_attempt(
+                    host, auth_tried, send_headers
+                )
+                if headers is not None:
+                    if sp_token is not None:
+                        last_sp_token = sp_token
                     log.warning("Download 401 for %s, retrying with %s token.", rec.name, label)
-                    send_headers = {"Authorization": f"Bearer {token}"}
+                    send_headers = headers
                     continue
                 if "api" not in auth_tried and last_sp_token is not None:
                     auth_tried.add("api")
