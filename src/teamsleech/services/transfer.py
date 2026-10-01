@@ -328,14 +328,20 @@ class TransferService:
         return access
 
     @staticmethod
-    def _log_401_diagnostics(rec: Recording, resp: httpx.Response) -> None:
+    async def _log_401_diagnostics(rec: Recording, resp: httpx.Response) -> None:
         www = resp.headers.get("www-authenticate", "")
         diag = resp.headers.get("x-ms-diagnostics", "")
+        try:
+            body = await resp.aread()
+            snippet = bytes(body[:500]).decode("utf-8", errors="replace")
+        except Exception:
+            snippet = "<unreadable>"
         log.warning(
-            "Download 401 for %s: www-authenticate=%r diagnostics=%r",
+            "Download 401 for %s: www-authenticate=%r diagnostics=%r body=%r",
             rec.name,
             www[:300],
             diag[:300],
+            snippet,
         )
 
     async def _download_via_sharepoint_api(
@@ -399,7 +405,7 @@ class TransferService:
                     resp.raise_for_status()
                     return await self._store_stream(resp, rec, dest_path)
                 if not self._is_sharepoint_target(target) or len(auth_tried) >= 3:
-                    self._log_401_diagnostics(rec, resp)
+                    await self._log_401_diagnostics(rec, resp)
                     resp.raise_for_status()
                     return await self._store_stream(resp, rec, dest_path)
                 host = urlparse(target).hostname or ""
@@ -425,7 +431,7 @@ class TransferService:
                     )
                     if got is not None:
                         return got
-                self._log_401_diagnostics(rec, resp)
+                await self._log_401_diagnostics(rec, resp)
                 resp.raise_for_status()
                 return await self._store_stream(resp, rec, dest_path)
         msg = f"Graph download for {rec.name} exceeded redirect limit."
