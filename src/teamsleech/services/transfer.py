@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from typing import Any, cast
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
 from pyrogram.client import Client
@@ -327,6 +327,51 @@ class TransferService:
             log.warning("SharePoint v1 gave no new refresh token; chain unchanged.")
         return access
 
+    @staticmethod
+    def _log_401_diagnostics(rec: Recording, resp: httpx.Response) -> None:
+        www = resp.headers.get("www-authenticate", "")
+        diag = resp.headers.get("x-ms-diagnostics", "")
+        log.warning(
+            "Download 401 for %s: www-authenticate=%r diagnostics=%r",
+            rec.name,
+            www[:300],
+            diag[:300],
+        )
+
+    async def _download_via_sharepoint_api(
+        self, rec: Recording, target: str, token: str, dest_path: str
+    ) -> int | None:
+        """Direct SharePoint REST download; None when unavailable/failed.
+
+        download.aspx is a front-end page (cookie-oriented); the REST
+        endpoint below is the Bearer-capable API for the same file.
+        """
+        parsed = urlparse(target)
+        site_path, _, _ = parsed.path.partition("/_layouts/15/download.aspx")
+        unique = parse_qs(parsed.query).get("UniqueId", [""])[0]
+        if not site_path or not unique or not parsed.hostname or parsed.scheme != "https":
+            return None
+        api_url = (
+            f"{parsed.scheme}://{parsed.hostname}{site_path}"
+            f"/_api/web/GetFileById('{unique}')/$value"
+        )
+        log.warning("Trying SharePoint REST API download for %s.", rec.name)
+        try:
+            async with self.graph.client.stream(
+                "GET",
+                api_url,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=60.0,
+                follow_redirects=False,
+            ) as resp:
+                if resp.status_code != 200:
+                    log.warning("SharePoint API download [%s] for %s.", resp.status_code, rec.name)
+                    return None
+                return await self._store_stream(resp, rec, dest_path)
+        except httpx.RequestError as e:
+            log.warning("SharePoint API download failed for %s: %s", rec.name, e)
+            return None
+
     async def _download_with_redirects(
         self,
         rec: Recording,
@@ -336,8 +381,9 @@ class TransferService:
     ) -> int:
         target = url
         send_headers = dict(headers) if headers else {}
-        auth_forwarded = False
-        for _ in range(5):
+        auth_tried: set[str] = set()
+        last_sp_token: str | None = None
+        for _ in range(6):
             async with self.graph.client.stream(
                 "GET",
                 target,
@@ -349,35 +395,37 @@ class TransferService:
                 if nxt is not None:
                     target = nxt
                     continue
-                if (
-                    resp.status_code == 401
-                    and not auth_forwarded
-                    and self._is_sharepoint_target(target)
-                ):
-                    host = urlparse(target).hostname or ""
-                    sp_token = await self._sharepoint_token(host)
-                    if sp_token is None:
-                        sp_token = await self._sharepoint_token_v1(host)
-                    if sp_token is not None:
-                        log.warning(
-                            "Download 401 for %s, retrying with SharePoint token.",
-                            rec.name,
-                        )
-                        auth_forwarded = True
-                        send_headers = {
-                            "Authorization": f"Bearer {sp_token}",
-                            "Accept": "application/json",
-                        }
-                        continue
-                if resp.status_code == 401:
-                    www = resp.headers.get("www-authenticate", "")
-                    diag = resp.headers.get("x-ms-diagnostics", "")
-                    log.warning(
-                        "Download 401 for %s: www-authenticate=%r diagnostics=%r",
-                        rec.name,
-                        www[:300],
-                        diag[:300],
+                if resp.status_code != 401:
+                    resp.raise_for_status()
+                    return await self._store_stream(resp, rec, dest_path)
+                if not self._is_sharepoint_target(target) or len(auth_tried) >= 3:
+                    self._log_401_diagnostics(rec, resp)
+                    resp.raise_for_status()
+                    return await self._store_stream(resp, rec, dest_path)
+                host = urlparse(target).hostname or ""
+                token: str | None = None
+                label = ""
+                if "v2" not in auth_tried:
+                    auth_tried.add("v2")
+                    token = await self._sharepoint_token(host)
+                    label = "v2"
+                elif "v1" not in auth_tried:
+                    auth_tried.add("v1")
+                    token = await self._sharepoint_token_v1(host)
+                    label = "v1"
+                if token is not None:
+                    last_sp_token = token
+                    log.warning("Download 401 for %s, retrying with %s token.", rec.name, label)
+                    send_headers = {"Authorization": f"Bearer {token}"}
+                    continue
+                if "api" not in auth_tried and last_sp_token is not None:
+                    auth_tried.add("api")
+                    got = await self._download_via_sharepoint_api(
+                        rec, target, last_sp_token, dest_path
                     )
+                    if got is not None:
+                        return got
+                self._log_401_diagnostics(rec, resp)
                 resp.raise_for_status()
                 return await self._store_stream(resp, rec, dest_path)
         msg = f"Graph download for {rec.name} exceeded redirect limit."
