@@ -28,6 +28,28 @@ def notify(text: str) -> int | None:
     return result.get("message_id") if isinstance(result, dict) else None
 
 
+async def _start_client(client: object) -> None:
+    """Start with one FloodWait backoff; re-raise with a hint if still limited."""
+    from pyrogram.errors import FloodWait
+
+    try:
+        await client.start()  # type: ignore[attr-defined]
+    except FloodWait as exc:
+        wait = min(int(getattr(exc, "value", 0) or 0), 1500)
+        print(f"Telegram flood wait: sleeping {wait}s before one retry.")
+        await asyncio.sleep(wait)
+    else:
+        return
+    try:
+        await client.start()  # type: ignore[attr-defined]
+    except FloodWait as exc:
+        msg = (
+            "Telegram still rate-limiting logins. Mint TELEGRAM_SESSION_STRING "
+            f"(user session avoids bot-login floods) and re-run. Detail: {exc}"
+        )
+        raise RuntimeError(msg) from exc
+
+
 async def upload_file(path: str, caption: str) -> int | None:
     """Upload via user session (large) or bot (<=50 MB). Returns message id."""
     from pyrogram.client import Client
@@ -40,9 +62,15 @@ async def upload_file(path: str, caption: str) -> int | None:
     if not api_id or not api_hash or not chat_id:
         print("upload skipped: Telegram API config missing")
         return None
+    session_dir = os.environ.get("TG_SESSION_DIR", ".tg-sessions")
+    os.makedirs(session_dir, exist_ok=True)
     if session:
         client = Client(
-            "worker_user", api_id=api_id, api_hash=api_hash, session_string=session, in_memory=True
+            "worker_user",
+            api_id=api_id,
+            api_hash=api_hash,
+            session_string=session,
+            workdir=session_dir,
         )
     elif bot_token:
         size = await asyncio.to_thread(os.path.getsize, path)
@@ -50,12 +78,16 @@ async def upload_file(path: str, caption: str) -> int | None:
             print(f"upload skipped: {path} exceeds 50 MB bot cap, no user session")
             return None
         client = Client(
-            "worker_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token, in_memory=True
+            "worker_bot",
+            api_id=api_id,
+            api_hash=api_hash,
+            bot_token=bot_token,
+            workdir=session_dir,
         )
     else:
         print("upload skipped: no session string or bot token")
         return None
-    await client.start()
+    await _start_client(client)
     try:
         msg = await client.send_document(int(chat_id), path, caption=caption[:1024])
         return msg.id if msg is not None else None
