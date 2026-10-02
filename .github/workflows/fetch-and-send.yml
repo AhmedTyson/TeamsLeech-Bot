@@ -38,6 +38,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore Telegram sessions (best-effort)
+        uses: actions/cache@v4
+        with:
+          path: .tg-sessions
+          key: tg-sessions-v1
+
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
