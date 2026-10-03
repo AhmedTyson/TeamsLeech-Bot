@@ -8,14 +8,14 @@
 **Description:** Remove runner management: `/runner` command, `⚙️ Background Runner` reply-keyboard button, actions panel (trigger/status), keeping only what Phase 6 re-adds. Delete `actions_ui.py`, `github_actions.py` usages, keyboards, tests.
 
 **Acceptance criteria:**
-- [ ] No `/runner`, no `⚙️` button, no `act:*` callbacks, no trigger/status code paths
-- [ ] `test_run.py` removed or repurposed (no dead references)
-- [ ] Full suite green
+- [x] No `/runner`, no `⚙️` button, no `act:*` callbacks, no trigger/status code paths
+- [x] `test_run.py` removed or repurposed (no dead references)
+- [x] Full suite green
 
 **Verification:**
-- [ ] `pytest tests/unit -q` passes
-- [ ] `ruff check src/ tests/` clean
-- [ ] Grep shows no `act:run`, `act:status`, `trigger_workflow` references
+- [x] `pytest tests/unit -q` passes
+- [x] `ruff check src/ tests/` clean
+- [x] Grep shows no `act:run`, `act:status`, `trigger_workflow` references
 
 **Dependencies:** None
 
@@ -35,13 +35,13 @@
 **Description:** Delete last-run filtering everywhere: every scan covers all joined teams over the last 60 days unless the user gives scope (today / this week / custom range / All Time). State (`last_run`, `last_lecture`) stays as knowledge only — written, never read as a filter. Remove `ignore_last_run`, `subj:__ALL__` "since last run" semantics, auto-check label.
 
 **Acceptance criteria:**
-- [ ] No code path drops a recording because of stored `last_run`
-- [ ] No-date scan = `today - 60d` … today on every team
-- [ ] Explicit dates / All Time still work; 30-day cap revisited (raise to 60+ or drop)
-- [ ] State still records `last_run`/`last_lecture` per subject (knowledge only)
+- [x] No code path drops a recording because of stored `last_run`
+- [x] No-date scan = `today - 60d` … today on every team
+- [x] Explicit dates / All Time still work; 30-day cap revisited (raise to 60+ or drop)
+- [x] State still records `last_run`/`last_lecture` per subject (knowledge only)
 
 **Verification:**
-- [ ] New/updated `test_scanner.py`: old recording included with no dates; 61-day-old excluded by default; explicit range overrides
+- [x] New/updated `test_scanner.py`: old recording included with no dates; 61-day-old excluded by default; explicit range overrides
 - [ ] Full suite green; live `/check` shows 60-day label
 
 **Dependencies:** Phase 1
@@ -58,13 +58,13 @@
 **Description:** Fix cross-doctor bleed: matching becomes AND — team must match subject keywords AND (when set) doctor keywords. Extend `SubjectConfig` with `doctor_keywords: list[str]` (keep `doctor` label for rename suggestions). Either list may be empty (optional), mirroring Phase 4 validation (≥1 required at creation).
 
 **Acceptance criteria:**
-- [ ] Team matching wrong doctor but right subject is excluded when `doctor_keywords` set
-- [ ] Empty `doctor_keywords` = old behavior (subject-only); empty subject keywords + doctor set = doctor-only
-- [ ] Old secrets without `doctor_keywords` load fine (default `[]`, pydantic `extra=ignore` already)
+- [x] Team matching wrong doctor but right subject is excluded when `doctor_keywords` set
+- [x] Empty `doctor_keywords` = old behavior (subject-only); empty subject keywords + doctor set = doctor-only
+- [x] Old secrets without `doctor_keywords` load fine (default `[]`, pydantic `extra=ignore` already)
 
 **Verification:**
-- [ ] `test_scanner.py` `_match_teams` cases: both-match, subject-only, doctor-only, cross-doctor excluded
-- [ ] Migration check: existing `SUBJECTS_JSON` loads unchanged
+- [x] `test_scanner.py` `_match_teams` cases: both-match, subject-only, doctor-only, cross-doctor excluded
+- [x] Migration check: existing `SUBJECTS_JSON` loads unchanged
 
 **Dependencies:** Phase 2
 
@@ -84,12 +84,12 @@
 **Description:** Rework subject setup: after picking a team, ask for subject keywords AND doctor keywords (each skippable via `skip`, but at least one required — reject empty/empty). Store both lists; keep name/short/doctor-label steps.
 
 **Acceptance criteria:**
-- [ ] `skip`/`skip` rejected with re-prompt; any other combo accepted
-- [ ] Saved `SUBJECTS_JSON` contains both keyword lists
-- [ ] `cancel` works at every step
+- [x] `skip`/`skip` rejected with re-prompt; any other combo accepted
+- [x] Saved `SUBJECTS_JSON` contains both keyword lists
+- [x] `cancel` works at every step
 
 **Verification:**
-- [ ] Handler tests cover skip/skip, subject-only, doctor-only, both, cancel-midway
+- [x] Handler tests cover skip/skip, subject-only, doctor-only, both, cancel-midway
 - [ ] Live add of one subject verified
 
 **Dependencies:** Phase 3
@@ -105,12 +105,12 @@
 **Description:** Replace per-subject `❌ Delete X` button wall with a numbered list (same style as scan results). User taps/selects a number → gets `✏️ Edit` / `❌ Delete` for that entry. Edit walks name → short → doctor label → subject keywords → doctor keywords (each keepable via `skip`/empty = keep current), then saves to `SUBJECTS_JSON` secret like add/delete do.
 
 **Acceptance criteria:**
-- [ ] Management message lists subjects numbered; selection by number buttons (paginated if long)
-- [ ] Edit updates chosen fields, keeps rest, persists to secret + runtime settings
-- [ ] Delete keeps current behavior via the same number flow
+- [x] Management message lists subjects numbered; selection by number buttons (paginated if long)
+- [x] Edit updates chosen fields, keeps rest, persists to secret + runtime settings
+- [x] Delete keeps current behavior via the same number flow
 
 **Verification:**
-- [ ] Handler tests: select → edit doctor only; select → delete; invalid number handled
+- [x] Handler tests: select → edit doctor only; select → delete; invalid number handled
 - [ ] Live edit + delete verified
 
 **Dependencies:** Phases 3–4
@@ -130,11 +130,11 @@
 **Description:** Single `🛑 Cancel Workflow` button (reply keyboard, replacing the removed runner row) that cancels active `bot-runner` runs via kept `cancel_run`/`get_active_runs` helpers. No trigger, no status panel.
 
 **Acceptance criteria:**
-- [ ] One button, one action: cancels active runs, reports count or "idle"
-- [ ] No trigger/status code resurrected
+- [x] One button, one action: cancels active runs, reports count or "idle"
+- [x] No trigger/status code resurrected
 
 **Verification:**
-- [ ] Unit test with mocked runs (2 active → "cancelled 2"; none → idle message)
+- [x] Unit test with mocked runs (2 active → "cancelled 2"; none → idle message)
 - [ ] Live cancel verified
 
 **Dependencies:** Phase 1
@@ -151,12 +151,12 @@
 **Description:** Investigate first (repro: multi-file upload, watch chat): current `file_progress` fires only on multiples of 5% and shares an edited message with completion lines — easy to miss. Then fix: guaranteed visible per-file download % + upload state in ONE live message (e.g. `⬇️ 45% name` → `⬆️ sending name` → `✅ name`), failures already standalone (keep), final summary kept.
 
 **Acceptance criteria:**
-- [ ] Root cause of "didn't see it" written down (throttling/edit-collision/overwrite)
+- [x] Root cause of "didn't see it" written down (throttling/edit-collision/overwrite)
 - [ ] Every file shows download progress then upload state in the live message
-- [ ] No message spam (single progress message + standalone failures + summary)
+- [x] No message spam (single progress message + standalone failures + summary)
 
 **Verification:**
-- [ ] Unit test asserts callback sequence for a 2-file upload
+- [x] Unit test asserts callback sequence for a 2-file upload
 - [ ] Live 2-file upload observed by human
 
 **Dependencies:** Phase 2 (scan output feeds it)
@@ -176,13 +176,13 @@
 **Description:** Consistent tone + truthful help: fix `/start` text (no auto-this-week claim), state the active scope rule (60 days default) wherever dates are asked, unify empty-state/error phrasing, document cookie-expiry + reauth in one `/help`-style text if cheap.
 
 **Acceptance criteria:**
-- [ ] No stale claims about last-run/this-week behavior anywhere
-- [ ] Scope rule + 30/60-day cap stated before input, not after violation
-- [ ] Consistent emoji/voice pass over touched messages
+- [x] No stale claims about last-run/this-week behavior anywhere
+- [x] Scope rule + 30/60-day cap stated before input, not after violation
+- [x] Consistent emoji/voice pass over touched messages
 
 **Verification:**
 - [ ] Grep review of user-facing strings by human
-- [ ] Unit tests updated where they assert old copy
+- [x] Unit tests updated where they assert old copy
 
 **Dependencies:** Phases 2, 5, 7 (copy depends on final behaviors)
 
