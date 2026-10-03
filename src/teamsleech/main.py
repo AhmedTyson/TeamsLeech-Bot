@@ -109,6 +109,29 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
                     f" {n_mp4} .mp4{more_flag}"
                 )
 
+    lines.append("\n👤 **Your OneDrive (group-call recordings live here):**")
+    try:
+        od_search = await scanner.graph.get("/me/drive/root/search(q='.mp4')")
+        od_hits = od_search.get("value", [])
+        od_truncated = "@odata.nextLink" in od_search
+        od_names = sorted(
+            {str(i.get("name", "")) for i in od_hits if i.get("name")}
+        )
+        lines.append(
+            f"   - {len(od_hits)} .mp4 hits"
+            f"{' ⚠️ TRUNCATED' if od_truncated else ''}"
+        )
+        for n in od_names[:15]:
+            lines.append(f"     - `{n}`")
+        if len(od_names) > 15:
+            lines.append(f"     - …and {len(od_names) - 15} more")
+    except Exception as e:
+        lines.append(f"   - OneDrive check failed: {e}")
+    lines.append(
+        "   _Other doctors' OneDrives need their own login — not reachable"
+        " with this session._"
+    )
+
     text = "\n".join(lines)
     log.info("Verify report:\n%s", text)
     await app.send_message(chat_id, text[:4000])
