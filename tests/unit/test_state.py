@@ -1,5 +1,4 @@
 import json
-from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import AsyncMock
 
@@ -44,36 +43,6 @@ class TestSessionManagement:
         state_manager.clear_session(999)
 
 
-class TestLastRun:
-    async def test_default_is_min_datetime(self, state_manager):
-        result = state_manager.get_last_run("Unknown Subject")
-        assert result == datetime.min.replace(tzinfo=UTC)
-
-    async def test_save_and_get_last_run(self, state_manager):
-        ts = datetime(2024, 6, 1, 12, 0, tzinfo=UTC)
-        assert state_manager._initialized
-        state_manager._push_to_telegram = AsyncMock()
-
-        await state_manager.save_last_run("Math", ts)
-        result = state_manager.get_last_run("Math")
-        assert result == ts
-
-    async def test_save_last_run_default_timestamp(self, state_manager):
-        state_manager._push_to_telegram = AsyncMock()
-        before = datetime.now(UTC)
-        await state_manager.save_last_run("Physics")
-        after = datetime.now(UTC)
-        result = state_manager.get_last_run("Physics")
-        assert before <= result <= after
-
-    async def test_get_last_run_from_dict_value(self, state_manager):
-        state_manager._subject_cache = {
-            "math": {"last_run": "2024-06-01T12:00:00+00:00", "last_lecture": 5}
-        }
-        result = state_manager.get_last_run("Math")
-        assert result == datetime(2024, 6, 1, 12, 0, tzinfo=UTC)
-
-
 class TestLastLecture:
     async def test_default_is_zero(self, state_manager):
         result = state_manager.get_last_lecture("Unknown")
@@ -86,9 +55,7 @@ class TestLastLecture:
         assert result == 42
 
     async def test_get_last_lecture_from_dict(self, state_manager):
-        state_manager._subject_cache = {
-            "math": {"last_run": "2024-01-01T00:00:00+00:00", "last_lecture": 10}
-        }
+        state_manager._subject_cache = {"math": {"last_lecture": 10}}
         result = state_manager.get_last_lecture("Math")
         assert result == 10
 
@@ -166,6 +133,4 @@ class TestPushToTelegram:
         state_manager.client.delete_messages = AsyncMock()
 
         await state_manager._push_to_telegram()
-        state_manager.client.delete_messages.assert_awaited_once_with(
-            FAKE_CHAT_ID, 5
-        )
+        state_manager.client.delete_messages.assert_awaited_once_with(FAKE_CHAT_ID, 5)

@@ -12,6 +12,7 @@ from teamsleech.services.state import StateManager
 
 log = logging.getLogger("scanner")
 
+
 class ScannerService:
     def __init__(self, graph_client: GraphClient, state_manager: StateManager):
         self.graph = graph_client
@@ -33,9 +34,7 @@ class ScannerService:
             log.error("Failed to read subjects file: %s", e)
             return []
 
-    def _match_teams(
-        self, all_teams: list[Team], subject: SubjectConfig
-    ) -> list[Team]:
+    def _match_teams(self, all_teams: list[Team], subject: SubjectConfig) -> list[Team]:
         matched = []
         keywords = [kw.lower() for kw in subject.keywords]
 
@@ -56,7 +55,6 @@ class ScannerService:
         self,
         team: Team,
         subject: SubjectConfig,
-        last_run: datetime,
         date_start: str | None,
         date_end: str | None,
         seen_ids: set[str],
@@ -71,31 +69,32 @@ class ScannerService:
         except GraphAPIError as e:
             log.warning(
                 "Could not get site for team %s: %s",
-                team.display_name, e,
+                team.display_name,
+                e,
             )
             return []
 
         try:
-            drives_data = await self.graph.get(
-                f"/sites/{site_id}/drives"
-            )
+            drives_data = await self.graph.get(f"/sites/{site_id}/drives")
             drives = drives_data.get("value", [])
         except GraphAPIError as e:
-            log.warning(
-                "Could not list drives for site %s: %s", site_id, e
-            )
+            log.warning("Could not list drives for site %s: %s", site_id, e)
             return []
 
         async def search_drive(drive_id: str):
             extensions = [
-                ".mp4", ".pdf", ".pptx", ".ppt",
-                ".docx", ".doc", ".xlsx", ".zip", ".rar",
+                ".mp4",
+                ".pdf",
+                ".pptx",
+                ".ppt",
+                ".docx",
+                ".doc",
+                ".xlsx",
+                ".zip",
+                ".rar",
             ]
             tasks = [
-                self.graph.get(
-                    f"/drives/{drive_id}/root/search(q='{ext}')"
-                )
-                for ext in extensions
+                self.graph.get(f"/drives/{drive_id}/root/search(q='{ext}')") for ext in extensions
             ]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -121,34 +120,24 @@ class ScannerService:
 
                 created_str = item.get("createdDateTime", "")
                 created_date_only = created_str[:10]
-                time_only = (
-                    created_str[11:16] if len(created_str) >= 16 else ""
-                )
+                time_only = created_str[11:16] if len(created_str) >= 16 else ""
 
                 if date_start:
                     if date_end:
-                        if not (
-                            date_start <= created_date_only <= date_end
-                        ):
+                        if not (date_start <= created_date_only <= date_end):
                             continue
                     else:
                         if created_date_only != date_start:
                             continue
                 else:
                     try:
-                        created_dt = datetime.fromisoformat(
-                            created_str.replace("Z", "+00:00")
-                        )
-                        if created_dt <= last_run:
-                            continue
+                        datetime.fromisoformat(created_str.replace("Z", "+00:00"))
                     except ValueError:
                         continue
 
                 size_bytes = item.get("size", 0)
                 duration_ms = item.get("video", {}).get("duration", 0)
-                is_video = (
-                    item.get("name", "").lower().endswith(".mp4")
-                )
+                is_video = item.get("name", "").lower().endswith(".mp4")
 
                 recordings.append(
                     Recording(
@@ -180,13 +169,10 @@ class ScannerService:
             subjects = [
                 s
                 for s in subjects
-                if s.name.lower() == filter_lower
-                or s.short.lower() == filter_lower
+                if s.name.lower() == filter_lower or s.short.lower() == filter_lower
             ]
             if not subjects:
-                raise ValueError(
-                    f"No subject matches filter '{subject_filter}'."
-                )
+                raise ValueError(f"No subject matches filter '{subject_filter}'.")
 
         results: dict[str, list[Recording]] = {}
 
@@ -201,15 +187,13 @@ class ScannerService:
 
         for subject in subjects:
             try:
-                last_run = self.state.get_last_run(subject.name)
                 matched_teams = self._match_teams(all_teams, subject)
                 seen_ids: set[str] = set()
 
                 log.info(
-                    "Scanning '%s': %d teams. Since: %s",
+                    "Scanning '%s': %d teams (full scan).",
                     subject.name,
                     len(matched_teams),
-                    last_run,
                 )
 
                 sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
@@ -218,7 +202,6 @@ class ScannerService:
                     team: Team,
                     _sem=sem,
                     _subject=subject,
-                    _last_run=last_run,
                     _date_start=date_start,
                     _date_end=date_end,
                     _seen_ids=seen_ids,
@@ -227,7 +210,6 @@ class ScannerService:
                         return await self._process_team(
                             team,
                             _subject,
-                            _last_run,
                             _date_start,
                             _date_end,
                             _seen_ids,
@@ -236,23 +218,10 @@ class ScannerService:
                 tasks = [bounded_process(t) for t in matched_teams]
                 team_results = await asyncio.gather(*tasks)
 
-                recordings = [
-                    r for batch in team_results for r in batch
-                ]
+                recordings = [r for batch in team_results for r in batch]
                 recordings.sort(key=lambda r: r.created, reverse=True)
                 results[subject.name] = recordings
 
-                if recordings:
-                    latest = max(r.created for r in recordings)
-                    try:
-                        timestamp = datetime.fromisoformat(
-                            f"{latest}T23:59:59+00:00"
-                        )
-                        await self.state.save_last_run(
-                            subject.name, timestamp
-                        )
-                    except Exception:
-                        pass
                 log.info(
                     "'%s' scan complete: %d recordings found.",
                     subject.name,
@@ -261,7 +230,8 @@ class ScannerService:
             except Exception as e:
                 log.error(
                     "Scan failed for subject '%s': %s",
-                    subject.name, e,
+                    subject.name,
+                    e,
                 )
                 results[subject.name] = []
 

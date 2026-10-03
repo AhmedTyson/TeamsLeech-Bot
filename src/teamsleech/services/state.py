@@ -1,6 +1,5 @@
 import json
 import logging
-from datetime import UTC, datetime
 from io import BytesIO
 
 from pyrogram import Client
@@ -10,6 +9,7 @@ from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import UserSession
 
 log = logging.getLogger("state_manager")
+
 
 class StateManager:
     def __init__(self, client: Client, chat_id: int):
@@ -58,9 +58,7 @@ class StateManager:
                 await self._parse_and_load(pinned)
                 return
 
-            log.info(
-                "No pinned state document found. Creating new empty database."
-            )
+            log.info("No pinned state document found. Creating new empty database.")
             self._initialized = True
         except Exception as e:
             log.error("Failed to initialize state: %s", e)
@@ -85,17 +83,14 @@ class StateManager:
         text = msg.text or ""
         try:
             if "=====JSON_START=====" in text:
-                json_str = text.split("=====JSON_START=====\n")[1].split(
-                    "\n=====JSON_END====="
-                )[0]
+                json_str = text.split("=====JSON_START=====\n")[1].split("\n=====JSON_END=====")[0]
             elif "```json" in text:
                 json_str = text.split("```json\n")[1].split("\n```")[0]
             else:
                 json_str = (
                     text.split("#TEAMSLEECH_STATE\n")[1]
                     .replace(
-                        "⚠️ DO NOT DELETE THIS MESSAGE\n"
-                        "This acts as the database for the bot.\n",
+                        "⚠️ DO NOT DELETE THIS MESSAGE\nThis acts as the database for the bot.\n",
                         "",
                     )
                     .strip()
@@ -137,50 +132,15 @@ class StateManager:
         except Exception as e:
             log.error("Failed to push state to Telegram: %s", e)
 
-    def get_last_run(self, subject_name: str) -> datetime:
-        safe_name = subject_name.replace(" ", "_").lower()
-        raw = self._subject_cache.get(safe_name)
-        if not raw:
-            return datetime.min.replace(tzinfo=UTC)
-
-        try:
-            if isinstance(raw, dict):
-                return datetime.fromisoformat(raw.get("last_run", ""))
-            return datetime.fromisoformat(raw)
-        except (ValueError, TypeError):
-            return datetime.min.replace(tzinfo=UTC)
-
     def get_last_lecture(self, subject_name: str) -> int:
         safe_name = subject_name.replace(" ", "_").lower()
         raw = self._subject_cache.get(safe_name)
         if isinstance(raw, dict):
-            return raw.get("last_lecture", 0)
+            lecture = raw.get("last_lecture", 0)
+            return lecture if isinstance(lecture, int) else 0
         return 0
 
-    async def save_last_run(
-        self, subject_name: str, timestamp: datetime | None = None
-    ) -> None:
-        if not self._initialized:
-            await self.initialize()
-
-        safe_name = subject_name.replace(" ", "_").lower()
-        ts = timestamp or datetime.now(UTC)
-
-        raw = self._subject_cache.get(safe_name)
-        if isinstance(raw, dict):
-            raw["last_run"] = ts.isoformat()
-            self._subject_cache[safe_name] = raw
-        else:
-            self._subject_cache[safe_name] = {
-                "last_run": ts.isoformat(),
-                "last_lecture": 0,
-            }
-
-        await self._push_to_telegram()
-
-    async def save_last_lecture(
-        self, subject_name: str, lecture_num: int
-    ) -> None:
+    async def save_last_lecture(self, subject_name: str, lecture_num: int) -> None:
         if not self._initialized:
             await self.initialize()
 
@@ -191,13 +151,7 @@ class StateManager:
             raw["last_lecture"] = lecture_num
             self._subject_cache[safe_name] = raw
         else:
-            last_run = (
-                raw
-                if isinstance(raw, str)
-                else datetime.now(UTC).isoformat()
-            )
             self._subject_cache[safe_name] = {
-                "last_run": last_run,
                 "last_lecture": lecture_num,
             }
 

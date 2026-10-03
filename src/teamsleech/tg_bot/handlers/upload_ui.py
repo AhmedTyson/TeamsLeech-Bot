@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from pyrogram import Client, filters
 from pyrogram.types import (
     CallbackQuery,
@@ -22,9 +20,7 @@ def _get_rename_suggestion(
     rec: Recording, state: StateManager, scanner: ScannerService
 ) -> str | None:
     subjects = scanner.load_subjects()
-    subj_config = next(
-        (s for s in subjects if s.name == rec.subject_name), None
-    )
+    subj_config = next((s for s in subjects if s.name == rec.subject_name), None)
     if not subj_config:
         return None
     short = subj_config.short or subj_config.name
@@ -35,12 +31,11 @@ def _get_rename_suggestion(
         name += f" - {doc}"
     return name
 
+
 def register_upload_ui(
     app: Client, transfer: TransferService, state: StateManager, scanner: ScannerService
 ):
-    async def update_checklist_msg(
-        client: Client, chat_id: int, message: Message
-    ):
+    async def update_checklist_msg(client: Client, chat_id: int, message: Message):
         session = state.get_session(chat_id)
         if not session.pending_recordings:
             return
@@ -61,8 +56,7 @@ def register_upload_ui(
         chat_id = cb.message.chat.id
         session = state.get_session(chat_id)
         session.selected_indices = {
-            i for i, r in enumerate(session.pending_recordings)
-            if not r.is_video
+            i for i, r in enumerate(session.pending_recordings) if not r.is_video
         }
         await update_checklist_msg(client, chat_id, cb.message)
         await cb.answer(f"📄 Selected {len(session.selected_indices)} file(s)")
@@ -72,8 +66,7 @@ def register_upload_ui(
         chat_id = cb.message.chat.id
         session = state.get_session(chat_id)
         session.selected_indices = {
-            i for i, r in enumerate(session.pending_recordings)
-            if r.is_video
+            i for i, r in enumerate(session.pending_recordings) if r.is_video
         }
         await update_checklist_msg(client, chat_id, cb.message)
         await cb.answer(f"🎬 Selected {len(session.selected_indices)} recording(s)")
@@ -88,9 +81,7 @@ def register_upload_ui(
             if len(session.selected_indices) == len(session.pending_recordings):
                 session.selected_indices.clear()
             else:
-                session.selected_indices.update(
-                    range(len(session.pending_recordings))
-                )
+                session.selected_indices.update(range(len(session.pending_recordings)))
         else:
             idx = int(action)
             if idx in session.selected_indices:
@@ -132,14 +123,16 @@ def register_upload_ui(
         if suggested_name:
             session.pending_suggestion = suggested_name
 
-            sug_kb = InlineKeyboardMarkup([
+            sug_kb = InlineKeyboardMarkup(
                 [
-                    InlineKeyboardButton(
-                        f"✨ Accept: {suggested_name}",
-                        callback_data=f"sug:{idx}",
-                    )
+                    [
+                        InlineKeyboardButton(
+                            f"✨ Accept: {suggested_name}",
+                            callback_data=f"sug:{idx}",
+                        )
+                    ]
                 ]
-            ])
+            )
 
             await cb.message.reply(
                 f"✏️ **Rename File**\n"
@@ -163,13 +156,8 @@ def register_upload_ui(
         session = state.get_session(chat_id)
         idx = int(cb.data.split(":", 1)[1])
 
-        if (
-            session.pending_rename_idx != idx
-            or not session.pending_suggestion
-        ):
-            await cb.answer(
-                "Rename cancelled or invalid.", show_alert=True
-            )
+        if session.pending_rename_idx != idx or not session.pending_suggestion:
+            await cb.answer("Rename cancelled or invalid.", show_alert=True)
             return
 
         session.rename_overrides[idx] = session.pending_suggestion
@@ -182,9 +170,7 @@ def register_upload_ui(
         )
         await cb.answer("✅ Name saved!")
 
-    @app.on_message(
-        filters.text & filters.private & owner_only, group=1
-    )
+    @app.on_message(filters.text & filters.private & owner_only, group=1)
     async def handle_rename_input(client: Client, message: Message):
         chat_id = message.chat.id
         session = state.get_session(chat_id)
@@ -194,9 +180,7 @@ def register_upload_ui(
             session.rename_overrides[idx] = message.text.strip()
             session.pending_rename_idx = None
             session.pending_suggestion = None
-            await message.reply(
-                f"✅ Renamed to: **{session.rename_overrides[idx]}**"
-            )
+            await message.reply(f"✅ Renamed to: **{session.rename_overrides[idx]}**")
         else:
             message.continue_propagation()
 
@@ -230,9 +214,7 @@ def register_upload_ui(
             "_Please wait — this may take a while._",
         )
 
-        progress_msg = await cb.message.reply(
-            f"📊 Progress: 0 / {len(selected_recs)} files"
-        )
+        progress_msg = await cb.message.reply(f"📊 Progress: 0 / {len(selected_recs)} files")
 
         async def progress_cb(action: str, data: dict):
             if action == "file_done":
@@ -253,9 +235,7 @@ def register_upload_ui(
                 )
 
         try:
-            results = await transfer.upload_recordings(
-                selected_recs, progress_cb
-            )
+            results = await transfer.upload_recordings(selected_recs, progress_cb)
             success = sum(1 for r in results if r.get("success"))
             failed = sum(1 for r in results if not r.get("success"))
 
@@ -266,27 +246,12 @@ def register_upload_ui(
                 if not rec:
                     continue
 
-                rec_time_str = f"{rec.created}T{rec.time or '00:00'}:00+00:00"
-                try:
-                    rec_date = datetime.fromisoformat(rec_time_str)
-                    if rec_date > state.get_last_run(rec.subject_name):
-                        await state.save_last_run(rec.subject_name, rec_date)
-                        await state.save_last_lecture(
-                            rec.subject_name,
-                            state.get_last_lecture(rec.subject_name) + 1,
-                        )
-                except ValueError:
-                    await state.save_last_run(rec.subject_name)
-                    await state.save_last_lecture(
-                        rec.subject_name,
-                        state.get_last_lecture(rec.subject_name) + 1,
-                    )
+                await state.save_last_lecture(
+                    rec.subject_name,
+                    state.get_last_lecture(rec.subject_name) + 1,
+                )
 
-            summary = (
-                f"✅ **Upload complete!**\n"
-                f"   ✔ {success} succeeded\n"
-                f"   ✘ {failed} failed"
-            )
+            summary = f"✅ **Upload complete!**\n   ✔ {success} succeeded\n   ✘ {failed} failed"
             await safe_edit_text(progress_msg, summary)
         except Exception as e:
             await safe_edit_text(progress_msg, f"❌ Upload failed: {e}")
