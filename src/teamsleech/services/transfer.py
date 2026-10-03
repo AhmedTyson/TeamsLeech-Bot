@@ -1,11 +1,12 @@
 import asyncio
+import base64
 import json
 import logging
 import os
 import subprocess
 import tempfile
 from collections.abc import Callable
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from pyrogram import Client
@@ -131,6 +132,41 @@ class TransferService:
             self._sp_tokens[host] = await authenticate_sharepoint(host)
         return self._sp_tokens[host]
 
+    def _log_token_audience(self, token: str, host: str) -> None:
+        try:
+            payload_b64 = token.split(".")[1]
+            payload_b64 += "=" * (-len(payload_b64) % 4)
+            claims = json.loads(base64.b64decode(payload_b64).decode())
+            log.info(
+                "SharePoint token for %s: aud=%s scp=%s",
+                host, claims.get("aud"), claims.get("scp"),
+            )
+        except Exception as exc:
+            log.warning("Could not inspect SharePoint token: %s", exc)
+
+    def _download_candidates(
+        self, download_url: str, sp_token: str | None
+    ) -> list[tuple[str, str, dict[str, str] | None]]:
+        """Ordered (label, url, headers) attempts. REST $value honors AAD
+        Bearer; legacy download.aspx may demand session cookies."""
+        bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
+        if not sp_token:
+            return [("download.aspx (anonymous)", download_url, None)]
+
+        candidates = []
+        parts = urlsplit(download_url)
+        unique_id = parse_qs(parts.query).get("UniqueId", [None])[0]
+        marker = "/_layouts/15/download.aspx"
+        if unique_id and marker in parts.path:
+            site_path = parts.path.split(marker)[0]
+            api_url = (
+                f"{parts.scheme}://{parts.netloc}{site_path}"
+                f"/_api/web/GetFileById('{unique_id}')/$value"
+            )
+            candidates.append(("SharePoint REST $value", api_url, bearer))
+        candidates.append(("download.aspx (user token)", download_url, bearer))
+        return candidates
+
     @_retry_download
     async def _download_recording(
         self, rec: Recording, dest_path: str
@@ -187,56 +223,54 @@ class TransferService:
             # when possible, else anonymously via the pre-authed URL.
             host = urlsplit(download_url).hostname or ""
             sp_token = await self._sharepoint_token(host) if host else None
-            dl_headers = (
-                {"Authorization": f"Bearer {sp_token}"}
-                if sp_token
-                else None
-            )
             if sp_token:
+                self._log_token_audience(sp_token, host)
                 log.info("Downloading %s with user SharePoint token.", rec.name)
             else:
                 log.info(
                     "Downloading %s anonymously (no SharePoint token).", rec.name
                 )
-            try:
-                async with client.stream(
-                    "GET",
-                    download_url,
-                    headers=dl_headers,
-                    timeout=60.0,
-                    follow_redirects=True,
-                ) as resp:
-                    try:
+            failures: list[str] = []
+            for label, url, headers in self._download_candidates(
+                download_url, sp_token
+            ):
+                log.info("Trying %s for %s.", label, rec.name)
+                try:
+                    async with client.stream(
+                        "GET",
+                        url,
+                        headers=headers,
+                        timeout=60.0,
+                        follow_redirects=True,
+                    ) as resp:
                         resp.raise_for_status()
-                    except httpx.HTTPStatusError as exc:
-                        hint = (
-                            "user-context token also denied — account"
-                            " lacks download rights or Block-Download"
-                            " policy applies"
-                            if sp_token
-                            else "check Conditional Access / Block-Download"
-                            " policy / site permissions for the"
-                            " service account"
-                        )
-                        raise DownloadError(
-                            f"SharePoint download failed"
-                            f" [{resp.status_code}] for {rec.name}:"
-                            f" {hint}. ({exc})"
-                        ) from exc
-                    total_written = 0
-                    with open(dest_path, "wb") as f:
-                        async for chunk in resp.aiter_bytes(
-                            chunk_size=CHUNK_SIZE_BYTES
-                        ):
-                            f.write(chunk)
-                            total_written += len(chunk)
-                    return total_written
-            except DownloadError:
-                raise
-            except httpx.HTTPError as exc:
-                raise DownloadError(
-                    f"SharePoint download failed for {rec.name}: {exc}"
-                ) from exc
+                        total_written = 0
+                        with open(dest_path, "wb") as f:
+                            async for chunk in resp.aiter_bytes(
+                                chunk_size=CHUNK_SIZE_BYTES
+                            ):
+                                f.write(chunk)
+                                total_written += len(chunk)
+                        return total_written
+                except httpx.HTTPStatusError as exc:
+                    failures.append(f"{label} [{exc.response.status_code}]")
+                    log.warning("%s failed for %s: %s", label, rec.name, exc)
+                    continue
+                except httpx.HTTPError as exc:
+                    failures.append(f"{label} ({exc})")
+                    log.warning("%s errored for %s: %s", label, rec.name, exc)
+                    continue
+            hint = (
+                "user-context token denied on REST + download.aspx — account"
+                " lacks download rights or Block-Download policy applies"
+                if sp_token
+                else "check Conditional Access / Block-Download"
+                " policy / site permissions for the service account"
+            )
+            raise DownloadError(
+                f"SharePoint download failed for {rec.name}"
+                f" ({' ; '.join(failures)}): {hint}."
+            )
 
     async def _upload_to_telegram(
         self,
