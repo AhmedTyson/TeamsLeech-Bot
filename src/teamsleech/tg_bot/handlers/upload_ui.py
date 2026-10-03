@@ -235,22 +235,59 @@ def register_upload_ui(
         progress_msg = await cb.message.reply(
             f"📊 Progress: 0 / {len(selected_recs)} files"
         )
+        rows: dict[int, str] = {}
+        done_count = 0
+
+        def _short(name: str) -> str:
+            return name if len(name) <= 30 else name[:27] + "…"
+
+        async def _render():
+            lines = [
+                f"📊 **Uploading {done_count}/{len(selected_recs)}…**"
+            ]
+            for i in range(len(selected_recs)):
+                lines.append(f"{i + 1}. {rows.get(i, '⏳ waiting')}")
+            await safe_edit_text(progress_msg, "\n".join(lines))
 
         async def progress_cb(action: str, data: dict):
-            if action == "file_done":
-                done = data.get("index", 0) + 1
-                name = data.get("name", "file")
+            nonlocal done_count
+            idx = data.get("index", 0)
+            name = _short(data.get("name", "file"))
+            if action == "start":
+                rows.clear()
+                done_count = 0
+                await _render()
+            elif action == "dl_start":
+                rows[idx] = f"⬇️ starting… {name}"
+                await _render()
+            elif action == "dl_progress":
+                if data.get("done"):
+                    rows[idx] = f"⬇️ done ({data.get('written_mb', 0):.0f} MB) {name}"
+                elif data.get("percent") is not None:
+                    rows[idx] = (
+                        f"⬇️ {data['percent']}%"
+                        f" · {data.get('speed_mbps', 0):.1f} MB/s {name}"
+                    )
+                else:
+                    rows[idx] = f"⬇️ {data.get('written_mb', 0):.0f} MB {name}"
+                await _render()
+            elif action == "dl_done":
+                rows[idx] = f"⬇️ done ({data.get('size_mb', 0):.0f} MB) {name}"
+                await _render()
+            elif action == "file_progress":
+                rows[idx] = f"⬆️ {data.get('percent', 0)}% {name}"
+                await _render()
+            elif action == "file_done":
+                done_count += 1
                 elapsed = data.get("elapsed_s", 0)
-                await safe_edit_text(
-                    progress_msg,
-                    f"📊 Progress: {done} / {len(selected_recs)} files\n"
-                    f"✅ Uploaded: `{name}` ({elapsed:.1f}s)",
-                )
+                rows[idx] = f"✅ done in {elapsed:.0f}s {name}"
+                await _render()
             elif action == "error":
-                name = data.get("name", "file")
                 err = data.get("error", "unknown")
+                rows[idx] = f"❌ {name}"
+                await _render()
                 await cb.message.reply(
-                    f"❌ `{name}` failed:\n{err}",
+                    f"❌ `{data.get('name', 'file')}` failed:\n{err}",
                 )
 
         try:

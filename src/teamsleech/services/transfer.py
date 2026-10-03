@@ -183,7 +183,10 @@ class TransferService:
 
     @_retry_download
     async def _download_recording(
-        self, rec: Recording, dest_path: str
+        self,
+        rec: Recording,
+        dest_path: str,
+        dl_cb: Callable | None = None,
     ) -> int:
         graph_url = (
             f"{GRAPH_BASE_URL}/drives/{rec.drive_id}"
@@ -259,12 +262,31 @@ class TransferService:
                     ) as resp:
                         resp.raise_for_status()
                         total_written = 0
+                        last_pct = -1
+                        last_mb_mark = 0
+                        try:
+                            total = int(resp.headers.get("content-length") or 0) or None
+                        except (TypeError, ValueError):
+                            total = None
                         with open(dest_path, "wb") as f:
                             async for chunk in resp.aiter_bytes(
                                 chunk_size=CHUNK_SIZE_BYTES
                             ):
                                 f.write(chunk)
                                 total_written += len(chunk)
+                                if dl_cb is not None:
+                                    if total:
+                                        pct = int(total_written / total * 100)
+                                        if pct >= last_pct + 5 or pct >= 100:
+                                            last_pct = pct
+                                            await dl_cb(total_written, total)
+                                    else:
+                                        mb = total_written // (10 * 1024 * 1024)
+                                        if mb > last_mb_mark:
+                                            last_mb_mark = mb
+                                            await dl_cb(total_written, None)
+                            if dl_cb is not None:
+                                await dl_cb(total_written, total, done=True)
                         return total_written
                 except httpx.HTTPStatusError as exc:
                     failures.append(f"{label} [{exc.response.status_code}]")
@@ -372,7 +394,7 @@ class TransferService:
         if total == 0:
             return
         pct = int((current / total) * 100)
-        if pct % 5 == 0 and progress_cb:
+        if (pct % 5 == 0 or pct >= 100) and progress_cb:
             now = asyncio.get_event_loop().time()
             elapsed_chunk = now - self._progress_last_time
             speed_mbps = (
@@ -486,18 +508,45 @@ class TransferService:
             tmp_file.close()
 
             try:
+                async def _dl_emit(
+                    written: int, total: int | None, done: bool = False,
+                    _i=i, _name=rec.name, _t0=start_time_file,
+                ):
+                    if not progress_cb:
+                        return
+                    elapsed = asyncio.get_event_loop().time() - _t0
+                    payload: dict = {
+                        "index": _i,
+                        "name": _name,
+                        "written_mb": written / (1024 * 1024),
+                        "elapsed_s": elapsed,
+                        "done": done,
+                    }
+                    if total:
+                        payload["percent"] = int(written / total * 100)
+                        payload["speed_mbps"] = (
+                            (written / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
+                        )
+                    await progress_cb("dl_progress", payload)
+
                 if progress_cb:
                     await progress_cb(
-                        "file_progress",
+                        "dl_start", {"index": i, "name": rec.name}
+                    )
+
+                file_size = await self._download_recording(
+                    rec, tmp_path, _dl_emit
+                )
+
+                if progress_cb:
+                    await progress_cb(
+                        "dl_done",
                         {
                             "index": i,
                             "name": rec.name,
-                            "percent": 0,
-                            "speed_mbps": 0.0,
+                            "size_mb": file_size / (1024 * 1024),
                         },
                     )
-
-                file_size = await self._download_recording(rec, tmp_path)
 
                 await queue.put(
                     {

@@ -350,6 +350,37 @@ class TestDownloadRecording:
             await transfer_service._download_recording(rec, dest)
         assert mock_sp.await_count == 1
 
+    async def test_download_emits_dl_progress_and_done(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        events = []
+
+        async def dl_cb(written, total, done=False):
+            events.append((written, total, done))
+
+        async def _two_chunks(**kw):
+            yield b"x" * 1024
+            yield b"x" * 1024
+
+        with patch("httpx.AsyncClient") as mock_cls:
+            self._mock_client(
+                mock_cls, graph_resp=self._graph_redirect()
+            )
+            resp = AsyncMock()
+            resp.__aenter__.return_value = resp
+            resp.raise_for_status = MagicMock()
+            resp.headers = {"content-length": "2048"}
+            resp.aiter_bytes = MagicMock(side_effect=lambda **kw: _two_chunks())
+            mock_cls.return_value.__aenter__.return_value.stream = MagicMock(
+                return_value=resp
+            )
+            size = await transfer_service._download_recording(rec, dest, dl_cb)
+        assert size == 2048
+        assert events[-1] == (2048, 2048, True)
+        assert events[0][0] == 1024
+
     async def test_cookies_tried_first_when_configured(
         self, transfer_service, sample_recordings, tmp_path, monkeypatch
     ):
@@ -516,6 +547,14 @@ class TestProgressReporting:
         callback = AsyncMock()
         await transfer_service._report_progress(0, 0, 0, "test.mp4", callback)
         callback.assert_not_called()
+
+    async def test_report_progress_fires_at_100(self, transfer_service):
+        callback = AsyncMock()
+        transfer_service._progress_last_time = 0.0
+        transfer_service._progress_last_bytes = 0
+
+        await transfer_service._report_progress(100, 100, 0, "test.mp4", callback)
+        callback.assert_awaited()
 
     async def test_report_progress_skips_non_multiple_of_5(self, transfer_service):
         callback = AsyncMock()
