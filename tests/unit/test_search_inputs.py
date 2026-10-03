@@ -139,6 +139,7 @@ def make_cb(data):
 class TestManage:
     def _seed(self, monkeypatch):
         import json
+
         from teamsleech.core.config import settings
         monkeypatch.setattr(
             settings,
@@ -155,6 +156,7 @@ class TestManage:
         from teamsleech.tg_bot.keyboards import build_manage_dashboard
         _, _, _, _, state = rig
         import json
+
         from teamsleech.core.config import settings
         settings.subjects_json = json.dumps({"subjects": [
             {"name": "DS", "short": "D", "keywords": ["data"]},

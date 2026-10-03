@@ -2,9 +2,11 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from teamsleech.services.discovery import DiscoveryService
+from teamsleech.services.github_actions import cancel_run, get_active_runs
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
+from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.keyboards import (
     REPLY_KEYBOARD,
     build_manage_dashboard,
@@ -67,4 +69,29 @@ def register_commands(
         await message.reply(
             "⚙️ Runner panel removed. Runs start on schedule or manual dispatch"
             " in GitHub. To stop one, use 🛑 Cancel Workflow."
+        )
+
+    @app.on_message(
+        filters.regex("^🛑 Cancel Workflow$")
+        & filters.private
+        & owner_only
+    )
+    async def handle_cancel_workflow(client: Client, message: Message):
+        notice = await message.reply("🛑 Checking active runs...")
+        try:
+            runs = await get_active_runs()
+        except Exception as e:
+            await safe_edit_text(notice, f"❌ GitHub unreachable: {e}")
+            return
+        if not runs:
+            await safe_edit_text(notice, "💤 Runner idle — nothing to cancel.")
+            return
+        try:
+            for r in runs:
+                await cancel_run(r["id"])
+        except Exception as e:
+            await safe_edit_text(notice, f"❌ GitHub unreachable: {e}")
+            return
+        await safe_edit_text(
+            notice, f"✅ Cancelled {len(runs)} run(s)."
         )

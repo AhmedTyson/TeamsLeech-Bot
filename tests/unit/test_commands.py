@@ -66,3 +66,84 @@ async def test_commands_handlers(mock_scanner, mock_state, mock_discovery):
     msg.reply.assert_called_once()
     assert "Subjects (2)" in msg.reply.call_args[0][0]
     assert "1. **Math**" in msg.reply.call_args[0][0]
+
+    assert "handle_cancel_workflow" in handlers
+    assert "handle_runner_removed" in handlers
+
+
+@pytest.mark.asyncio
+async def test_cancel_workflow_idle(mock_scanner, mock_state, mock_discovery):
+    from unittest.mock import patch
+    handlers = {}
+    mock_client = MagicMock()
+    mock_client.on_message.side_effect = (
+        lambda *a, **k: (lambda f: handlers.setdefault(f.__name__, f) or f)
+    )
+    register_commands(mock_client, mock_scanner, mock_state, mock_discovery)
+    msg = AsyncMock()
+    with (
+        patch(
+            "teamsleech.tg_bot.handlers.commands.get_active_runs",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "teamsleech.tg_bot.handlers.commands.safe_edit_text",
+            AsyncMock(),
+        ) as mock_edit,
+    ):
+        await handlers["handle_cancel_workflow"](mock_client, msg)
+    assert "idle" in mock_edit.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_cancel_workflow_cancels_runs(mock_scanner, mock_state, mock_discovery):
+    from unittest.mock import patch
+    handlers = {}
+    mock_client = MagicMock()
+    mock_client.on_message.side_effect = (
+        lambda *a, **k: (lambda f: handlers.setdefault(f.__name__, f) or f)
+    )
+    register_commands(mock_client, mock_scanner, mock_state, mock_discovery)
+    msg = AsyncMock()
+    with (
+        patch(
+            "teamsleech.tg_bot.handlers.commands.get_active_runs",
+            AsyncMock(return_value=[{"id": 1}, {"id": 2}]),
+        ),
+        patch(
+            "teamsleech.tg_bot.handlers.commands.cancel_run",
+            AsyncMock(),
+        ) as mock_cancel,
+        patch(
+            "teamsleech.tg_bot.handlers.commands.safe_edit_text",
+            AsyncMock(),
+        ) as mock_edit,
+    ):
+        await handlers["handle_cancel_workflow"](mock_client, msg)
+    assert mock_cancel.await_count == 2
+    assert "Cancelled 2" in mock_edit.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_cancel_workflow_github_error(mock_scanner, mock_state, mock_discovery):
+    from unittest.mock import patch
+    handlers = {}
+    mock_client = MagicMock()
+    mock_client.on_message.side_effect = (
+        lambda *a, **k: (lambda f: handlers.setdefault(f.__name__, f) or f)
+    )
+    register_commands(mock_client, mock_scanner, mock_state, mock_discovery)
+    msg = AsyncMock()
+    import httpx
+    with (
+        patch(
+            "teamsleech.tg_bot.handlers.commands.get_active_runs",
+            AsyncMock(side_effect=httpx.RequestError("down")),
+        ),
+        patch(
+            "teamsleech.tg_bot.handlers.commands.safe_edit_text",
+            AsyncMock(),
+        ) as mock_edit,
+    ):
+        await handlers["handle_cancel_workflow"](mock_client, msg)
+    assert "unreachable" in mock_edit.await_args.args[1]
