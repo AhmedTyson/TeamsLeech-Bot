@@ -236,19 +236,23 @@ def register_search_inputs(
         if session.pending_add_step == "ask_short":
             session.pending_add_data["short"] = text
             session.pending_add_step = "ask_subj_kw"
+            team = session.pending_add_team
+            team_name = team.display_name if team else "this team"
             await message.reply(
-                "🔎 Step 3: Send **SUBJECT keywords** (e.g., `Data Security`,"
-                " comma-separated),\n"
-                "or type `skip`."
+                "🔎 Step 3: Send **SUBJECT keywords** (e.g., `Data Security`),\n"
+                f"`same` to use `{team_name}`, or `skip`."
             )
             return
 
         if session.pending_add_step == "ask_subj_kw":
-            subj_kw = (
-                []
-                if text.lower() == "skip"
-                else [k.strip() for k in text.split(",") if k.strip()]
-            )
+            team = session.pending_add_team
+            fallback = [team.display_name] if team else []
+            if text.lower() == "skip":
+                subj_kw = []
+            elif text.lower() == "same":
+                subj_kw = fallback
+            else:
+                subj_kw = [k.strip() for k in text.split(",") if k.strip()]
             session.pending_add_data["subj_kw"] = subj_kw
             session.pending_add_step = "ask_doc_kw"
             await message.reply(

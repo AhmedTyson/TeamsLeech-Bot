@@ -34,7 +34,7 @@ def build_subject_keyboard(subjects: list[SubjectConfig]) -> InlineKeyboardMarku
 
     buttons.append([
         InlineKeyboardButton(
-            text="✅ Check All (since last run)", callback_data="subj:__ALL__"
+            text="✅ Check All", callback_data="subj:__ALL__"
         )
     ])
     return InlineKeyboardMarkup(buttons)

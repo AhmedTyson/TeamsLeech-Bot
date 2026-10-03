@@ -1,6 +1,5 @@
 import json
 from datetime import UTC, datetime
-from datetime import date as date_type
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -146,6 +145,11 @@ class TestDoctorSubjectMatching:
             Team(id="2", display_name="Data Security - Dr Soha"),
         ]
         assert len(scanner._match_teams(teams, subject)) == 2
+
+    def test_spaceless_keyword_matches_spaceless_team(self, scanner):
+        subject = SubjectConfig(name="DS", keywords=["Data Security"])
+        teams = [Team(id="1", display_name="BIS-DataSecurity-Dr.HanyGouda-L4")]
+        assert len(scanner._match_teams(teams, subject)) == 1
 
     def test_doctor_only_matching(self, scanner):
         subject = SubjectConfig(name="DS", doctor_keywords=["soha"])
@@ -316,7 +320,7 @@ class TestScanRecordings:
             result = await scanner.scan_recordings()
         assert result == {"Math": []}
 
-    async def test_scan_defaults_to_60_day_window(self, scanner, monkeypatch):
+    async def test_scan_defaults_to_unbounded(self, scanner, monkeypatch):
         monkeypatch.setattr(
             "teamsleech.services.scanner.settings.subjects_json",
             json.dumps({
@@ -335,9 +339,7 @@ class TestScanRecordings:
             ) as mock_process:
                 await scanner.scan_recordings()
         mock_process.assert_awaited_once()
-        ds, de = mock_process.await_args.args[2:4]
-        assert (datetime.now(UTC).date() - date_type.fromisoformat(ds)).days == 60
-        assert de == datetime.now(UTC).date().isoformat()
+        assert mock_process.await_args.args[2:4] == (None, None)
 
     async def test_scan_explicit_dates_passed_through(self, scanner, monkeypatch):
         monkeypatch.setattr(

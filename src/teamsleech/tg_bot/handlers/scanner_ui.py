@@ -129,7 +129,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         session = state.get_session(chat_id)
 
         if subject_key == "__ALL__":
-            label = "Last 60 Days"
+            label = "All Recordings"
             await safe_edit_text(
                 cb.message,
                 f"🔍 Scanning **all subjects** — {label}...",
@@ -165,7 +165,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
             prompt = (
                 f"📚 **{subject_key}** selected.\n\n"
-                "**Select Date Range**\n"
+                "**Select Date Range** (default: everything)\n"
                 "Tap a button below, or type a custom date like `2026-04-01`.\n"
                 "_Ranges up to 60 days. Type `cancel` to exit._"
             )
@@ -203,15 +203,13 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         if action == "all":
             label = "All Time"
-            today = datetime.now(UTC).date().isoformat()
             await safe_edit_text(
                 cb.message,
                 f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
                 f" — {label}...",
             )
             await run_scan_and_reply(
-                client, chat_id, session.subject_filter,
-                "2000-01-01", today, label,
+                client, chat_id, session.subject_filter, None, None, label
             )
             return
 
@@ -256,7 +254,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         await safe_edit_text(
             cb.message,
-            "**Change Date Range**\n\n"
+            "**Change Date Range** (default: everything)\n\n"
             "Tap a button below, or type a custom date like `2026-04-01`.\n"
             "_Ranges up to 60 days. Type `cancel` to exit._",
             reply_markup=kb,

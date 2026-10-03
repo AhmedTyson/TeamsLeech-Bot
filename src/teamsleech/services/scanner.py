@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
 from teamsleech.core.config import settings
 from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES
@@ -34,13 +34,15 @@ class ScannerService:
             return []
 
     def _match_keywords(self, name_lower: str, keywords: list[str]) -> bool:
+        squashed = re.sub(r"[^a-z0-9]", "", name_lower)
         for kw in keywords:
             kw = kw.lower()
             if kw.isalpha():
                 if re.search(rf"\b{re.escape(kw)}", name_lower):
                     return True
             else:
-                if kw in name_lower:
+                kw_flat = re.sub(r"[^a-z0-9]", "", kw)
+                if kw_flat and kw_flat in squashed:
                     return True
         return False
 
@@ -168,8 +170,6 @@ class ScannerService:
 
         return recordings
 
-    DEFAULT_SCOPE_DAYS = 60
-
     async def scan_recordings(
         self,
         subject_filter: str | None = None,
@@ -177,11 +177,6 @@ class ScannerService:
         date_end: str | None = None,
     ) -> dict[str, list[Recording]]:
         subjects = self.load_subjects()
-
-        if date_start is None and date_end is None:
-            today = datetime.now(UTC).date()
-            date_end = today.isoformat()
-            date_start = (today - timedelta(days=self.DEFAULT_SCOPE_DAYS)).isoformat()
 
         if subject_filter:
             filter_lower = subject_filter.lower()
@@ -212,12 +207,16 @@ class ScannerService:
                 matched_teams = self._match_teams(all_teams, subject)
                 seen_ids: set[str] = set()
 
+                scope = (
+                    f"{date_start} to {date_end}"
+                    if date_start or date_end
+                    else "all time"
+                )
                 log.info(
-                    "Scanning '%s': %d teams. Range: %s to %s",
+                    "Scanning '%s': %d teams. Scope: %s",
                     subject.name,
                     len(matched_teams),
-                    date_start,
-                    date_end,
+                    scope,
                 )
 
                 sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)

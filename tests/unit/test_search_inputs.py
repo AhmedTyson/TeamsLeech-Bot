@@ -60,10 +60,21 @@ class TestAddSteps:
         assert session.pending_add_step == "ask_short"
         assert session.pending_add_data["name"] == "Data Security"
 
+    async def test_subj_kw_same_uses_team_name(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_team = Team(id="t1", display_name="DS Team")
+        session.pending_add_step = "ask_subj_kw"
+        session, _ = await send(rig, "same")
+        assert session.pending_add_data["subj_kw"] == ["DS Team"]
+        assert session.pending_add_step == "ask_doc_kw"
+
     async def test_subj_kw_parsed(self, rig):
         _, _, _, _, state = rig
         session = state.get_session(123)
         session.is_searching_teams = True
+        session.pending_add_team = Team(id="t1", display_name="DS Team")
         session.pending_add_step = "ask_subj_kw"
         session, _ = await send(rig, "Data Security, DSEC")
         assert session.pending_add_data["subj_kw"] == ["Data Security", "DSEC"]
