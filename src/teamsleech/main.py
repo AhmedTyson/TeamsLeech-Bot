@@ -50,6 +50,14 @@ def main():
         # 3. Initialize Services
         log.info("Step 2/3: Initializing core services...")
         graph_client = GraphClient(access_token)
+        try:
+            me = await graph_client.get("/me?$select=displayName,userPrincipalName,id")
+            log.info(
+                "Acting as: %s (%s)",
+                me.get("displayName"), me.get("userPrincipalName"),
+            )
+        except Exception as e:
+            log.warning("Could not read /me: %s", e)
         state_manager = StateManager(app, settings.telegram_chat_id)
         discovery_service = DiscoveryService(graph_client)
         scanner_service = ScannerService(graph_client, state_manager)
