@@ -52,6 +52,8 @@ jobs:
       SUBJECTS_JSON:        ${{ secrets.SUBJECTS_JSON }}
       SUBJECT_NAME:         ${{ github.event.inputs.subject || '' }}
       RUN_MODE:             ${{ github.event.inputs.mode || 'normal' }}
+      TEAMS_CLIENT_ID:      ${{ secrets.TEAMS_CLIENT_ID }}
+      TEAMS_TENANT_ID:      ${{ secrets.TEAMS_TENANT_ID }}
 
     steps:
       - name: Check Date (Silent before Sept 30)

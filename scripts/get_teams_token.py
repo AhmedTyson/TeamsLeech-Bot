@@ -11,11 +11,14 @@ Usage
     # Follow the browser prompts to authenticate.
 """
 
+import os
 import time
 import requests
 
-TENANT_ID = "common"
-CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"  # Azure CLI (public)
+TENANT_ID = os.getenv("TEAMS_TENANT_ID", "common")
+CLIENT_ID = os.getenv(
+    "TEAMS_CLIENT_ID", "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
+)  # Azure CLI (public) fallback; set to your own app registration's client ID
 SCOPE = "offline_access https://graph.microsoft.com/.default"
 
 

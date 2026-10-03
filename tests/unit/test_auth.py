@@ -58,6 +58,40 @@ class TestExchangeRefreshToken:
         with pytest.raises(TokenExchangeError, match="400"):
             await exchange_refresh_token()
 
+    async def test_custom_client_id_in_payload(self, mock_login_api, monkeypatch):
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(settings, "teams_client_id", "my-app-id")
+        route = mock_login_api.post(TOKEN_URL).respond(
+            200, json={"access_token": "at", "refresh_token": "rt"}
+        )
+        await exchange_refresh_token()
+        assert "my-app-id" in route.calls[0].request.content.decode()
+
+    async def test_empty_client_id_falls_back_to_default(
+        self, mock_login_api, monkeypatch
+    ):
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(settings, "teams_client_id", "")
+        route = mock_login_api.post(TOKEN_URL).respond(
+            200, json={"access_token": "at", "refresh_token": "rt"}
+        )
+        await exchange_refresh_token()
+        assert "04b07795-8ddb-461a-bbee-02f9e1bf7b46" in (
+            route.calls[0].request.content.decode()
+        )
+
+    async def test_custom_tenant_url(self, mock_login_api, monkeypatch):
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(settings, "teams_tenant_id", "tenant-123")
+        tenant_url = (
+            "https://login.microsoftonline.com/tenant-123/oauth2/v2.0/token"
+        )
+        mock_login_api.post(tenant_url).respond(
+            200, json={"access_token": "at", "refresh_token": "rt"}
+        )
+        access, _ = await exchange_refresh_token()
+        assert access == "at"
+
 
 class TestAuthenticateSharepoint:
     async def test_success_posts_sharepoint_scope(self, mock_login_api, mock_github_api):

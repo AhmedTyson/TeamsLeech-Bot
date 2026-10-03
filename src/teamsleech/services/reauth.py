@@ -5,15 +5,18 @@ import httpx
 from pyrogram import Client
 
 from teamsleech.core.config import settings
-from teamsleech.services.auth import SECRET_NAME, TENANT_ID, TOKEN_URL
+from teamsleech.services.auth import SECRET_NAME, client_id, device_code_url, token_url
 from teamsleech.services.github_secrets import rotate_github_secret
 
 log = logging.getLogger("reauth")
 
-DEVICE_CODE_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/devicecode"
 DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 REAUTH_SCOPE = "offline_access https://graph.microsoft.com/.default"
 MS_TIMEOUT = 30.0
+
+# Back-compat for tests importing module constants.
+DEVICE_CODE_URL = device_code_url()
+TOKEN_URL = token_url()
 
 
 class ReauthError(Exception):
@@ -24,8 +27,8 @@ async def request_device_code(scope: str = REAUTH_SCOPE) -> dict:
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                DEVICE_CODE_URL,
-                data={"client_id": settings.teams_client_id, "scope": scope},
+                device_code_url(),
+                data={"client_id": client_id(), "scope": scope},
                 timeout=MS_TIMEOUT,
             )
     except httpx.RequestError as exc:
@@ -48,9 +51,9 @@ async def poll_device_token(
                 raise ReauthError("Login timed out — rerun with mode=reauth.")
             try:
                 resp = await client.post(
-                    TOKEN_URL,
+                    token_url(),
                     data={
-                        "client_id": settings.teams_client_id,
+                        "client_id": client_id(),
                         "grant_type": DEVICE_GRANT,
                         "device_code": device_code,
                     },

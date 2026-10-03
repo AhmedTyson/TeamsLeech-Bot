@@ -17,11 +17,30 @@ class TokenExpiredError(TokenManagerError):
 class TokenExchangeError(TokenManagerError): 
     """Raised for non-expiry auth failures (network, bad response, etc.)."""
 
-TENANT_ID = "common"
-TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+DEFAULT_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"  # Azure CLI (public)
 SCOPE = "https://graph.microsoft.com/.default offline_access"
 SECRET_NAME = "TEAMS_REFRESH_TOKEN"
 MS_TIMEOUT = 30.0
+
+# Back-compat: tests and reauth import these names.
+TENANT_ID = "common"
+TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+
+
+def client_id() -> str:
+    return settings.teams_client_id or DEFAULT_CLIENT_ID
+
+
+def tenant_id() -> str:
+    return settings.teams_tenant_id or "common"
+
+
+def token_url() -> str:
+    return f"https://login.microsoftonline.com/{tenant_id()}/oauth2/v2.0/token"
+
+
+def device_code_url() -> str:
+    return f"https://login.microsoftonline.com/{tenant_id()}/oauth2/v2.0/devicecode"
 
 def sharepoint_scope(host: str) -> str:
     return f"https://{host}/.default offline_access"
@@ -29,7 +48,7 @@ def sharepoint_scope(host: str) -> str:
 @retry_http
 async def _post_token(payload: dict[str, str]) -> httpx.Response:
     async with httpx.AsyncClient() as client:
-        return await client.post(TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
+        return await client.post(token_url(), data=payload, timeout=MS_TIMEOUT)
 
 async def exchange_refresh_token(
     refresh_token: str | None = None,
@@ -40,7 +59,7 @@ async def exchange_refresh_token(
     """
     active_refresh = refresh_token or settings.teams_refresh_token
     payload = {
-        "client_id": settings.teams_client_id,
+        "client_id": client_id(),
         "grant_type": "refresh_token",
         "refresh_token": active_refresh,
         "scope": scope,
