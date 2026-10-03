@@ -78,6 +78,7 @@ def build_checklist_text(
     results: dict[str, list[Recording]],
     scan_label: str = "",
     rename_overrides: dict[int, str] | None = None,
+    doctors: dict[str, str] | None = None,
 ) -> str:
     total = sum(len(recs) for recs in results.values())
     if total == 0:
@@ -97,12 +98,14 @@ def build_checklist_text(
 
     idx = 0
     for subj_name, recs in results.items():
+        doctor = (doctors or {}).get(subj_name, "")
+        doctor_line = f"\n👨‍🏫 {doctor}" if doctor else ""
         if not recs:
             if is_multi:
-                lines.append(f"\n📚 **{subj_name}** — ✅ No new files")
+                lines.append(f"\n📚 **{subj_name}**{doctor_line} — ✅ No new files")
             continue
         if is_multi:
-            lines.append(f"\n📚 **{subj_name}**")
+            lines.append(f"\n📚 **{subj_name}**{doctor_line}")
             lines.append(DIVIDER_THIN)
         for rec in recs:
             lines.append(_format_recording_item(idx, rec, overrides.get(idx)))

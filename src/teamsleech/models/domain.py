@@ -20,6 +20,7 @@ class SubjectConfig(BaseModel):
     short: str = ""
     doctor: str = ""
     keywords: list[str] = Field(default_factory=list)
+    doctor_keywords: list[str] = Field(default_factory=list)
 
     model_config = {"extra": "ignore"}
 

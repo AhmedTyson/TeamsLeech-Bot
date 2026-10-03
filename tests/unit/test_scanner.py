@@ -127,6 +127,41 @@ class TestMatchTeams:
         assert len(matched) == 2
 
 
+class TestDoctorSubjectMatching:
+    def test_both_must_match(self, scanner):
+        subject = SubjectConfig(
+            name="DS", keywords=["data security"], doctor_keywords=["hany"]
+        )
+        teams = [
+            Team(id="1", display_name="Data Security - Dr Hany"),
+            Team(id="2", display_name="Data Security - Dr Soha"),
+        ]
+        matched = scanner._match_teams(teams, subject)
+        assert [t.id for t in matched] == ["1"]
+
+    def test_empty_doctor_keywords_matches_any_doctor(self, scanner):
+        subject = SubjectConfig(name="DS", keywords=["data security"])
+        teams = [
+            Team(id="1", display_name="Data Security - Dr Hany"),
+            Team(id="2", display_name="Data Security - Dr Soha"),
+        ]
+        assert len(scanner._match_teams(teams, subject)) == 2
+
+    def test_doctor_only_matching(self, scanner):
+        subject = SubjectConfig(name="DS", doctor_keywords=["soha"])
+        teams = [
+            Team(id="1", display_name="Data Security - Dr Hany"),
+            Team(id="2", display_name="Foreign Trade - Dr Soha"),
+        ]
+        matched = scanner._match_teams(teams, subject)
+        assert [t.id for t in matched] == ["2"]
+
+    def test_no_keywords_matches_nothing(self, scanner):
+        subject = SubjectConfig(name="DS")
+        teams = [Team(id="1", display_name="Anything 101")]
+        assert scanner._match_teams(teams, subject) == []
+
+
 class TestProcessTeam:
     async def test_no_site_id_returns_empty(self, scanner, sample_subject, sample_team):
         scanner.graph.get = AsyncMock(return_value={})

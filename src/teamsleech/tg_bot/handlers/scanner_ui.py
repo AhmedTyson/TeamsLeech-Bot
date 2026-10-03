@@ -110,7 +110,8 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         session.rename_overrides.clear()
         session.scan_label = label
 
-        text = build_checklist_text(results, label)
+        doctors = {s.name: s.doctor for s in scanner.load_subjects()}
+        text = build_checklist_text(results, label, doctors=doctors)
         keyboard = (
             build_checklist_keyboard(
                 session.pending_recordings, session.selected_indices

@@ -45,8 +45,10 @@ def register_upload_ui(
         if not session.pending_recordings:
             return
 
+        doctors = {s.name: s.doctor for s in scanner.load_subjects()}
         text = build_checklist_text(
-            session.grouped_recordings, session.scan_label, session.rename_overrides
+            session.grouped_recordings, session.scan_label, session.rename_overrides,
+            doctors=doctors,
         )
         keyboard = build_checklist_keyboard(
             session.pending_recordings,

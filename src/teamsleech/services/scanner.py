@@ -33,23 +33,34 @@ class ScannerService:
             log.error("Failed to read subjects file: %s", e)
             return []
 
+    def _match_keywords(self, name_lower: str, keywords: list[str]) -> bool:
+        for kw in keywords:
+            kw = kw.lower()
+            if kw.isalpha():
+                if re.search(rf"\b{re.escape(kw)}", name_lower):
+                    return True
+            else:
+                if kw in name_lower:
+                    return True
+        return False
+
     def _match_teams(
         self, all_teams: list[Team], subject: SubjectConfig
     ) -> list[Team]:
         matched = []
-        keywords = [kw.lower() for kw in subject.keywords]
-
         for team in all_teams:
             name_lower = team.display_name.lower()
-            for kw in keywords:
-                if kw.isalpha():
-                    if re.search(rf"\b{re.escape(kw)}", name_lower):
-                        matched.append(team)
-                        break
-                else:
-                    if kw in name_lower:
-                        matched.append(team)
-                        break
+            if subject.keywords and not self._match_keywords(
+                name_lower, subject.keywords
+            ):
+                continue
+            if subject.doctor_keywords and not self._match_keywords(
+                name_lower, subject.doctor_keywords
+            ):
+                continue
+            if not subject.keywords and not subject.doctor_keywords:
+                continue
+            matched.append(team)
         return matched
 
     async def _process_team(

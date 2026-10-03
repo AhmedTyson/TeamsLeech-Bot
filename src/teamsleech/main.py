@@ -101,7 +101,8 @@ def main():
                     session.pending_recordings = [r for recs in results.values() for r in recs]
                     session.scan_label = label
 
-                    text = build_checklist_text(results, label)
+                    doctors = {s.name: s.doctor for s in scanner_service.load_subjects()}
+                    text = build_checklist_text(results, label, doctors=doctors)
                     keyboard = build_checklist_keyboard(session.pending_recordings, session.selected_indices)
 
                     await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
