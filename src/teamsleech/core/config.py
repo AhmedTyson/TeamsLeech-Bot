@@ -26,6 +26,7 @@ class AppConfig(BaseSettings):
     
     # Internal Config
     subjects_json: str = Field("", alias="SUBJECTS_JSON")
+    subjects_url: str = Field("", alias="SUBJECTS_URL")
     subjects_path: str = Field("subjects_config.json", alias="SUBJECTS_PATH")
     state_dir: str = Field(".state", alias="STATE_DIR")
     

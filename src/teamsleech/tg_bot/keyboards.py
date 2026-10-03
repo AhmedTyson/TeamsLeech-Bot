@@ -121,7 +121,8 @@ def build_manage_dashboard(
     if row:
         buttons.append(row)
     buttons.append([
-        InlineKeyboardButton(text="➕ Add New", callback_data="mng:add")
+        InlineKeyboardButton(text="➕ Add New", callback_data="mng:add"),
+        InlineKeyboardButton(text="📤 Show JSON", callback_data="mng:show"),
     ])
     return "\n".join(lines), InlineKeyboardMarkup(buttons)
 

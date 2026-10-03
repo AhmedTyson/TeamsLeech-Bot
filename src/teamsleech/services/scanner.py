@@ -37,12 +37,20 @@ class ScannerService:
         self.state = state_manager
 
     def load_subjects(self) -> list[SubjectConfig]:
-        if settings.subjects_json:
+        from teamsleech.services.subjects_store import load_subjects_text
+
+        raw = ""
+        try:
+            raw = load_subjects_text()
+        except Exception as e:
+            log.error("Failed to load subjects store: %s", e)
+            return []
+        if raw.strip():
             try:
-                data = json.loads(settings.subjects_json)
+                data = json.loads(raw)
                 return [SubjectConfig(**s) for s in data.get("subjects", [])]
             except Exception as e:
-                log.error("Failed to parse SUBJECTS_JSON env var: %s", e)
+                log.error("Failed to parse subjects JSON: %s", e)
 
         try:
             with open(settings.subjects_path, encoding="utf-8") as f:

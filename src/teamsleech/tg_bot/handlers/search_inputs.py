@@ -11,7 +11,6 @@ from pyrogram.types import (
 
 from teamsleech.core.config import settings
 from teamsleech.models.domain import SubjectConfig, Team
-from teamsleech.services.auth import rotate_github_secret
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
@@ -79,13 +78,15 @@ def register_search_inputs(
     search_filter = filters.create(is_searching)
 
     async def _persist_subjects(existing) -> str:
+        from teamsleech.services.subjects_store import save_subjects_text_async
         json_str = json.dumps(
             {"subjects": [s.model_dump() for s in existing]}, indent=2
         )
-        await rotate_github_secret("SUBJECTS_JSON", json_str)
-        os.environ["SUBJECTS_JSON"] = json_str
-        settings.subjects_json = json_str
-        return json_str
+        source = await save_subjects_text_async(json_str)
+        if source == "secret":
+            os.environ["SUBJECTS_JSON"] = json_str
+            settings.subjects_json = json_str
+        return source
 
     def _detail_text(s) -> str:
         return (
@@ -175,20 +176,15 @@ def register_search_inputs(
         )
 
         await message.reply(
-            f"⏳ Saving `{new_subject.name}` to GitHub Secrets..."
+            f"⏳ Saving `{new_subject.name}`..."
         )
 
         scanner = ScannerService(discovery.graph, state)
         existing = scanner.load_subjects()
         existing.append(new_subject)
-        json_str = json.dumps(
-            {"subjects": [s.model_dump() for s in existing]}, indent=2
-        )
 
         try:
-            await rotate_github_secret("SUBJECTS_JSON", json_str)
-            os.environ["SUBJECTS_JSON"] = json_str
-            settings.subjects_json = json_str
+            source = await _persist_subjects(existing)
 
             rule_parts = []
             if new_subject.keywords:
@@ -199,13 +195,15 @@ def register_search_inputs(
                 )
             await message.reply(
                 f"✅ Success! **{new_subject.name}** is now"
-                " permanently configured and will be tracked automatically.\n"
+                f" permanently configured (saved to {source}) and will be"
+                " tracked automatically.\n"
                 f"Matches {' + '.join(rule_parts)}."
             )
         except Exception as e:
             await message.reply(
-                f"❌ Failed to save to GitHub Secrets: {e}\n\n"
-                "Make sure your GH_PAT is valid."
+                f"❌ Failed to save: {e}\n\n"
+                "Make sure your GH_PAT is valid (and has 'gist' scope"
+                " when using a gist)."
             )
 
         session.is_searching_teams = False
@@ -390,28 +388,22 @@ def register_search_inputs(
         subj_name = existing[idx].name
         existing.pop(idx)
 
-        json_str = json.dumps(
-            {"subjects": [s.model_dump() for s in existing]}, indent=2
-        )
-
-        await safe_edit_text(cb.message, 
-            f"⏳ Deleting `{subj_name}` from GitHub Secrets..."
+        await safe_edit_text(cb.message,
+            f"⏳ Deleting `{subj_name}`..."
         )
 
         try:
-            await rotate_github_secret("SUBJECTS_JSON", json_str)
-            os.environ["SUBJECTS_JSON"] = json_str
-            settings.subjects_json = json_str
+            await _persist_subjects(existing)
 
-            await safe_edit_text(cb.message, 
+            await safe_edit_text(cb.message,
                 f"✅ Success! **{subj_name}** has been permanently deleted."
             )
         except Exception as e:
-            await safe_edit_text(cb.message, 
-                f"❌ Failed to delete from GitHub Secrets: {e}"
+            await safe_edit_text(cb.message,
+                f"❌ Failed to delete: {e}"
             )
 
-        await cb.answer()
+        await safe_answer(cb)
 
     @app.on_callback_query(filters.regex(r"^add_team:") & owner_only)
     async def handle_add_team(client: Client, cb: CallbackQuery):
@@ -469,6 +461,22 @@ def register_search_inputs(
                 " your joined Teams.\n_Type `cancel` to exit._",
             )
             await cb.answer()
+            return
+
+        if action == "show":
+            from io import BytesIO
+            existing = _load_existing()
+            payload = json.dumps(
+                {"subjects": [s.model_dump() for s in existing]}, indent=2
+            ).encode("utf-8")
+            bio = BytesIO(payload)
+            bio.name = "subjects.json"
+            await cb.message.reply_document(
+                bio,
+                file_name="subjects.json",
+                caption="📤 Current subjects config — paste into your gist.",
+            )
+            await safe_answer(cb)
             return
 
         try:

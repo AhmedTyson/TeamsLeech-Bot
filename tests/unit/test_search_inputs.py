@@ -124,7 +124,7 @@ class TestAddSteps:
         session, _ = await send(rig, "Hany, Gouda")
         assert session.pending_add_step == "ask_doc_label"
         with patch(
-            "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+            "teamsleech.services.github_secrets.rotate_github_secret",
             AsyncMock(),
         ):
             session, msg = await send(rig, "same")
@@ -143,7 +143,7 @@ class TestAddSteps:
         await send(rig, "DSEC")
         await send(rig, "Data Security")
         with patch(
-            "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+            "teamsleech.services.github_secrets.rotate_github_secret",
             AsyncMock(),
         ):
             session, msg = await send(rig, "skip")
@@ -232,7 +232,7 @@ class TestManage:
         assert session.pending_edit_idx == 0
         assert session.pending_edit_field == "doctor"
         with patch(
-            "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+            "teamsleech.services.github_secrets.rotate_github_secret",
             AsyncMock(),
         ):
             session, msg = await send(rig, "Dr New")
@@ -249,7 +249,7 @@ class TestManage:
             await handlers_cb["handle_manage"](MagicMock(), make_cb("mng:del:1"))
             assert "Delete **FT**" in mock_edit.await_args.args[1]
             with patch(
-                "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+                "teamsleech.services.github_secrets.rotate_github_secret",
                 AsyncMock(),
             ):
                 await handlers_cb["handle_manage"](
