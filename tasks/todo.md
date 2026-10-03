@@ -317,6 +317,16 @@ every config is format-valid. The Farmawy zero-match is a wrong-team reference
 (not a format problem): fix = pick the right team name from its `💡 maybe you
 meant` list via manage UI edit.
 
+## A8: Same-name subjects overwrote each other — FIXED (`5c67152`)
+
+**Finding:** `results["Project 1"]` kept only the LAST doctor's list; the
+doctors map did the same (both DS sections showed Hany; Soha's 2 files
+vanished). Your "2 then 0" contradiction exactly.
+**Fix:** results/results-maps/recordings keyed by unique short code;
+duplicate shorts rejected at add/edit and flagged in verify.
+**Live verify `37155281270`:** `DSS - Soha: 2 recordings` present; every
+doctor on its own line with short code; zero cross-matches. 195 tests pass.
+
 ## Checkpoint: Audit complete
 - [x] Team drives audited: ~22 .mp4, no truncation, no index gap (verify 19:26, 19:31)
 - [x] No Recordings folders — files live in Documents roots (verify 19:31)
