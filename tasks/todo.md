@@ -117,8 +117,9 @@
 - [ ] Outcome recorded: success, Graph-side error, or SharePoint-side error
 
 **Verification:**
-- [ ] Actions log line for `Downloading: <name>` + `Graph redirect ...` captured
-- [ ] Telegram result (`Upload complete` vs `failed: ...`) captured
+- [x] Actions log line for `Downloading: <name>` + `Graph redirect ...` captured
+- [x] Telegram result (`Upload complete` vs `failed: ...`) captured
+- [x] 2026-10-03 run: `aud=00000003-0000-0ff1-ce00-000000000000 scp=user_impersonation` (correct SP audience) yet REST `$value` + `download.aspx` both `401` with user Bearer → tenant-side deny proven, not code
 
 **Dependencies:** Task 5
 
