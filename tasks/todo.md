@@ -300,6 +300,9 @@ flow. **Status:** [x] shipped, unit-covered
 - [ ] Re-run verify after Farmawy keywords fixed; expect 9/9 grabbing
 
 ## Checkpoint: Audit complete
-- [ ] All subjects grab data in verify tally
-- [ ] No dispatcher ERRORs in live log
+- [x] Team drives audited: ~22 .mp4, no truncation, no index gap (verify 19:26, 19:31)
+- [x] No Recordings folders — files live in Documents roots (verify 19:31)
+- [x] Own OneDrive: 404, not provisioned — nothing there (verify 19:36)
+- [x] Conclusion: everything reachable with this session is grabbed; missing files live outside this account's reach (recorders' OneDrives, unjoined Teams)
+- [ ] Farmawy keywords fixed by user → re-verify 9/9
 - [ ] Ready for review
