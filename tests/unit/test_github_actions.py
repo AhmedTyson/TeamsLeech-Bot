@@ -8,7 +8,6 @@ from teamsleech.services.github_actions import (
     _get_headers,
     cancel_run,
     get_active_runs,
-    trigger_workflow,
 )
 
 
@@ -29,25 +28,6 @@ def test_get_headers_missing_pat(mock_settings):
     mock_settings.gh_pat = ""
     with pytest.raises(ValueError, match="GH_PAT is not configured."):
         _get_headers()
-
-@pytest.mark.asyncio
-async def test_trigger_workflow_success(respx_mock, mock_settings):
-    url = f"{GH_API_BASE}/repos/fake/repo/actions/workflows/bot-runner.yml/dispatches"
-    route = respx_mock.post(url).mock(return_value=httpx.Response(204))
-    
-    await trigger_workflow()
-    
-    assert route.called
-    request = route.calls.last.request
-    assert request.headers["Authorization"] == "Bearer fake_pat"
-    import json
-    assert json.loads(request.content) == {"ref": "main"}
-
-@pytest.mark.asyncio
-async def test_trigger_workflow_missing_repo(mock_settings):
-    mock_settings.github_repository = ""
-    with pytest.raises(ValueError, match="GITHUB_REPOSITORY is not configured."):
-        await trigger_workflow()
 
 @pytest.mark.asyncio
 async def test_get_active_runs_success(respx_mock, mock_settings):

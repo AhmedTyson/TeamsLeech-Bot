@@ -81,3 +81,14 @@ def register_commands(
 
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
         await message.reply("\n".join(msg_lines), reply_markup=reply_markup)
+
+    @app.on_message(
+        (filters.command("runner") | filters.regex("^⚙️ Background Runner$"))
+        & filters.private
+        & owner_only
+    )
+    async def handle_runner_removed(client: Client, message: Message):
+        await message.reply(
+            "⚙️ Runner panel removed. Runs start on schedule or manual dispatch"
+            " in GitHub. To stop one, use 🛑 Cancel Workflow."
+        )

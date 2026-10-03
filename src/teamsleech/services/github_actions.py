@@ -20,22 +20,6 @@ def _get_headers() -> dict[str, str]:
     }
 
 @retry_http
-async def trigger_workflow(workflow_id: str = "bot-runner.yml", ref: str = "main") -> None:
-    if not settings.github_repository:
-        raise ValueError("GITHUB_REPOSITORY is not configured.")
-        
-    url = f"{GH_API_BASE}/repos/{settings.github_repository}/actions/workflows/{workflow_id}/dispatches"
-    
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            url, 
-            headers=_get_headers(), 
-            json={"ref": ref}, 
-            timeout=GH_TIMEOUT
-        )
-        resp.raise_for_status()
-
-@retry_http
 async def get_active_runs() -> list[dict]:
     if not settings.github_repository:
         raise ValueError("GITHUB_REPOSITORY is not configured.")
