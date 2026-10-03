@@ -166,3 +166,27 @@
 **Files likely touched:** none (tenant admin UI; code unchanged unless scope string moves, then `src/teamsleech/services/auth.py`)
 
 **Estimated scope:** Small (config only)
+
+## Task 9: Adopt cookie download (proven Oct 2 path)
+
+**Description:** Port the `state`-branch cookie downloader into the main bot: `SP_COOKIES_JSON` secret → `cookies.py` parser → first download candidate per file. User exports browser cookies once (Cookie-Editor JSON), no portal/admin needed.
+
+**Acceptance criteria:**
+- [x] `cookies.py` parses EditThisCookie JSON, `[]` on empty/invalid
+- [x] Cookie candidate tried first when configured; stale cookies fall through with re-export hint
+- [x] 161/161 unit tests pass, ruff clean
+
+**Verification:**
+- [x] `pytest tests/unit/test_cookies.py tests/unit/test_transfer.py` → 41 passed
+- [x] `pytest tests/unit -q` → 161 passed
+- [ ] `SP_COOKIES_JSON` secret created by user; live download retested
+
+**Dependencies:** Task 6
+
+**Files likely touched:**
+- `src/teamsleech/services/cookies.py` (new)
+- `src/teamsleech/services/transfer.py`
+- `src/teamsleech/core/config.py`
+- `.github/workflows/bot-runner.yml`, `.env.example`, `docs/cookie-download.md`
+
+**Estimated scope:** Small (3–4 files)

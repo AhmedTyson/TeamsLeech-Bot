@@ -12,6 +12,7 @@ class AppConfig(BaseSettings):
     teams_refresh_token: str = Field(..., alias="TEAMS_REFRESH_TOKEN")
     teams_client_id: str = Field("04b07795-8ddb-461a-bbee-02f9e1bf7b46", alias="TEAMS_CLIENT_ID")
     teams_tenant_id: str = Field("common", alias="TEAMS_TENANT_ID")
+    sp_cookies_json: str = Field("", alias="SP_COOKIES_JSON")
     
     # Telegram Bot
     telegram_api_id: int = Field(..., alias="TELEGRAM_API_ID")

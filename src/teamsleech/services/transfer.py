@@ -14,10 +14,12 @@ from pyrogram.errors import BadRequest, RPCError
 from pyrogram.types import Message
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
+from teamsleech.core.config import settings
 from teamsleech.core.constants import CHUNK_SIZE_BYTES, GRAPH_BASE_URL
 from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import Recording
 from teamsleech.services.auth import authenticate_sharepoint
+from teamsleech.services.cookies import cookie_header, load_cookies
 from teamsleech.services.graph import GraphClient
 from teamsleech.services.state import StateManager
 
@@ -147,13 +149,25 @@ class TransferService:
     def _download_candidates(
         self, download_url: str, sp_token: str | None
     ) -> list[tuple[str, str, dict[str, str] | None]]:
-        """Ordered (label, url, headers) attempts. REST $value honors AAD
-        Bearer; legacy download.aspx may demand session cookies."""
+        """Ordered (label, url, headers) attempts. Browser cookies first —
+        proven path (same session as a working browser); token endpoints
+        after; anonymous last."""
+        candidates = []
+        cookies = load_cookies(settings.sp_cookies_json)
+        if cookies:
+            candidates.append(
+                (
+                    "download.aspx (browser cookies)",
+                    download_url,
+                    {"Cookie": cookie_header(cookies)},
+                )
+            )
+
         bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
         if not sp_token:
-            return [("download.aspx (anonymous)", download_url, None)]
+            candidates.append(("download.aspx (anonymous)", download_url, None))
+            return candidates
 
-        candidates = []
         parts = urlsplit(download_url)
         unique_id = parse_qs(parts.query).get("UniqueId", [None])[0]
         marker = "/_layouts/15/download.aspx"
@@ -260,13 +274,26 @@ class TransferService:
                     failures.append(f"{label} ({exc})")
                     log.warning("%s errored for %s: %s", label, rec.name, exc)
                     continue
-            hint = (
-                "user-context token denied on REST + download.aspx — account"
-                " lacks download rights or Block-Download policy applies"
-                if sp_token
-                else "check Conditional Access / Block-Download"
-                " policy / site permissions for the service account"
+            cookies_tried = any(
+                f.startswith("download.aspx (browser cookies)") for f in failures
             )
+            if cookies_tried:
+                hint = (
+                    "browser cookies rejected too — session expired,"
+                    " re-export SP_COOKIES_JSON from a logged-in browser"
+                )
+            elif sp_token:
+                hint = (
+                    "user-context token denied on REST + download.aspx — account"
+                    " lacks download rights or Block-Download policy applies;"
+                    " set SP_COOKIES_JSON for the proven cookie path"
+                )
+            else:
+                hint = (
+                    "check Conditional Access / Block-Download"
+                    " policy / site permissions for the service account;"
+                    " set SP_COOKIES_JSON for the proven cookie path"
+                )
             raise DownloadError(
                 f"SharePoint download failed for {rec.name}"
                 f" ({' ; '.join(failures)}): {hint}."

@@ -54,6 +54,7 @@ jobs:
       RUN_MODE:             ${{ github.event.inputs.mode || 'normal' }}
       TEAMS_CLIENT_ID:      ${{ secrets.TEAMS_CLIENT_ID }}
       TEAMS_TENANT_ID:      ${{ secrets.TEAMS_TENANT_ID }}
+      SP_COOKIES_JSON:      ${{ secrets.SP_COOKIES_JSON }}
 
     steps:
       - name: Check Date (Silent before Sept 30)

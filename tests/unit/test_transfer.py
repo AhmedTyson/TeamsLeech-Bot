@@ -350,6 +350,87 @@ class TestDownloadRecording:
             await transfer_service._download_recording(rec, dest)
         assert mock_sp.await_count == 1
 
+    async def test_cookies_tried_first_when_configured(
+        self, transfer_service, sample_recordings, tmp_path, monkeypatch
+    ):
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(
+            settings, "sp_cookies_json", '[{"name": "FedAuth", "value": "abc"}]'
+        )
+        chunk = b"x" * 1024
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_client = self._mock_client(
+                mock_cls,
+                graph_resp=self._graph_redirect(),
+                dl_resp=self._dl_resp(chunk),
+            )
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        first_call = mock_client.stream.call_args_list[0]
+        assert "download.aspx" in first_call.args[1]
+        assert first_call.kwargs["headers"] == {"Cookie": "FedAuth=abc"}
+
+    async def test_stale_cookies_fall_through_to_anonymous(
+        self, transfer_service, sample_recordings, tmp_path, monkeypatch
+    ):
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(
+            settings, "sp_cookies_json", '[{"name": "FedAuth", "value": "stale"}]'
+        )
+        chunk = b"x" * 1024
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        dl_url = "https://tenant.sharepoint.com/sites/x/_layouts/15/download.aspx?UniqueId=abc"
+        request = httpx.Request("GET", dl_url)
+        err401 = httpx.HTTPStatusError(
+            "Client error '401'",
+            request=request,
+            response=httpx.Response(401, request=request),
+        )
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_client = self._mock_client(
+                mock_cls, graph_resp=self._graph_redirect(location=dl_url)
+            )
+            mock_client.stream = MagicMock(
+                side_effect=[
+                    self._dl_resp(status_error=err401),
+                    self._dl_resp(chunk),
+                ]
+            )
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        assert mock_client.stream.call_count == 2
+        second_call = mock_client.stream.call_args_list[1]
+        assert second_call.kwargs.get("headers") is None
+
+    async def test_cookie_failure_hint_mentions_reexport(
+        self, transfer_service, sample_recordings, tmp_path, monkeypatch
+    ):
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(
+            settings, "sp_cookies_json", '[{"name": "FedAuth", "value": "stale"}]'
+        )
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        dl_url = "https://tenant.sharepoint.com/sites/x/_layouts/15/download.aspx?UniqueId=abc"
+        request = httpx.Request("GET", dl_url)
+        err401 = httpx.HTTPStatusError(
+            "Client error '401'",
+            request=request,
+            response=httpx.Response(401, request=request),
+        )
+        with patch("httpx.AsyncClient") as mock_cls:
+            self._mock_client(
+                mock_cls, graph_resp=self._graph_redirect(location=dl_url)
+            )
+            mock_cls.return_value.__aenter__.return_value.stream = MagicMock(
+                side_effect=lambda *a, **k: self._dl_resp(status_error=err401)
+            )
+            with pytest.raises(DownloadError, match="re-export SP_COOKIES_JSON"):
+                await transfer_service._download_recording(rec, dest)
+
 
 class TestUploadToTelegram:
     async def test_upload_document(self, transfer_service, sample_recordings):
