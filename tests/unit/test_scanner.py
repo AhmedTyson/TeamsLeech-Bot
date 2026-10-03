@@ -209,6 +209,29 @@ class TestDriveStats:
         assert await scanner.team_drives(sample_team) == []
 
 
+class TestRecordingsFolderStats:
+    async def test_counts_mp4_and_nextlink(self, scanner):
+        scanner.graph.get = AsyncMock(return_value={
+            "value": [
+                {"name": "a.mp4"},
+                {"name": "b.MP4"},
+                {"name": "notes.pdf"},
+            ],
+            "@odata.nextLink": "https://graph/next",
+        })
+        assert await scanner.drive_recordings_folder_stats("d1") == (
+            "ok", 2, True,
+        )
+
+    async def test_no_folder(self, scanner):
+        scanner.graph.get = AsyncMock(
+            side_effect=GraphAPIError("Graph API GET error [404]: not found")
+        )
+        assert await scanner.drive_recordings_folder_stats("d1") == (
+            "no-folder", 0, False,
+        )
+
+
 class TestProcessTeam:
     async def test_no_site_id_returns_empty(self, scanner, sample_subject, sample_team):
         scanner.graph.get = AsyncMock(return_value={})

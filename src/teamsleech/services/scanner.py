@@ -111,6 +111,26 @@ class ScannerService:
         data = await self.graph.get(f"/drives/{drive_id}/root/search(q='.mp4')")
         return len(data.get("value", [])), "@odata.nextLink" in data
 
+    async def drive_recordings_folder_stats(
+        self, drive_id: str
+    ) -> tuple[str, int, bool]:
+        """Enumerate the Recordings folder directly (bypasses search index).
+        Returns (status, mp4_count, truncated). Status: ok | no-folder | error."""
+        try:
+            data = await self.graph.get(
+                f"/drives/{drive_id}/root:/Recordings:/children"
+                "?$top=200&$select=name,file"
+            )
+        except GraphAPIError as e:
+            if "404" in str(e):
+                return "no-folder", 0, False
+            return f"error: {e}", 0, False
+        items = data.get("value", [])
+        n_mp4 = sum(
+            1 for i in items if str(i.get("name", "")).lower().endswith(".mp4")
+        )
+        return "ok", n_mp4, "@odata.nextLink" in data
+
     async def _process_team(
         self,
         team: Team,

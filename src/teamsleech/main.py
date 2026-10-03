@@ -96,6 +96,18 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
                     f"   - {team.display_name} / {drive.get('name')}:"
                     f" {count} hits{flag}"
                 )
+                try:
+                    status, n_mp4, more = await scanner.drive_recordings_folder_stats(
+                        drive["id"]
+                    )
+                except Exception as e:
+                    lines.append(f"      folder check failed: {e}")
+                    continue
+                more_flag = " (+more pages!)" if more else ""
+                lines.append(
+                    f"      📁 Recordings folder: {status},"
+                    f" {n_mp4} .mp4{more_flag}"
+                )
 
     text = "\n".join(lines)
     log.info("Verify report:\n%s", text)
