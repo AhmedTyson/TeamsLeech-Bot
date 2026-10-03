@@ -319,3 +319,36 @@ meant` list via manage UI edit.
 - [x] Conclusion: everything reachable with this session is grabbed; missing files live outside this account's reach (recorders' OneDrives, unjoined Teams)
 - [ ] Farmawy keywords fixed by user → re-verify 9/9
 - [ ] Ready for review
+
+---
+
+# Phase 11: Keyword audit + auto-repair (spec: tasks/phases/phase-11-keyword-audit-repair.md)
+
+**Description:** Bot shows and fixes its own `SUBJECTS_JSON` (secret,
+unreadable to humans): verify prints every subject's keywords + flags +
+suggestions; new `mode=repair` safely ADDS missing team-name keywords and
+re-saves; team search matches normalized text too.
+
+**Acceptance criteria:**
+- [ ] Verify lists all keyword lists + self-match status per subject
+- [ ] Repair converts zero-match subjects to matched, never deletes user keywords
+- [ ] Normalized team search finds spaceless names
+- [ ] Full suite green + live verify/repair runs
+
+**Verification:**
+- [ ] Unit: audit flags, repair diff, normalized search
+- [ ] Live `mode=verify` then `mode=repair` then verify again → 9/9 grabbing
+
+**Dependencies:** A1–A7 done
+
+**Files likely touched:**
+- `src/teamsleech/main.py` (verify report + repair mode)
+- `src/teamsleech/services/scanner.py` (repair helper)
+- `src/teamsleech/services/discovery.py` (normalized search)
+- `.github/workflows/bot-runner.yml` (repair option)
+
+**Estimated scope:** Medium (4–5 files)
+
+## Checkpoint: Complete
+- [ ] 9/9 subjects grabbing in live tally
+- [ ] Ready for review
