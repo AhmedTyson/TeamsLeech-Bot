@@ -299,6 +299,19 @@ flow. **Status:** [x] shipped, unit-covered
 - [x] Implemented (`f169a2d`), live 18:43 run: 8 subjects grab (4+5, 1+0, 6+8…), 1 zero-team (→A2)
 - [ ] Re-run verify after Farmawy keywords fixed; expect 9/9 grabbing
 
+## A7: Keyword system rebuilt + validated live
+
+**Rebuild (`b18430a`, 184 tests pass):**
+- Matcher ignores <3-char keywords (`L4` matched every team before)
+- Add/edit flows reject short/generic keywords with explicit messages
+- Add flow self-check: keywords must match the picked team itself, else redo
+- Verify flags invalid configs per subject (`⚠️ config: …`)
+
+**Live verify `37150720855`:** zero `config:` flags across all 9 subjects —
+every config is format-valid. The Farmawy zero-match is a wrong-team reference
+(not a format problem): fix = pick the right team name from its `💡 maybe you
+meant` list via manage UI edit.
+
 ## Checkpoint: Audit complete
 - [x] Team drives audited: ~22 .mp4, no truncation, no index gap (verify 19:26, 19:31)
 - [x] No Recordings folders — files live in Documents roots (verify 19:31)
