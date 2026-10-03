@@ -167,6 +167,47 @@ class TestProcessTeam:
         )
         assert recordings == []
 
+    def _old_item(self):
+        return {
+            "id": "old1",
+            "name": "old-lecture.mp4",
+            "createdDateTime": "2020-05-01T10:00:00Z",
+            "size": 1024,
+            "video": {"duration": 1000},
+        }
+
+    def _graph_side_effect_old_item(self):
+        empty = {"value": []}
+        return [
+            {"id": "site1"},
+            {"value": [{"id": "d1"}]},
+            {"value": [self._old_item()]},
+            empty, empty, empty, empty, empty, empty, empty, empty,
+        ]
+
+    async def test_last_run_filters_old_recordings(self, scanner, sample_subject, sample_team):
+        scanner.graph.get = AsyncMock(
+            side_effect=self._graph_side_effect_old_item()
+        )
+        recordings = await scanner._process_team(
+            sample_team, sample_subject,
+            datetime(2024, 1, 1, tzinfo=UTC),
+            None, None, set(),
+        )
+        assert recordings == []
+
+    async def test_ignore_last_run_includes_old_recordings(self, scanner, sample_subject, sample_team):
+        scanner.graph.get = AsyncMock(
+            side_effect=self._graph_side_effect_old_item()
+        )
+        recordings = await scanner._process_team(
+            sample_team, sample_subject,
+            datetime(2024, 1, 1, tzinfo=UTC),
+            None, None, set(), True,
+        )
+        assert len(recordings) == 1
+        assert recordings[0].name == "old-lecture.mp4"
+
 
 class TestScanRecordings:
     async def test_scan_no_subjects(self, scanner, monkeypatch):
@@ -243,3 +284,45 @@ class TestScanRecordings:
             scanner._match_teams = lambda teams, subject: []
             result = await scanner.scan_recordings()
         assert result == {"Math": []}
+
+    async def test_scan_forwards_ignore_last_run(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps({
+                "subjects": [
+                    {"name": "Math", "short": "MTH", "keywords": ["math"]},
+                ]
+            }),
+        )
+        team = Team(id="t1", display_name="Math Group")
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(
+                return_value=[team]
+            )
+            with patch.object(
+                scanner, "_process_team", AsyncMock(return_value=[])
+            ) as mock_process:
+                await scanner.scan_recordings(ignore_last_run=True)
+        mock_process.assert_awaited_once()
+        assert mock_process.await_args.args[6] is True
+
+    async def test_scan_defaults_to_last_run_filter(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps({
+                "subjects": [
+                    {"name": "Math", "short": "MTH", "keywords": ["math"]},
+                ]
+            }),
+        )
+        team = Team(id="t1", display_name="Math Group")
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(
+                return_value=[team]
+            )
+            with patch.object(
+                scanner, "_process_team", AsyncMock(return_value=[])
+            ) as mock_process:
+                await scanner.scan_recordings()
+        mock_process.assert_awaited_once()
+        assert mock_process.await_args.args[6] is False

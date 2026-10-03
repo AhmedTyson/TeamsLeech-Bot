@@ -60,6 +60,7 @@ class ScannerService:
         date_start: str | None,
         date_end: str | None,
         seen_ids: set[str],
+        ignore_last_run: bool = False,
     ) -> list[Recording]:
         recordings = []
 
@@ -135,14 +136,15 @@ class ScannerService:
                         if created_date_only != date_start:
                             continue
                 else:
-                    try:
-                        created_dt = datetime.fromisoformat(
-                            created_str.replace("Z", "+00:00")
-                        )
-                        if created_dt <= last_run:
+                    if not ignore_last_run:
+                        try:
+                            created_dt = datetime.fromisoformat(
+                                created_str.replace("Z", "+00:00")
+                            )
+                            if created_dt <= last_run:
+                                continue
+                        except ValueError:
                             continue
-                    except ValueError:
-                        continue
 
                 size_bytes = item.get("size", 0)
                 duration_ms = item.get("video", {}).get("duration", 0)
@@ -172,6 +174,7 @@ class ScannerService:
         subject_filter: str | None = None,
         date_start: str | None = None,
         date_end: str | None = None,
+        ignore_last_run: bool = False,
     ) -> dict[str, list[Recording]]:
         subjects = self.load_subjects()
 
@@ -222,6 +225,7 @@ class ScannerService:
                     _date_start=date_start,
                     _date_end=date_end,
                     _seen_ids=seen_ids,
+                    _ignore_last_run=ignore_last_run,
                 ):
                     async with _sem:
                         return await self._process_team(
@@ -231,6 +235,7 @@ class ScannerService:
                             _date_start,
                             _date_end,
                             _seen_ids,
+                            _ignore_last_run,
                         )
 
                 tasks = [bounded_process(t) for t in matched_teams]

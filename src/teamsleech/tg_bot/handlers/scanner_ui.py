@@ -93,10 +93,11 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         date_start: str | None,
         date_end: str | None,
         label: str,
+        ignore_last_run: bool = False,
     ):
         try:
             results = await scanner.scan_recordings(
-                subject_filter, date_start, date_end
+                subject_filter, date_start, date_end, ignore_last_run
             )
         except Exception as e:
             await client.send_message(chat_id, f"❌ Fetch error: {e}")
@@ -188,7 +189,8 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
                 f" — {label}...",
             )
             await run_scan_and_reply(
-                client, chat_id, session.subject_filter, None, None, label
+                client, chat_id, session.subject_filter, None, None, label,
+                ignore_last_run=True,
             )
             return
 
