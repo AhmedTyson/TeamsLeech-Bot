@@ -247,9 +247,8 @@ def register_upload_ui(
             elif action == "error":
                 name = data.get("name", "file")
                 err = data.get("error", "unknown")
-                await safe_edit_text(
-                    progress_msg,
-                    f"{progress_msg.text}\n❌ `{name}` failed: {err}",
+                await cb.message.reply(
+                    f"❌ `{name}` failed:\n{err}",
                 )
 
         try:
