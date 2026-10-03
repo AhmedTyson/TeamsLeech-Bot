@@ -1,0 +1,188 @@
+# TEMPORARY probe — delete after verdict. Manual dispatch only.
+# A: capture 401 body/headers of bare download.aspx GET.
+# B: createLink (view/anonymous) for one mp4, bare range-download via share,
+#    then delete the link. C: compare downloadUrl property host.
+# Prints shapes/statuses/error text ONLY. No tokens, no URLs.
+name: Link probe (temporary)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    env:
+      TEAMS_REFRESH_TOKEN: ${{ secrets.TEAMS_REFRESH_TOKEN }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SUBJECTS_JSON: ${{ secrets.SUBJECTS_JSON }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      - name: Probe 401 body + sharing link
+        run: |
+          cat > /tmp/link_probe.py <<'PYEOF'
+          """Temporary: A) 401 body/headers, B) createLink+baredownload+cleanup."""
+          import asyncio
+          import base64
+          import sys
+          from urllib.parse import parse_qsl, urlparse
+
+          import httpx
+
+          sys.path.insert(0, "src")
+          from teamsleech.core.constants import GRAPH_BASE_URL
+          from teamsleech.services.auth import authenticate
+
+
+          def shape(url: str) -> str:
+              p = urlparse(url or "")
+              keys = sorted({k for k, _ in parse_qsl(p.query)})
+              return f"host={p.hostname} query_keys={keys}"
+
+
+          async def main() -> None:
+              token = await authenticate()  # rotates secret like a normal run
+              print("PROBE: token OK", flush=True)
+              auth = {"Authorization": f"Bearer {token}"}
+              async with httpx.AsyncClient(timeout=30.0) as client:
+                  teams = (
+                      await client.get(
+                          f"{GRAPH_BASE_URL}/me/joinedTeams", headers=auth
+                      )
+                  ).json()["value"]
+                  found = None
+                  for team in teams:
+                      site = (
+                          await client.get(
+                              f"{GRAPH_BASE_URL}/groups/{team['id']}/sites/root",
+                              headers=auth,
+                          )
+                      ).json()
+                      if not site.get("id"):
+                          continue
+                      drives = (
+                          await client.get(
+                              f"{GRAPH_BASE_URL}/sites/{site['id']}/drives",
+                              headers=auth,
+                          )
+                      ).json().get("value", [])
+                      for drive in drives:
+                          res = (
+                              await client.get(
+                                  f"{GRAPH_BASE_URL}/drives/{drive['id']}"
+                                  "/root/search(q='.mp4')",
+                                  headers=auth,
+                              )
+                          ).json()
+                          for item in res.get("value", []):
+                              if item.get("name", "").lower().endswith(".mp4"):
+                                  found = (drive["id"], item["id"], item["name"])
+                                  break
+                          if found:
+                              break
+                      if found:
+                          break
+                  if not found:
+                      print("PROBE: no mp4 found")
+                      return
+                  drive_id, item_id, name = found
+                  print(f"PROBE: item={name[:60]}", flush=True)
+
+                  # C: downloadUrl property shape (free comparison)
+                  meta = (
+                      await client.get(
+                          f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}"
+                          "?$select=id,name,@microsoft.graph.downloadUrl",
+                          headers=auth,
+                      )
+                  ).json()
+                  print(
+                      f"PROBE: downloadUrl {shape(meta.get('@microsoft.graph.downloadUrl', ''))}",
+                      flush=True,
+                  )
+
+                  # A: /content redirect + bare GET body/headers
+                  r1 = await client.get(
+                      f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/content",
+                      headers=auth,
+                      follow_redirects=False,
+                  )
+                  loc = r1.headers.get("location", "")
+                  print(
+                      f"PROBE: content status={r1.status_code} location={shape(loc)}",
+                      flush=True,
+                  )
+                  if loc:
+                      r2 = await client.get(loc)
+                      www = r2.headers.get("www-authenticate", "none")
+                      print(
+                          f"PROBE: bare status={r2.status_code} "
+                          f"www_auth={www[:120]} body={r2.text[:300]!r}",
+                          flush=True,
+                      )
+
+                  # B: createLink anonymous view
+                  link_resp = await client.post(
+                      f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}"
+                      "/createLink",
+                      headers=auth,
+                      json={"type": "view", "scope": "anonymous"},
+                  )
+                  print(f"PROBE: createLink status={link_resp.status_code}", flush=True)
+                  if link_resp.status_code not in (200, 201):
+                      print(
+                          f"PROBE: createLink body={link_resp.text[:300]!r}",
+                          flush=True,
+                      )
+                      return
+                  perm = link_resp.json()
+                  web_url = perm.get("link", {}).get("webUrl", "")
+                  print(f"PROBE: link {shape(web_url)}", flush=True)
+                  share_id = "u!" + base64.urlsafe_b64encode(
+                      web_url.encode()
+                  ).decode().rstrip("=")
+                  r3 = await client.get(
+                      f"{GRAPH_BASE_URL}/shares/{share_id}/content",
+                      headers={"Range": "bytes=0-0"},
+                  )
+                  print(
+                      f"PROBE: share range status={r3.status_code} "
+                      f"bytes={len(r3.content)}",
+                      flush=True,
+                  )
+                  perm_id = perm.get("id", "")
+                  if perm_id:
+                      d = await client.delete(
+                          f"{GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}"
+                          f"/permissions/{perm_id}",
+                          headers=auth,
+                      )
+                      print(f"PROBE: link cleanup status={d.status_code}", flush=True)
+
+
+          asyncio.run(main())
+          PYEOF
+          PYTHONPATH=src uv run python /tmp/link_probe.py
