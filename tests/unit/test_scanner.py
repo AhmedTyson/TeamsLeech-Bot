@@ -166,6 +166,29 @@ class TestDoctorSubjectMatching:
         assert scanner._match_teams(teams, subject) == []
 
 
+class TestSuggestTeams:
+    def test_suggests_token_overlap(self, scanner):
+        subject = SubjectConfig(
+            name="Finance", short="FIN", doctor="Abdelrahman",
+            keywords=["finance"], doctor_keywords=["xyzzy"],
+        )
+        teams = [
+            Team(id="1", display_name="BIS-Finance-Dr.Abdelrahman-L4"),
+            Team(id="2", display_name="BIS-Marketing-Dr.Sara-L4"),
+        ]
+        suggestions = scanner.suggest_teams(subject, teams)
+        assert [t.id for t in suggestions] == ["1"]
+
+    def test_no_overlap_no_suggestions(self, scanner):
+        subject = SubjectConfig(name="Q", keywords=["qqq"])
+        teams = [Team(id="1", display_name="Unrelated Team Name")]
+        assert scanner.suggest_teams(subject, teams) == []
+
+    def test_empty_subject_no_suggestions(self, scanner):
+        teams = [Team(id="1", display_name="Anything")]
+        assert scanner.suggest_teams(SubjectConfig(name="X"), teams) == []
+
+
 class TestProcessTeam:
     async def test_no_site_id_returns_empty(self, scanner, sample_subject, sample_team):
         scanner.graph.get = AsyncMock(return_value={})

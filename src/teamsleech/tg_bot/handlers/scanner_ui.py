@@ -14,7 +14,7 @@ from pyrogram.types import (
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
-from teamsleech.tg_bot.handlers import safe_edit_text
+from teamsleech.tg_bot.handlers import safe_answer, safe_edit_text
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
 from teamsleech.tg_bot.views import build_checklist_text, format_date_short, videos_first
 
@@ -132,6 +132,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         if subject_key == "__ALL__":
             label = "All Recordings"
+            await safe_answer(cb, "Starting scan...")
             await safe_edit_text(
                 cb.message,
                 f"🔍 Scanning **all subjects** — {label}...",
@@ -139,7 +140,6 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             await run_scan_and_reply(
                 client, chat_id, None, None, None, label
             )
-            await cb.answer()
         else:
             session.date_input_pending = True
             session.subject_filter = subject_key

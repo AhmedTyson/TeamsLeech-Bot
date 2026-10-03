@@ -14,6 +14,14 @@ async def safe_edit_text(message: Message, text: str, **kwargs) -> None:
     except MessageNotModified:
         pass
 
+
+async def safe_answer(cb, *args, **kwargs) -> None:
+    """Answer a callback without ever crashing slow handlers on stale taps."""
+    try:
+        await cb.answer(*args, **kwargs)
+    except Exception:
+        pass
+
 from .commands import register_commands  # noqa: E402
 from .scanner_ui import register_scanner_ui  # noqa: E402
 from .search_inputs import register_search_inputs  # noqa: E402

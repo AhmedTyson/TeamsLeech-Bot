@@ -64,6 +64,35 @@ class ScannerService:
             matched.append(team)
         return matched
 
+    def suggest_teams(
+        self, subject: SubjectConfig, all_teams: list[Team], limit: int = 3
+    ) -> list[Team]:
+        """Closest team names for a zero-match subject (token overlap)."""
+        haystacks = (
+            [subject.name, subject.short, subject.doctor]
+            + list(subject.keywords)
+            + list(subject.doctor_keywords)
+        )
+        want: set[str] = set()
+        for text in haystacks:
+            want.update(
+                t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) >= 3
+            )
+        if not want:
+            return []
+        scored = []
+        for team in all_teams:
+            have = set(
+                t
+                for t in re.split(r"[^a-z0-9]+", team.display_name.lower())
+                if len(t) >= 3
+            )
+            overlap = len(want & have)
+            if overlap:
+                scored.append((overlap, team.display_name, team))
+        scored.sort(key=lambda s: (-s[0], s[1]))
+        return [t for _, _, t in scored[:limit]]
+
     async def _process_team(
         self,
         team: Team,

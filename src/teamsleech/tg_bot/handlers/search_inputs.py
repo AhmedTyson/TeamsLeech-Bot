@@ -16,7 +16,7 @@ from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
-from teamsleech.tg_bot.handlers import safe_edit_text
+from teamsleech.tg_bot.handlers import safe_answer, safe_edit_text
 from teamsleech.tg_bot.keyboards import (
     MANAGE_FIELDS,
     build_manage_dashboard,
@@ -508,17 +508,17 @@ def register_search_inputs(
         elif action == "del_yes":
             name = subj.name
             existing.pop(idx)
+            await safe_answer(cb, "Deleting...")
             try:
                 await _persist_subjects(existing)
             except Exception as e:
                 await safe_edit_text(cb.message, f"❌ Failed to delete: {e}")
-                await cb.answer()
                 return
             text, markup = build_manage_dashboard(existing)
             await safe_edit_text(
                 cb.message, f"✅ Deleted **{name}**.\n\n{text}",
                 reply_markup=markup,
             )
-            await cb.answer()
+            await safe_answer(cb)
         else:
-            await cb.answer()
+            await safe_answer(cb)

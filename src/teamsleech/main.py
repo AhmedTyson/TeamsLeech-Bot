@@ -45,6 +45,12 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
             team_hits.setdefault(t.id, []).append(subj.name)
         if not matched:
             lines.append("   ⚠️ zero teams — keywords match nothing!")
+            suggestions = scanner.suggest_teams(subj, teams)
+            if suggestions:
+                lines.append(
+                    "   💡 maybe you meant: "
+                    + "; ".join(f"`{t.display_name}`" for t in suggestions)
+                )
 
     dupes = {tid: names for tid, names in team_hits.items() if len(names) > 1}
     if dupes:

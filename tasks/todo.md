@@ -238,3 +238,68 @@
 - [ ] All 10 phases acceptance-checked
 - [ ] Live end-to-end: add (doctor+subject) → 60-day scan → select → progress → deliver → manage/edit → cancel-button
 - [ ] Ready for review
+
+---
+
+# Audit: search & keywords detection (ordered)
+
+Source: live log 2026-10-03 18:48–19:01 + verify runs. Goal: every subject in
+`SUBJECTS_JSON` grabs its teams' data; every mistake gets a fix.
+
+## A1: Stale-code run judged as new behavior — PROCESS (no code)
+
+**Finding:** 18:51–19:01 scans ran 60-day scope from the 18:48 boot (pre-fix
+code). New code only took effect after the user-triggered fresh run
+(`Scope: all time` lines + cancel of old run at 19:01).
+**Fix:** always trigger a fresh `workflow_dispatch` after push before judging;
+concurrency cancels the old runner — expected, not a bug.
+**Status:** [x] documented
+
+## A2: Zero-team subject (Dr. Abdelrahman Farmawy) — keywords never match
+
+**Finding:** 0 teams in verify (twice) and in 3 live scans. User rewrote
+`SUBJECTS_JSON` 4× blind (18:51–18:58 PUTs) with no feedback loop.
+**Fix:** verify mode now prints `💡 maybe you meant:` closest team names
+(`suggest_teams` token overlap). User picks correct keywords via manage UI.
+**Verification:**
+- [x] `test_suggest_teams` overlap/empty cases pass
+- [ ] Live `mode=verify` shows suggestion for the Farmawy subject
+- [ ] User fixes keywords; follow-up verify shows 1 team
+
+**Files:** `services/scanner.py`, `main.py`, `tests/unit/test_scanner.py`
+
+## A3: Spaceless team names vs natural keywords — FIXED
+
+**Finding:** `Data Security` never matched `BIS-DataSecurity-…`.
+**Fix:** punctuation-insensitive substring (`5d028af`) + `same` default in add
+flow. **Status:** [x] shipped, unit-covered
+
+## A4: Default scope filtered silently — FIXED
+
+**Finding:** 60-day window + "Since Last Run" labels hid old files.
+**Fix:** unbounded default, `All Recordings` labels (`5d028af`).
+**Status:** [x] shipped, live log confirms `Scope: all time`
+
+## A5: QUERY_ID_INVALID on slow/stale taps — FIXED
+
+**Finding:** 18:59:54 traceback: `cb.answer()` after minutes-long scan.
+**Fix:** answer-first (`safe_answer`) in Check-All + delete-confirm paths;
+`safe_answer` helper never raises.
+**Verification:**
+- [x] Ruff + unit green
+- [ ] Live: no dispatcher ERROR on slow scans
+
+**Files:** `tg_bot/handlers/__init__.py`, `scanner_ui.py`, `search_inputs.py`
+
+## A6: Per-subject grab audit — verify tally (live proof per subject)
+
+**Method:** `mode=verify` prints, for EVERY subject: matched teams, then
+`🎞 grabbed per subject: N 🎬 + M 📄 from <teams>`.
+**Status:**
+- [x] Implemented (`f169a2d`), live 18:43 run: 8 subjects grab (4+5, 1+0, 6+8…), 1 zero-team (→A2)
+- [ ] Re-run verify after Farmawy keywords fixed; expect 9/9 grabbing
+
+## Checkpoint: Audit complete
+- [ ] All subjects grab data in verify tally
+- [ ] No dispatcher ERRORs in live log
+- [ ] Ready for review
