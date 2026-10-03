@@ -1,0 +1,127 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from teamsleech.models.domain import Team
+from teamsleech.services.state import StateManager
+from teamsleech.tg_bot.handlers.search_inputs import register_search_inputs
+
+
+@pytest.fixture
+def rig():
+    app = MagicMock()
+    handlers_msg = {}
+    handlers_cb = {}
+
+    def on_msg(*a, **k):
+        def wrapper(func):
+            handlers_msg[func.__name__] = func
+            return func
+        return wrapper
+
+    def on_cb(*a, **k):
+        def wrapper(func):
+            handlers_cb[func.__name__] = func
+            return func
+        return wrapper
+
+    app.on_message.side_effect = on_msg
+    app.on_callback_query.side_effect = on_cb
+    discovery = MagicMock()
+    discovery.graph = MagicMock()
+    state = StateManager(MagicMock(), 123)
+    register_search_inputs(app, discovery, state)
+    return app, handlers_msg, handlers_cb, discovery, state
+
+
+def make_msg(text, state):
+    msg = AsyncMock()
+    msg.text = text
+    msg.chat = MagicMock()
+    msg.chat.id = 123
+    return msg
+
+
+async def send(rig, text):
+    _, handlers_msg, _, _, state = rig
+    session = state.get_session(123)
+    msg = make_msg(text, state)
+    await handlers_msg["handle_search_input"](MagicMock(), msg)
+    return session, msg
+
+
+class TestAddSteps:
+    async def test_name_to_short(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_step = "ask_name"
+        session, msg = await send(rig, "Data Security")
+        assert session.pending_add_step == "ask_short"
+        assert session.pending_add_data["name"] == "Data Security"
+
+    async def test_subj_kw_parsed(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_step = "ask_subj_kw"
+        session, _ = await send(rig, "Data Security, DSEC")
+        assert session.pending_add_data["subj_kw"] == ["Data Security", "DSEC"]
+        assert session.pending_add_step == "ask_doc_kw"
+
+    async def test_skip_skip_rejected(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_step = "ask_doc_kw"
+        session.pending_add_data["subj_kw"] = []
+        session, msg = await send(rig, "skip")
+        assert session.pending_add_step == "ask_subj_kw"
+        assert "at least" in msg.reply.await_args.args[0].lower()
+
+    async def test_full_flow_both_with_same_label(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_team = Team(id="t1", display_name="DS Team")
+        session.pending_add_step = "ask_name"
+        await send(rig, "Data Security")
+        await send(rig, "DSEC")
+        await send(rig, "Data Security")
+        session, _ = await send(rig, "Hany, Gouda")
+        assert session.pending_add_step == "ask_doc_label"
+        with patch(
+            "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+            AsyncMock(),
+        ):
+            session, msg = await send(rig, "same")
+        assert session.pending_add_step == ""
+        last_text = msg.reply.await_args_list[-1].args[0]
+        assert "Hany + Gouda" not in last_text
+        assert "doctor [Hany, Gouda]" in last_text
+
+    async def test_subject_only_skips_label(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_team = Team(id="t1", display_name="DS Team")
+        session.pending_add_step = "ask_name"
+        await send(rig, "Data Security")
+        await send(rig, "DSEC")
+        await send(rig, "Data Security")
+        with patch(
+            "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+            AsyncMock(),
+        ):
+            session, msg = await send(rig, "skip")
+        assert session.pending_add_step == ""
+        assert "subject [Data Security]" in msg.reply.await_args_list[-1].args[0]
+
+    async def test_cancel_clears(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_step = "ask_doc_kw"
+        session, msg = await send(rig, "cancel")
+        assert session.pending_add_step == ""
+        assert not session.is_searching_teams

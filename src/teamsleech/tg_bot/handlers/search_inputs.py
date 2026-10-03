@@ -68,6 +68,54 @@ def register_search_inputs(
 
     search_filter = filters.create(is_searching)
 
+    async def _finish_add(message: Message, session) -> None:
+        new_subject = SubjectConfig(
+            name=session.pending_add_data["name"],
+            short=session.pending_add_data["short"],
+            doctor=session.pending_add_data.get("doctor", ""),
+            keywords=session.pending_add_data.get("subj_kw", []),
+            doctor_keywords=session.pending_add_data.get("doc_kw", []),
+        )
+
+        await message.reply(
+            f"⏳ Saving `{new_subject.name}` to GitHub Secrets..."
+        )
+
+        scanner = ScannerService(discovery.graph, state)
+        existing = scanner.load_subjects()
+        existing.append(new_subject)
+        json_str = json.dumps(
+            {"subjects": [s.model_dump() for s in existing]}, indent=2
+        )
+
+        try:
+            await rotate_github_secret("SUBJECTS_JSON", json_str)
+            os.environ["SUBJECTS_JSON"] = json_str
+            settings.subjects_json = json_str
+
+            rule_parts = []
+            if new_subject.keywords:
+                rule_parts.append(f"subject [{', '.join(new_subject.keywords)}]")
+            if new_subject.doctor_keywords:
+                rule_parts.append(
+                    f"doctor [{', '.join(new_subject.doctor_keywords)}]"
+                )
+            await message.reply(
+                f"✅ Success! **{new_subject.name}** is now"
+                " permanently configured and will be tracked automatically.\n"
+                f"Matches {' + '.join(rule_parts)}."
+            )
+        except Exception as e:
+            await message.reply(
+                f"❌ Failed to save to GitHub Secrets: {e}\n\n"
+                "Make sure your GH_PAT is valid."
+            )
+
+        session.is_searching_teams = False
+        session.pending_add_step = ""
+        session.pending_add_team = None
+        session.pending_add_data.clear()
+
     @app.on_message(
         filters.text & filters.private & owner_only & search_filter, group=0
     )
@@ -95,56 +143,65 @@ def register_search_inputs(
 
         if session.pending_add_step == "ask_short":
             session.pending_add_data["short"] = text
-            session.pending_add_step = "ask_doctor"
+            session.pending_add_step = "ask_subj_kw"
             await message.reply(
-                "👨‍🏫 Almost done.\n\n"
-                "Send the **Doctor's Name** (e.g., `Dr. Ahmed`),"
-                " or type `skip` if you don't want to add one."
+                "🔎 Step 3: Send **SUBJECT keywords** (e.g., `Data Security`,"
+                " comma-separated),\n"
+                "or type `skip`."
             )
             return
 
-        if session.pending_add_step == "ask_doctor":
-            doc = "" if text.lower() == "skip" else text
-            session.pending_add_data["doctor"] = doc
-
-            team = session.pending_add_team
-            new_subject = SubjectConfig(
-                name=session.pending_add_data["name"],
-                short=session.pending_add_data["short"],
-                doctor=doc,
-                keywords=[team.display_name],
+        if session.pending_add_step == "ask_subj_kw":
+            subj_kw = (
+                []
+                if text.lower() == "skip"
+                else [k.strip() for k in text.split(",") if k.strip()]
             )
-
+            session.pending_add_data["subj_kw"] = subj_kw
+            session.pending_add_step = "ask_doc_kw"
             await message.reply(
-                f"⏳ Saving `{new_subject.name}` to GitHub Secrets..."
+                "👨‍🏫 Step 4: Send **DOCTOR keywords** (e.g., `Hany`),\n"
+                "or type `skip`.\n"
+                "_At least one of Steps 3–4 is required._"
             )
+            return
 
-            scanner = ScannerService(discovery.graph, state)
-            existing = scanner.load_subjects()
-            existing.append(new_subject)
-            json_str = json.dumps(
-                {"subjects": [s.model_dump() for s in existing]}, indent=2
+        if session.pending_add_step == "ask_doc_kw":
+            doc_kw = (
+                []
+                if text.lower() == "skip"
+                else [k.strip() for k in text.split(",") if k.strip()]
             )
-
-            try:
-                await rotate_github_secret("SUBJECTS_JSON", json_str)
-                os.environ["SUBJECTS_JSON"] = json_str
-                settings.subjects_json = json_str
-
+            subj_kw = session.pending_add_data.get("subj_kw", [])
+            if not subj_kw and not doc_kw:
                 await message.reply(
-                    f"✅ Success! **{new_subject.name}** is now"
-                    " permanently configured and will be tracked automatically."
+                    "❌ Give at least a subject or a doctor keyword.\n\n"
+                    "Send subject keywords, or type `cancel` to exit."
                 )
-            except Exception as e:
+                session.pending_add_step = "ask_subj_kw"
+                return
+            session.pending_add_data["doc_kw"] = doc_kw
+            if doc_kw:
+                session.pending_add_step = "ask_doc_label"
                 await message.reply(
-                    f"❌ Failed to save to GitHub Secrets: {e}\n\n"
-                    "Make sure your GH_PAT is valid."
+                    "🏷 Display name for the doctor? Send it, `same` to use"
+                    " your keywords, or `skip` for none."
                 )
+            else:
+                session.pending_add_data["doctor"] = ""
+                await _finish_add(message, session)
+            return
 
-            session.is_searching_teams = False
-            session.pending_add_step = ""
-            session.pending_add_team = None
-            session.pending_add_data.clear()
+        if session.pending_add_step == "ask_doc_label":
+            lowered = text.lower()
+            if lowered == "skip":
+                doc = ""
+            elif lowered == "same":
+                doc = ", ".join(session.pending_add_data.get("doc_kw", []))
+            else:
+                doc = text
+            session.pending_add_data["doctor"] = doc
+            await _finish_add(message, session)
             return
 
         await message.reply(f"🔍 Searching for '{text}'...")
