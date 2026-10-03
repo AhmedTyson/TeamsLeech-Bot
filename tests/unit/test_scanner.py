@@ -189,6 +189,26 @@ class TestSuggestTeams:
         assert scanner.suggest_teams(SubjectConfig(name="X"), teams) == []
 
 
+class TestDriveStats:
+    async def test_mp4_stats_reports_truncation(self, scanner):
+        scanner.graph.get = AsyncMock(return_value={
+            "value": [{"id": "1"}],
+            "@odata.nextLink": "https://graph/next",
+        })
+        count, truncated = await scanner.drive_mp4_stats("d1")
+        assert (count, truncated) == (1, True)
+
+    async def test_mp4_stats_no_truncation(self, scanner):
+        scanner.graph.get = AsyncMock(return_value={"value": []})
+        assert await scanner.drive_mp4_stats("d1") == (0, False)
+
+    async def test_team_drives_failure_returns_empty(
+        self, scanner, sample_team
+    ):
+        scanner.graph.get = AsyncMock(side_effect=GraphAPIError("nope"))
+        assert await scanner.team_drives(sample_team) == []
+
+
 class TestProcessTeam:
     async def test_no_site_id_returns_empty(self, scanner, sample_subject, sample_team):
         scanner.graph.get = AsyncMock(return_value={})

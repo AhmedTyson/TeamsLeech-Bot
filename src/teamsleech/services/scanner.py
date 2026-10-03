@@ -93,6 +93,24 @@ class ScannerService:
         scored.sort(key=lambda s: (-s[0], s[1]))
         return [t for _, _, t in scored[:limit]]
 
+    async def team_drives(self, team: Team) -> list[dict]:
+        """Site drives for a team (empty on lookup failure)."""
+        try:
+            site = await self.graph.get(f"/groups/{team.id}/sites/root")
+            site_id = site.get("id")
+            if not site_id:
+                return []
+            drives_data = await self.graph.get(f"/sites/{site_id}/drives")
+            return drives_data.get("value", [])
+        except GraphAPIError as e:
+            log.warning("Could not list drives for team %s: %s", team.display_name, e)
+            return []
+
+    async def drive_mp4_stats(self, drive_id: str) -> tuple[int, bool]:
+        """(first-page .mp4 hits, truncated?) — detects search paging loss."""
+        data = await self.graph.get(f"/drives/{drive_id}/root/search(q='.mp4')")
+        return len(data.get("value", [])), "@odata.nextLink" in data
+
     async def _process_team(
         self,
         team: Team,

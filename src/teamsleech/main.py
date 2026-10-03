@@ -81,6 +81,22 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
             else:
                 lines.append(f"   - **{subj.name}**: nothing found")
 
+    lines.append("\n📦 **Drive search depth (.mp4 first page):**")
+    for subj in subjects:
+        matched = scanner._match_teams(teams, subj)
+        for team in matched:
+            for drive in await scanner.team_drives(team):
+                try:
+                    count, truncated = await scanner.drive_mp4_stats(drive["id"])
+                except Exception as e:
+                    lines.append(f"   - {team.display_name}: stats failed: {e}")
+                    continue
+                flag = " ⚠️ TRUNCATED — pages lost!" if truncated else ""
+                lines.append(
+                    f"   - {team.display_name} / {drive.get('name')}:"
+                    f" {count} hits{flag}"
+                )
+
     text = "\n".join(lines)
     log.info("Verify report:\n%s", text)
     await app.send_message(chat_id, text[:4000])
