@@ -127,21 +127,73 @@ class TransferService:
     async def _download_recording(
         self, rec: Recording, dest_path: str
     ) -> int:
-        url = (
+        graph_url = (
             f"{GRAPH_BASE_URL}/drives/{rec.drive_id}"
             f"/items/{rec.item_id}/content"
         )
 
         async with httpx.AsyncClient() as client:
+            # Step 1: ask Graph, do NOT auto-follow. Graph answers 302
+            # with a pre-authenticated SharePoint download URL in
+            # Location. Following automatically risks forwarding the
+            # Graph Bearer / Accept headers to SharePoint (-> 401).
+            try:
+                graph_resp = await client.get(
+                    graph_url,
+                    headers=self.graph.headers,
+                    timeout=60.0,
+                    follow_redirects=False,
+                )
+            except httpx.RequestError as exc:
+                raise DownloadError(
+                    f"Graph download request failed for {rec.name}: {exc}"
+                ) from exc
+
+            if graph_resp.status_code in (301, 302, 303, 307, 308):
+                download_url = graph_resp.headers.get("Location")
+                if not download_url:
+                    raise DownloadError(
+                        f"Graph redirect [{graph_resp.status_code}]"
+                        f" missing Location for {rec.name}"
+                    )
+                log.info(
+                    "Graph redirect for %s -> %s",
+                    rec.name, download_url.split("?")[0],
+                )
+            elif graph_resp.status_code == 200:
+                # Small files may come back inline — write body directly.
+                with open(dest_path, "wb") as f:
+                    f.write(graph_resp.content)
+                return len(graph_resp.content)
+            else:
+                try:
+                    body = graph_resp.text[:300]
+                except Exception:
+                    body = "<unreadable body>"
+                raise DownloadError(
+                    f"Graph denied content [{graph_resp.status_code}]"
+                    f" for {rec.name}: {body}"
+                )
+
+            # Step 2: fetch bytes with NO Graph auth headers. The
+            # pre-authenticated URL carries its own token in query.
             try:
                 async with client.stream(
                     "GET",
-                    url,
-                    headers=self.graph.headers,
+                    download_url,
                     timeout=60.0,
                     follow_redirects=True,
                 ) as resp:
-                    resp.raise_for_status()
+                    try:
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        raise DownloadError(
+                            f"SharePoint download failed"
+                            f" [{resp.status_code}] for {rec.name}:"
+                            f" check Conditional Access / Block-Download"
+                            f" policy / site permissions for the"
+                            f" service account. ({exc})"
+                        ) from exc
                     total_written = 0
                     with open(dest_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(
@@ -150,9 +202,11 @@ class TransferService:
                             f.write(chunk)
                             total_written += len(chunk)
                     return total_written
-            except httpx.RequestError as exc:
+            except DownloadError:
+                raise
+            except httpx.HTTPError as exc:
                 raise DownloadError(
-                    f"Graph download failed: {exc}"
+                    f"SharePoint download failed for {rec.name}: {exc}"
                 ) from exc
 
     async def _upload_to_telegram(

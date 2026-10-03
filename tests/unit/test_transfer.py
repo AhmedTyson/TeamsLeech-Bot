@@ -100,59 +100,135 @@ class TestExtractThumbnail:
 
 
 class TestDownloadRecording:
-    async def test_download_success(self, transfer_service, sample_recordings):
-        chunk = b"x" * 1024
-        rec = sample_recordings[0]
-        with patch("httpx.AsyncClient") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            resp = AsyncMock()
-            resp.__aenter__.return_value = resp
-            resp.raise_for_status = MagicMock()
+    def _mock_client(self, mock_cls, graph_resp=None, dl_resp=None,
+                     get_side_effect=None, stream_side_effect=None):
+        mock_client = MagicMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        if get_side_effect is not None:
+            mock_client.get = AsyncMock(side_effect=get_side_effect)
+        else:
+            mock_client.get = AsyncMock(return_value=graph_resp)
+        if stream_side_effect is not None:
+            mock_client.stream = MagicMock(side_effect=stream_side_effect)
+        elif dl_resp is not None:
+            mock_client.stream = MagicMock(return_value=dl_resp)
+        return mock_client
 
+    def _graph_redirect(self, location="https://tenant.sharepoint.com/sites/x/_layouts/15/download.aspx?UniqueId=abc&tempauth=tok"):
+        resp = MagicMock()
+        resp.status_code = 302
+        resp.headers = {"Location": location}
+        return resp
+
+    def _dl_resp(self, chunk=b"x" * 1024, status_error=None, stream_gen=None):
+        resp = AsyncMock()
+        resp.__aenter__.return_value = resp
+        resp.status_code = 401 if status_error else 200
+        if status_error is not None:
+            resp.raise_for_status = MagicMock(side_effect=status_error)
+        else:
+            resp.raise_for_status = MagicMock()
+        if stream_gen is not None:
+            resp.aiter_bytes = MagicMock(side_effect=lambda **kw: stream_gen())
+        else:
             async def _iter():
                 yield chunk
             resp.aiter_bytes = MagicMock(return_value=_iter())
+        return resp
 
-            mock_client.stream.return_value = resp
-
-            size = await transfer_service._download_recording(rec, "/tmp/t.mp4")
-        assert size == len(chunk)
-
-    async def test_download_network_error(self, transfer_service, sample_recordings):
+    async def test_download_success(self, transfer_service, sample_recordings, tmp_path):
+        chunk = b"x" * 1024
         rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
         with patch("httpx.AsyncClient") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            mock_client.stream.side_effect = __import__(
-                "httpx"
-            ).RequestError("Connection refused")
+            mock_client = self._mock_client(
+                mock_cls,
+                graph_resp=self._graph_redirect(),
+                dl_resp=self._dl_resp(chunk),
+            )
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        # Step 1 goes to Graph WITH auth; step 2 to SharePoint WITHOUT auth.
+        _, graph_kwargs = mock_client.get.await_args
+        assert graph_kwargs["headers"]["Authorization"] == "Bearer fake_token"
+        _, stream_kwargs = mock_client.stream.call_args
+        assert "headers" not in stream_kwargs
 
+    async def test_download_network_error(self, transfer_service, sample_recordings, tmp_path):
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        with patch("httpx.AsyncClient") as mock_cls:
+            self._mock_client(
+                mock_cls,
+                get_side_effect=httpx.RequestError("Connection refused"),
+            )
             with pytest.raises(DownloadError, match="Connection refused"):
-                await transfer_service._download_recording(rec, "/tmp/t.mp4")
+                await transfer_service._download_recording(rec, dest)
 
-    async def test_download_stream_error_midway(self, transfer_service, sample_recordings):
+    async def test_download_stream_error_midway(self, transfer_service, sample_recordings, tmp_path):
         """Simulate stream failing mid-download after some chunks."""
         rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+
+        async def fail_after_one():
+            yield b"x" * 1024
+            raise httpx.RequestError("Stream interrupted")
+
         with patch("httpx.AsyncClient") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            resp = AsyncMock()
-            resp.__aenter__.return_value = resp
-            resp.raise_for_status = MagicMock()
-
-            async def fail_after_one():
-                yield b"x" * 1024
-                raise httpx.RequestError("Stream interrupted")
-
-            resp.aiter_bytes = MagicMock(side_effect=lambda **kw: fail_after_one())
-            mock_client.stream.return_value = resp
-
+            self._mock_client(
+                mock_cls,
+                graph_resp=self._graph_redirect(),
+                dl_resp=self._dl_resp(stream_gen=fail_after_one),
+            )
             with pytest.raises(DownloadError, match="Stream interrupted"):
-                await transfer_service._download_recording(rec, "/tmp/t.mp4")
+                await transfer_service._download_recording(rec, dest)
+
+    async def test_graph_denied_reports_permission_hint(self, transfer_service, sample_recordings, tmp_path):
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        graph_resp = MagicMock()
+        graph_resp.status_code = 401
+        graph_resp.text = "Unauthorized"
+        with patch("httpx.AsyncClient") as mock_cls:
+            self._mock_client(mock_cls, graph_resp=graph_resp)
+            with pytest.raises(DownloadError, match=r"Graph denied content \[401\]"):
+                await transfer_service._download_recording(rec, dest)
+
+    async def test_redirect_missing_location(self, transfer_service, sample_recordings, tmp_path):
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        graph_resp = MagicMock()
+        graph_resp.status_code = 302
+        graph_resp.headers = {}
+        with patch("httpx.AsyncClient") as mock_cls:
+            self._mock_client(mock_cls, graph_resp=graph_resp)
+            with pytest.raises(DownloadError, match="missing Location"):
+                await transfer_service._download_recording(rec, dest)
+
+    async def test_sharepoint_401_wrapped_as_download_error(self, transfer_service, sample_recordings, tmp_path):
+        """Regression: SharePoint 401 must surface as DownloadError (retryable), not raw HTTPStatusError."""
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        dl_url = "https://commercehelwanedu.sharepoint.com/sites/x/_layouts/15/download.aspx?UniqueId=abc"
+        request = httpx.Request("GET", dl_url)
+        status_error = httpx.HTTPStatusError(
+            "Client error '401 Unauthorized' for url "
+            f"'{dl_url}'",
+            request=request,
+            response=httpx.Response(401, request=request),
+        )
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_client = self._mock_client(
+                mock_cls,
+                graph_resp=self._graph_redirect(location=dl_url + "&tempauth=tok"),
+                dl_resp=self._dl_resp(status_error=status_error),
+            )
+            with pytest.raises(DownloadError, match=r"SharePoint download failed \[401\]"):
+                await transfer_service._download_recording(rec, dest)
+            # SharePoint fetch must not carry the Graph Bearer.
+            _, stream_kwargs = mock_client.stream.call_args
+            assert "headers" not in stream_kwargs
 
 
 class TestUploadToTelegram:
