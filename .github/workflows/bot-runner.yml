@@ -26,6 +26,7 @@ on:
         options:
           - normal
           - reauth
+          - verify
       subject:
         description: "Subject name (optional — process single subject)"
         required: false

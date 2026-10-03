@@ -20,6 +20,45 @@ logging.basicConfig(
 )
 log = logging.getLogger("main")
 
+async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
+    """Dry-run matcher against ALL real data: report teams per subject."""
+    subjects = scanner.load_subjects()
+    if not subjects:
+        await app.send_message(chat_id, "❌ Verify: no subjects configured.")
+        return
+    try:
+        teams = await discovery.get_all_joined_teams()
+    except Exception as e:
+        await app.send_message(chat_id, f"❌ Verify: teams fetch failed: {e}")
+        return
+
+    lines = [
+        f"🔍 **Matching verify** — {len(subjects)} subjects, {len(teams)} teams:"
+    ]
+    team_hits: dict[str, list[str]] = {}
+    for subj in subjects:
+        matched = scanner._match_teams(teams, subj)
+        doc = f" + 👨‍🏫 {subj.doctor}" if subj.doctor else ""
+        lines.append(f"\n📚 **{subj.name}**{doc}: {len(matched)} team(s)")
+        for t in matched:
+            lines.append(f"   - `{t.display_name}`")
+            team_hits.setdefault(t.id, []).append(subj.name)
+        if not matched:
+            lines.append("   ⚠️ zero teams — keywords match nothing!")
+
+    dupes = {tid: names for tid, names in team_hits.items() if len(names) > 1}
+    if dupes:
+        lines.append("\n⚠️ **Cross-matched teams** (bleed check):")
+        id2name = {t.id: t.display_name for t in teams}
+        for tid, names in dupes.items():
+            lines.append(f"   - `{id2name.get(tid, tid)}` → {', '.join(names)}")
+    else:
+        lines.append("\n✅ No cross-matched teams.")
+
+    text = "\n".join(lines)
+    log.info("Verify report:\n%s", text)
+    await app.send_message(chat_id, text[:4000])
+
 def main():
     log.info("=" * 50)
     log.info("TeamsLeech Modern App — Booting")
@@ -75,9 +114,18 @@ def main():
         await app.start()
         await state_manager.initialize()
 
-        if os.getenv("RUN_MODE", "normal") == "reauth":
+        run_mode = os.getenv("RUN_MODE", "normal")
+        if run_mode == "reauth":
             log.info("Reauth mode: starting Microsoft device-code login...")
             await run_reauth_flow(app, settings.telegram_chat_id)
+        elif run_mode == "verify":
+            await _verify_matching(
+                app, discovery_service, scanner_service,
+                settings.telegram_chat_id,
+            )
+            await graph_client.close()
+            await app.stop()
+            return
 
         log.info("Step 3/3: Bot is live and listening.")
         
