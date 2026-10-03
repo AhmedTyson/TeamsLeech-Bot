@@ -39,6 +39,9 @@ class UserSession(BaseModel):
     pending_rename_idx: int | None = None
     pending_suggestion: str | None = None
 
+    pending_edit_idx: int | None = None
+    pending_edit_field: str = ""
+
     date_input_pending: bool = False
     subject_filter: str | None = None
     scan_label: str = ""

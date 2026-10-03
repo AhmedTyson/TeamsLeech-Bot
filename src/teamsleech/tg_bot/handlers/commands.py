@@ -1,11 +1,15 @@
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from pyrogram.types import Message
 
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
-from teamsleech.tg_bot.keyboards import REPLY_KEYBOARD, build_subject_keyboard
+from teamsleech.tg_bot.keyboards import (
+    REPLY_KEYBOARD,
+    build_manage_dashboard,
+    build_subject_keyboard,
+)
 
 
 def register_commands(
@@ -50,37 +54,9 @@ def register_commands(
         & owner_only
     )
     async def handle_subjects(client: Client, message: Message):
-        session = state.get_session(message.chat.id)
-        session.is_searching_teams = True
-
         subjects = scanner.load_subjects()
-        msg_lines = [
-            "⚙️ **𝗖𝗼𝘂𝗿𝘀𝗲 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱**",
-            "━━━━━━━━━━━━━━━━━━━━━━",
-            "Here are the subjects you are currently tracking:",
-        ]
-
-        buttons = []
-        for i, s in enumerate(subjects):
-            doc = s.doctor or "None"
-            msg_lines.append(f"\n📚 **{s.name}**")
-            msg_lines.append(f"   🏷 Short: `{s.short}`")
-            msg_lines.append(f"   👨‍🏫 Doctor: `{doc}`")
-
-            btn_text = f"❌ Delete {s.short or s.name}"
-            buttons.append([InlineKeyboardButton(btn_text, callback_data=f"del_subj:{i}")])
-
-        msg_lines.append("")
-        msg_lines.append("┄" * 20)
-        msg_lines.append("")
-        msg_lines.append("🔍 **𝗔𝗱𝗱 𝗡𝗲𝘄 𝗖𝗼𝘂𝗿𝘀𝗲**")
-        msg_lines.append(
-            "Send a keyword (at least 3 characters) to search your joined Teams."
-        )
-        msg_lines.append("_Type `cancel` at any time to exit._")
-
-        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-        await message.reply("\n".join(msg_lines), reply_markup=reply_markup)
+        text, reply_markup = build_manage_dashboard(subjects)
+        await message.reply(text, reply_markup=reply_markup)
 
     @app.on_message(
         (filters.command("runner") | filters.regex("^⚙️ Background Runner$"))

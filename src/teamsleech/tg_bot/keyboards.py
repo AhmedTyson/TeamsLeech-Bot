@@ -100,3 +100,66 @@ def build_checklist_keyboard(
     buttons.append(_build_action_row())
     return InlineKeyboardMarkup(buttons)
 
+
+def build_manage_dashboard(
+    subjects: list[SubjectConfig],
+) -> tuple[str, InlineKeyboardMarkup]:
+    lines = [f"⚙️ **Subjects ({len(subjects)})** — tap a number:"]
+    for i, s in enumerate(subjects):
+        doc = f" — {s.doctor}" if s.doctor else " — (no doctor)"
+        lines.append(f"{i + 1}. **{s.name}**{doc}")
+    buttons: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for i in range(len(subjects)):
+        row.append(
+            InlineKeyboardButton(text=f"[ {i + 1} ]", callback_data=f"mng:sel:{i}")
+        )
+        if len(row) == 4:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([
+        InlineKeyboardButton(text="➕ Add New", callback_data="mng:add")
+    ])
+    return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
+def build_manage_detail(idx: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(text="✏️ Edit", callback_data=f"mng:edit:{idx}"),
+            InlineKeyboardButton(text="❌ Delete", callback_data=f"mng:del:{idx}"),
+        ],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="mng:list")],
+    ])
+
+
+MANAGE_FIELDS: list[tuple[str, str]] = [
+    ("name", "Name"),
+    ("short", "Short"),
+    ("doctor", "Doctor"),
+    ("subj_kw", "Subject keys"),
+    ("doc_kw", "Doctor keys"),
+]
+
+
+def build_manage_fields(idx: int) -> InlineKeyboardMarkup:
+    buttons: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for n, (key, label) in enumerate(MANAGE_FIELDS):
+        row.append(
+            InlineKeyboardButton(
+                text=f"{n + 1} {label}", callback_data=f"mng:field:{idx}:{key}"
+            )
+        )
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([
+        InlineKeyboardButton(text="⬅️ Back", callback_data=f"mng:sel:{idx}")
+    ])
+    return InlineKeyboardMarkup(buttons)
+

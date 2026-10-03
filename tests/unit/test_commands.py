@@ -64,5 +64,5 @@ async def test_commands_handlers(mock_scanner, mock_state, mock_discovery):
     msg.chat.id = 123
     await handlers["handle_subjects"](mock_client, msg)
     msg.reply.assert_called_once()
-    assert "𝗖𝗼𝘂𝗿𝘀𝗲 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱" in msg.reply.call_args[0][0]
-    assert mock_state.get_session(123).is_searching_teams is True
+    assert "Subjects (2)" in msg.reply.call_args[0][0]
+    assert "1. **Math**" in msg.reply.call_args[0][0]

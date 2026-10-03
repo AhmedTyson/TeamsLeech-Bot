@@ -17,6 +17,12 @@ from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_edit_text
+from teamsleech.tg_bot.keyboards import (
+    MANAGE_FIELDS,
+    build_manage_dashboard,
+    build_manage_detail,
+    build_manage_fields,
+)
 
 
 def _build_search_page(teams: list[Team], page: int) -> tuple[str, InlineKeyboardMarkup]:
@@ -64,9 +70,89 @@ def register_search_inputs(
 ):
     async def is_searching(_, __, message: Message):
         session = state.get_session(message.chat.id)
-        return session.is_searching_teams or session.pending_add_step != ""
+        return (
+            session.is_searching_teams
+            or session.pending_add_step != ""
+            or session.pending_edit_idx is not None
+        )
 
     search_filter = filters.create(is_searching)
+
+    async def _persist_subjects(existing) -> str:
+        json_str = json.dumps(
+            {"subjects": [s.model_dump() for s in existing]}, indent=2
+        )
+        await rotate_github_secret("SUBJECTS_JSON", json_str)
+        os.environ["SUBJECTS_JSON"] = json_str
+        settings.subjects_json = json_str
+        return json_str
+
+    def _detail_text(s) -> str:
+        return (
+            f"📚 **{s.name}**\n"
+            f"   🏷 Short: `{s.short or '—'}`\n"
+            f"   👨‍🏫 Doctor: `{s.doctor or '—'}`\n"
+            f"   🔎 Subject keys: `{', '.join(s.keywords) or '—'}`\n"
+            f"   🩺 Doctor keys: `{', '.join(s.doctor_keywords) or '—'}`"
+        )
+
+    def _load_existing() -> list:
+        scanner = ScannerService(discovery.graph, state)
+        return scanner.load_subjects()
+
+    async def _apply_edit(client: Client, message: Message, session) -> None:
+        idx = session.pending_edit_idx or 0
+        field = session.pending_edit_field
+        text = message.text.strip()
+        existing = _load_existing()
+        if idx >= len(existing):
+            session.pending_edit_idx = None
+            session.pending_edit_field = ""
+            await message.reply(
+                "Subject list changed — reopen 📚 Subjects."
+            )
+            return
+        if text.lower() not in ("keep", "skip"):
+            subj = existing[idx]
+            if field in ("subj_kw", "doc_kw"):
+                vals = (
+                    []
+                    if text.lower() == "clear"
+                    else [k.strip() for k in text.split(",") if k.strip()]
+                )
+                if field == "subj_kw":
+                    subj.keywords = vals
+                else:
+                    subj.doctor_keywords = vals
+                if not subj.keywords and not subj.doctor_keywords:
+                    await message.reply(
+                        "❌ At least one keyword list must stay non-empty."
+                        " Send new keywords, `clear` is not allowed for both."
+                    )
+                    return
+            elif field == "name":
+                subj.name = text
+            elif field == "short":
+                subj.short = text
+            elif field == "doctor":
+                subj.doctor = "" if text.lower() == "clear" else text
+            try:
+                await _persist_subjects(existing)
+            except Exception as e:
+                await message.reply(f"❌ Failed to save: {e}")
+                return
+            await message.reply(f"✅ Updated **{subj.name}**.")
+        session.pending_edit_idx = None
+        session.pending_edit_field = ""
+        shown = _load_existing()
+        if idx < len(shown):
+            await message.reply(
+                _detail_text(shown[idx]),
+                reply_markup=build_manage_detail(idx),
+            )
+        else:
+            text, markup = build_manage_dashboard(shown)
+            await message.reply(text, reply_markup=markup)
 
     async def _finish_add(message: Message, session) -> None:
         new_subject = SubjectConfig(
@@ -129,7 +215,13 @@ def register_search_inputs(
             session.pending_add_step = ""
             session.pending_add_team = None
             session.pending_add_data.clear()
+            session.pending_edit_idx = None
+            session.pending_edit_field = ""
             await message.reply("❌ Subject setup cancelled.")
+            return
+
+        if session.pending_edit_idx is not None:
+            await _apply_edit(client, message, session)
             return
 
         if session.pending_add_step == "ask_name":
@@ -315,3 +407,114 @@ def register_search_inputs(
             "_Type `cancel` to exit._"
         )
         await cb.answer()
+
+    @app.on_callback_query(filters.regex(r"^mng:") & owner_only)
+    async def handle_manage(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        parts = cb.data.split(":")
+        action = parts[1] if len(parts) > 1 else ""
+
+        if action == "list":
+            text, markup = build_manage_dashboard(_load_existing())
+            await safe_edit_text(cb.message, text, reply_markup=markup)
+            await cb.answer()
+            return
+
+        if action == "add":
+            session.is_searching_teams = True
+            await safe_edit_text(
+                cb.message,
+                "🔍 **Add New Subject**\n\n"
+                "Send a keyword (at least 3 characters) to search"
+                " your joined Teams.\n_Type `cancel` to exit._",
+            )
+            await cb.answer()
+            return
+
+        try:
+            idx = int(parts[2]) if len(parts) > 2 else -1
+        except ValueError:
+            await cb.answer("Invalid selection.", show_alert=True)
+            return
+        existing = _load_existing()
+        if idx < 0 or idx >= len(existing):
+            await cb.answer(
+                "Subject list changed — reopen 📚 Subjects.", show_alert=True
+            )
+            return
+        subj = existing[idx]
+
+        if action == "sel":
+            await safe_edit_text(
+                cb.message, _detail_text(subj),
+                reply_markup=build_manage_detail(idx),
+            )
+            await cb.answer()
+        elif action == "edit":
+            await safe_edit_text(
+                cb.message,
+                f"What to edit for **{subj.name}**?",
+                reply_markup=build_manage_fields(idx),
+            )
+            await cb.answer()
+        elif action == "field":
+            field = parts[3] if len(parts) > 3 else ""
+            labels = dict(MANAGE_FIELDS)
+            if field not in labels:
+                await cb.answer("Invalid field.", show_alert=True)
+                return
+            session.pending_edit_idx = idx
+            session.pending_edit_field = field
+            if field == "subj_kw":
+                current = ", ".join(subj.keywords)
+            elif field == "doc_kw":
+                current = ", ".join(subj.doctor_keywords)
+            elif field == "name":
+                current = subj.name
+            elif field == "short":
+                current = subj.short
+            else:
+                current = subj.doctor
+            extra = (
+                " (comma-separated; `clear` empties, `keep` cancels)"
+                if field in ("subj_kw", "doc_kw") else " (`keep` cancels)"
+            )
+            await safe_edit_text(
+                cb.message,
+                f"✏️ Send new **{labels[field]}** (current: `{current or '—'}`){extra}.",
+            )
+            await cb.answer()
+        elif action == "del":
+            await safe_edit_text(
+                cb.message,
+                f"Delete **{subj.name}**? This removes it from tracking.",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "Yes, delete", callback_data=f"mng:del_yes:{idx}"
+                        ),
+                        InlineKeyboardButton(
+                            "Keep", callback_data=f"mng:sel:{idx}"
+                        ),
+                    ]
+                ]),
+            )
+            await cb.answer()
+        elif action == "del_yes":
+            name = subj.name
+            existing.pop(idx)
+            try:
+                await _persist_subjects(existing)
+            except Exception as e:
+                await safe_edit_text(cb.message, f"❌ Failed to delete: {e}")
+                await cb.answer()
+                return
+            text, markup = build_manage_dashboard(existing)
+            await safe_edit_text(
+                cb.message, f"✅ Deleted **{name}**.\n\n{text}",
+                reply_markup=markup,
+            )
+            await cb.answer()
+        else:
+            await cb.answer()

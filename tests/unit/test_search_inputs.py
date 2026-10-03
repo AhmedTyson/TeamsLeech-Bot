@@ -125,3 +125,99 @@ class TestAddSteps:
         session, msg = await send(rig, "cancel")
         assert session.pending_add_step == ""
         assert not session.is_searching_teams
+
+
+def make_cb(data):
+    cb = AsyncMock()
+    cb.data = data
+    cb.message = AsyncMock()
+    cb.message.chat = MagicMock()
+    cb.message.chat.id = 123
+    return cb
+
+
+class TestManage:
+    def _seed(self, monkeypatch):
+        import json
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(
+            settings,
+            "subjects_json",
+            json.dumps({"subjects": [
+                {"name": "DS", "short": "D", "doctor": "Dr H",
+                 "keywords": ["data"], "doctor_keywords": ["hany"]},
+                {"name": "FT", "short": "F", "doctor": "",
+                 "keywords": ["trade"], "doctor_keywords": []},
+            ]}),
+        )
+
+    async def test_dashboard_lists_numbers(self, rig):
+        from teamsleech.tg_bot.keyboards import build_manage_dashboard
+        _, _, _, _, state = rig
+        import json
+        from teamsleech.core.config import settings
+        settings.subjects_json = json.dumps({"subjects": [
+            {"name": "DS", "short": "D", "keywords": ["data"]},
+        ]})
+        from teamsleech.services.scanner import ScannerService
+        scanner = ScannerService(MagicMock(), state)
+        text, markup = build_manage_dashboard(scanner.load_subjects())
+        assert "1. **DS**" in text
+        assert markup.inline_keyboard[0][0].callback_data == "mng:sel:0"
+
+    async def test_select_shows_detail(self, rig, monkeypatch):
+        _, _, handlers_cb, _, state = rig
+        self._seed(monkeypatch)
+        cb = make_cb("mng:sel:0")
+        with patch(
+            "teamsleech.tg_bot.handlers.search_inputs.safe_edit_text",
+            AsyncMock(),
+        ) as mock_edit:
+            await handlers_cb["handle_manage"](MagicMock(), cb)
+        text = mock_edit.await_args.args[1]
+        assert "DS" in text and "Dr H" in text
+
+    async def test_select_invalid_index(self, rig, monkeypatch):
+        _, _, handlers_cb, _, state = rig
+        self._seed(monkeypatch)
+        cb = make_cb("mng:sel:9")
+        await handlers_cb["handle_manage"](MagicMock(), cb)
+        assert "changed" in cb.answer.await_args.args[0]
+
+    async def test_edit_doctor_field_flow(self, rig, monkeypatch):
+        _, handlers_msg, handlers_cb, _, state = rig
+        self._seed(monkeypatch)
+        cb = make_cb("mng:field:0:doctor")
+        with patch(
+            "teamsleech.tg_bot.handlers.search_inputs.safe_edit_text",
+            AsyncMock(),
+        ):
+            await handlers_cb["handle_manage"](MagicMock(), cb)
+        session = state.get_session(123)
+        assert session.pending_edit_idx == 0
+        assert session.pending_edit_field == "doctor"
+        with patch(
+            "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+            AsyncMock(),
+        ):
+            session, msg = await send(rig, "Dr New")
+        assert session.pending_edit_idx is None
+        assert "Updated" in msg.reply.await_args_list[0].args[0]
+
+    async def test_delete_confirm_flow(self, rig, monkeypatch):
+        _, _, handlers_cb, _, state = rig
+        self._seed(monkeypatch)
+        with patch(
+            "teamsleech.tg_bot.handlers.search_inputs.safe_edit_text",
+            AsyncMock(),
+        ) as mock_edit:
+            await handlers_cb["handle_manage"](MagicMock(), make_cb("mng:del:1"))
+            assert "Delete **FT**" in mock_edit.await_args.args[1]
+            with patch(
+                "teamsleech.tg_bot.handlers.search_inputs.rotate_github_secret",
+                AsyncMock(),
+            ):
+                await handlers_cb["handle_manage"](
+                    MagicMock(), make_cb("mng:del_yes:1")
+                )
+            assert "Deleted **FT**" in mock_edit.await_args.args[1]
