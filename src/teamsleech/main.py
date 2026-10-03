@@ -7,6 +7,7 @@ from teamsleech.core.config import settings
 from teamsleech.services.auth import TokenExpiredError, authenticate
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.graph import GraphClient
+from teamsleech.services.reauth import run_reauth_flow
 from teamsleech.services.scanner import ScannerService
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
@@ -65,7 +66,11 @@ def main():
         
         await app.start()
         await state_manager.initialize()
-        
+
+        if os.getenv("RUN_MODE", "normal") == "reauth":
+            log.info("Reauth mode: starting Microsoft device-code login...")
+            await run_reauth_flow(app, settings.telegram_chat_id)
+
         log.info("Step 3/3: Bot is live and listening.")
         
         # 5. Scheduled Auto-Check Logic (Silent Mode)

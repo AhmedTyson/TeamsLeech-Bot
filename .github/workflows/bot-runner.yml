@@ -51,6 +51,7 @@ jobs:
       TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
       SUBJECTS_JSON:        ${{ secrets.SUBJECTS_JSON }}
       SUBJECT_NAME:         ${{ github.event.inputs.subject || '' }}
+      RUN_MODE:             ${{ github.event.inputs.mode || 'normal' }}
 
     steps:
       - name: Check Date (Silent before Sept 30)
