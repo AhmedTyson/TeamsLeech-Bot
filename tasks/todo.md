@@ -255,7 +255,12 @@ code). New code only took effect after the user-triggered fresh run
 concurrency cancels the old runner — expected, not a bug.
 **Status:** [x] documented
 
-## A2: Zero-team subject (Dr. Abdelrahman Farmawy) — keywords never match
+## A2: Zero-team subject (Dr. Abdelrahman Farmawy) — RESOLVED via gist rebuild
+
+**Fix applied:** improved JSON (additive doctor part-splits + `Project 1` /
+`Project` keywords) published to secret gist; `SUBJECTS_URL` secret set;
+live verify `37154132870`: **9/9 subjects match exactly 1 team, zero
+cross-bleed, zero config flags.** Gist is now the live source.
 
 **Finding:** 0 teams in verify (twice) and in 3 live scans. User rewrote
 `SUBJECTS_JSON` 4× blind (18:51–18:58 PUTs) with no feedback loop.
