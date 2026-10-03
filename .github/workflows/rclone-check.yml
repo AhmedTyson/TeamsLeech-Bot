@@ -118,11 +118,15 @@ jobs:
                           for item in res.get("value", []):
                               if item.get("name", "").lower().endswith(".mp4"):
                                   parent = item.get("parentReference", {})
-                                  found = (
-                                      drive["id"],
-                                      parent.get("path", "") + "/" + item["name"],
-                                      item["name"],
+                                  raw_path = parent.get("path", "")
+                                  prefix = f"/drives/{drive['id']}/root:"
+                                  rel = (
+                                      raw_path[len(prefix):]
+                                      if raw_path.startswith(prefix)
+                                      else raw_path
                                   )
+                                  drive_path = rel.strip("/") + "/" + item["name"]
+                                  found = (drive["id"], drive_path, item["name"])
                                   break
                           if found:
                               break
