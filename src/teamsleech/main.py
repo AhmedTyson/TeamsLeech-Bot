@@ -8,7 +8,7 @@ from teamsleech.services.auth import TokenExpiredError, authenticate
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.graph import GraphClient
 from teamsleech.services.reauth import run_reauth_flow
-from teamsleech.services.scanner import ScannerService
+from teamsleech.services.scanner import ScannerService, validate_keyword_lists
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.handlers import register_all_handlers
@@ -40,6 +40,8 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
         matched = scanner._match_teams(teams, subj)
         doc = f" + 👨‍🏫 {subj.doctor}" if subj.doctor else ""
         lines.append(f"\n📚 **{subj.name}**{doc}: {len(matched)} team(s)")
+        for err in validate_keyword_lists(subj.keywords, subj.doctor_keywords):
+            lines.append(f"   ⚠️ config: {err}")
         for t in matched:
             lines.append(f"   - `{t.display_name}`")
             team_hits.setdefault(t.id, []).append(subj.name)

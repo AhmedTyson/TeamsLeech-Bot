@@ -64,21 +64,43 @@ class TestAddSteps:
         _, _, _, _, state = rig
         session = state.get_session(123)
         session.is_searching_teams = True
-        session.pending_add_team = Team(id="t1", display_name="DS Team")
+        session.pending_add_team = Team(id="t1", display_name="Data Security - Dr Hany")
         session.pending_add_step = "ask_subj_kw"
         session, _ = await send(rig, "same")
-        assert session.pending_add_data["subj_kw"] == ["DS Team"]
+        assert session.pending_add_data["subj_kw"] == ["Data Security - Dr Hany"]
         assert session.pending_add_step == "ask_doc_kw"
 
     async def test_subj_kw_parsed(self, rig):
         _, _, _, _, state = rig
         session = state.get_session(123)
         session.is_searching_teams = True
-        session.pending_add_team = Team(id="t1", display_name="DS Team")
+        session.pending_add_team = Team(id="t1", display_name="Data Security - Dr Hany")
         session.pending_add_step = "ask_subj_kw"
         session, _ = await send(rig, "Data Security, DSEC")
         assert session.pending_add_data["subj_kw"] == ["Data Security", "DSEC"]
         assert session.pending_add_step == "ask_doc_kw"
+
+    async def test_short_keywords_rejected(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_team = Team(id="t1", display_name="Data Security - Dr Hany")
+        session.pending_add_data["subj_kw"] = ["L4"]
+        session.pending_add_step = "ask_doc_kw"
+        session, msg = await send(rig, "skip")
+        assert session.pending_add_step == "ask_subj_kw"
+        assert "rejected" in msg.reply.await_args.args[0].lower()
+
+    async def test_self_match_failure_returns_to_subj(self, rig):
+        _, _, _, _, state = rig
+        session = state.get_session(123)
+        session.is_searching_teams = True
+        session.pending_add_team = Team(id="t1", display_name="Math Group Alpha")
+        session.pending_add_data["subj_kw"] = ["physics"]
+        session.pending_add_step = "ask_doc_kw"
+        session, msg = await send(rig, "skip")
+        assert session.pending_add_step == "ask_subj_kw"
+        assert "itself" in msg.reply.await_args.args[0]
 
     async def test_skip_skip_rejected(self, rig):
         _, _, _, _, state = rig
@@ -94,7 +116,7 @@ class TestAddSteps:
         _, _, _, _, state = rig
         session = state.get_session(123)
         session.is_searching_teams = True
-        session.pending_add_team = Team(id="t1", display_name="DS Team")
+        session.pending_add_team = Team(id="t1", display_name="Data Security - Dr Hany")
         session.pending_add_step = "ask_name"
         await send(rig, "Data Security")
         await send(rig, "DSEC")
@@ -115,7 +137,7 @@ class TestAddSteps:
         _, _, _, _, state = rig
         session = state.get_session(123)
         session.is_searching_teams = True
-        session.pending_add_team = Team(id="t1", display_name="DS Team")
+        session.pending_add_team = Team(id="t1", display_name="Data Security - Dr Hany")
         session.pending_add_step = "ask_name"
         await send(rig, "Data Security")
         await send(rig, "DSEC")

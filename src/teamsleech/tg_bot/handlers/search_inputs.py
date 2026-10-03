@@ -130,6 +130,17 @@ def register_search_inputs(
                         " Send new keywords, `clear` is not allowed for both."
                     )
                     return
+                from teamsleech.services.scanner import validate_keyword_lists
+                kw_errors = validate_keyword_lists(
+                    subj.keywords, subj.doctor_keywords
+                )
+                if kw_errors:
+                    await message.reply(
+                        "❌ Keywords rejected:\n- "
+                        + "\n- ".join(kw_errors)
+                        + "\n\nSend new keywords, or `keep`."
+                    )
+                    return
             elif field == "name":
                 subj.name = text
             elif field == "short":
@@ -277,6 +288,30 @@ def register_search_inputs(
                 session.pending_add_step = "ask_subj_kw"
                 return
             session.pending_add_data["doc_kw"] = doc_kw
+            from teamsleech.services.scanner import validate_keyword_lists
+            kw_errors = validate_keyword_lists(subj_kw, doc_kw)
+            if kw_errors:
+                await message.reply(
+                    "❌ Keywords rejected:\n- "
+                    + "\n- ".join(kw_errors)
+                    + "\n\nSend subject keywords again, or `cancel`."
+                )
+                session.pending_add_step = "ask_subj_kw"
+                return
+            team = session.pending_add_team
+            if team is not None:
+                tmp = SubjectConfig(
+                    name="tmp", keywords=subj_kw, doctor_keywords=doc_kw
+                )
+                checker = ScannerService(discovery.graph, state)
+                if not checker._match_teams([team], tmp):
+                    await message.reply(
+                        f"⚠️ These keywords don't match **{team.display_name}**"
+                        " itself — the subject would grab nothing.\n\n"
+                        "Send subject keywords again, or `cancel`."
+                    )
+                    session.pending_add_step = "ask_subj_kw"
+                    return
             if doc_kw:
                 session.pending_add_step = "ask_doc_label"
                 await message.reply(

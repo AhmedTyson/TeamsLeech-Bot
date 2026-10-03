@@ -11,6 +11,26 @@ from teamsleech.services.state import StateManager
 
 log = logging.getLogger("scanner")
 
+MIN_KEYWORD_LEN = 3
+
+def validate_keyword_lists(
+    keywords: list[str], doctor_keywords: list[str]
+) -> list[str]:
+    """Config-time validation. Returns error strings (empty = valid)."""
+    errors = []
+    if not keywords and not doctor_keywords:
+        errors.append("at least one of subject/doctor keywords is required")
+    for label, items in (("subject", keywords), ("doctor", doctor_keywords)):
+        for kw in items:
+            flat = re.sub(r"[^a-z0-9]", "", kw.lower())
+            if len(flat) < MIN_KEYWORD_LEN:
+                errors.append(
+                    f"{label} keyword '{kw}' is too short/generic"
+                    f" (min {MIN_KEYWORD_LEN} letters/digits)"
+                )
+    return errors
+
+
 class ScannerService:
     def __init__(self, graph_client: GraphClient, state_manager: StateManager):
         self.graph = graph_client
@@ -36,12 +56,14 @@ class ScannerService:
         squashed = re.sub(r"[^a-z0-9]", "", name_lower)
         for kw in keywords:
             kw = kw.lower()
+            flat = re.sub(r"[^a-z0-9]", "", kw)
+            if len(flat) < MIN_KEYWORD_LEN:
+                continue
             if kw.isalpha():
                 if re.search(rf"\b{re.escape(kw)}", name_lower):
                     return True
             else:
-                kw_flat = re.sub(r"[^a-z0-9]", "", kw)
-                if kw_flat and kw_flat in squashed:
+                if flat and flat in squashed:
                     return True
         return False
 

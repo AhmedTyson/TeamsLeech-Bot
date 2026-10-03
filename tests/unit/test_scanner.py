@@ -189,6 +189,27 @@ class TestSuggestTeams:
         assert scanner.suggest_teams(SubjectConfig(name="X"), teams) == []
 
 
+class TestValidateKeywordLists:
+    def test_valid(self):
+        from teamsleech.services.scanner import validate_keyword_lists
+        assert validate_keyword_lists(["data security"], ["hany"]) == []
+
+    def test_both_empty(self):
+        from teamsleech.services.scanner import validate_keyword_lists
+        errors = validate_keyword_lists([], [])
+        assert any("at least one" in e for e in errors)
+
+    def test_short_generic_rejected(self):
+        from teamsleech.services.scanner import validate_keyword_lists
+        errors = validate_keyword_lists(["L4"], ["dr"])
+        assert len(errors) == 2
+
+    def test_short_keyword_ignored_by_matcher(self, scanner):
+        subject = SubjectConfig(name="X", keywords=["L4"])
+        teams = [Team(id="1", display_name="BIS-Foo-L4")]
+        assert scanner._match_teams(teams, subject) == []
+
+
 class TestDriveStats:
     async def test_mp4_stats_reports_truncation(self, scanner):
         scanner.graph.get = AsyncMock(return_value={
