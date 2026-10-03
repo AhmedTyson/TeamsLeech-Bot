@@ -22,6 +22,12 @@ Tap number → existing suggestion flow (unchanged) → back to rename mode.
 ## Decision rule
 Human approves (a)/(b) here first. Change code only for (b).
 
+## Decision (recorded 2026-10-03)
+**(a) Keep.** Telegram exposes no long-press/right-click callbacks, so (b)
+adds a mode + Done button + new states to save one small `✏️` per item — net
+negative for a rare action on a 2-person bot. Revisit only if checklist
+regularly exceeds ~20 items.
+
 ## Acceptance
 - [ ] Decision + Telegram-limits justification recorded in this file
 - [ ] If (b): default view button count halved; toggle tests green + mode tests added

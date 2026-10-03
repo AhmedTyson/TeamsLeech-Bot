@@ -22,6 +22,13 @@ Adopt full-text ONLY if actions stay visible for typical (≤15-item) lists;
 else document here: "numbers stay because …" with the measured row counts,
 and close. No code without the measurement.
 
+## Decision (recorded 2026-10-03)
+**Numbers stay.** Row math for your real 9-item scan: full-text 1-per-row =
+9 + upload + filters + actions ≈ 13 rows, pushing Upload/Filters/Cancel off
+the first screen; numbered toggles (4/row incl. ✏️) = ~5 rows total with all
+actions visible. `callback_data` stays `sel:<i>` (under the 64-byte cap either
+way). Override: say the word and the full-text variant gets spiked.
+
 ## Acceptance
 - [ ] Measured row counts recorded in this file
 - [ ] Adopt (with tests) or documented-keep; suite green either way
