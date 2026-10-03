@@ -91,7 +91,7 @@ jobs:
                           f"{GRAPH_BASE_URL}/me/joinedTeams", headers=headers
                       )
                   ).json()["value"]
-                  found = None
+                  drive_id = ""
                   for team in teams:
                       site = (
                           await client.get(
@@ -107,36 +107,13 @@ jobs:
                               headers=headers,
                           )
                       ).json().get("value", [])
-                      for drive in drives:
-                          res = (
-                              await client.get(
-                                  f"{GRAPH_BASE_URL}/drives/{drive['id']}"
-                                  "/root/search(q='.mp4')",
-                                  headers=headers,
-                              )
-                          ).json()
-                          for item in res.get("value", []):
-                              if item.get("name", "").lower().endswith(".mp4"):
-                                  parent = item.get("parentReference", {})
-                                  raw_path = parent.get("path", "")
-                                  prefix = f"/drives/{drive['id']}/root:"
-                                  rel = (
-                                      raw_path[len(prefix):]
-                                      if raw_path.startswith(prefix)
-                                      else raw_path
-                                  )
-                                  drive_path = rel.strip("/") + "/" + item["name"]
-                                  found = (drive["id"], drive_path, item["name"])
-                                  break
-                          if found:
-                              break
-                      if found:
+                      if drives:
+                          drive_id = drives[0]["id"]
                           break
-              if not found:
-                  print("RC: no mp4 found via Graph")
+              if not drive_id:
+                  print("RC: no drive found via Graph")
                   return
-              drive_id, drive_path, name = found
-              print(f"RC: target={name[:60]}", flush=True)
+              print("RC: drive ok", flush=True)
 
               expiry = (datetime.now(UTC) + timedelta(minutes=55)).isoformat()
               token = json.dumps(
@@ -167,6 +144,24 @@ jobs:
               print("RC: lsd err=" + ls.stderr[-500:].strip(), flush=True)
               if ls.returncode != 0:
                   return
+              # rclone-native discovery: first mp4 path as rclone sees it
+              find = run(
+                  ["rclone", "lsf", "teams:", "--config", "/tmp/rclone.conf",
+                   "-R", "--files-only", "--include", "*.mp4"]
+              )
+              print(f"RC: lsf exit={find.returncode}", flush=True)
+              candidates = [
+                  line.strip()
+                  for line in find.stdout.splitlines()
+                  if line.strip().lower().endswith(".mp4")
+              ][:5]
+              print(f"RC: mp4 count>={len(candidates)}", flush=True)
+              for cand in candidates:
+                  print(f"RC: candidate={cand[:100]}", flush=True)
+              if not candidates:
+                  print("RC: lsf err=" + find.stderr[-500:].strip(), flush=True)
+                  return
+              drive_path = candidates[0]
               cp = run(
                   ["rclone", "copyto", f"teams:{drive_path}", "/tmp/rcprobe.mp4",
                    "--config", "/tmp/rclone.conf"]
