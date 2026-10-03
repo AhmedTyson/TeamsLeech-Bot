@@ -30,7 +30,14 @@ def test_format_duration():
 def test_build_checklist_text_empty():
     results = {}
     text = build_checklist_text(results)
-    assert "No new files found" in text
+    assert "Nothing in this scope" in text
+
+
+def test_build_checklist_text_empty_with_label():
+    results = {"Math": []}
+    text = build_checklist_text(results, "Last 60 Days")
+    assert "Nothing in Last 60 Days" in text
+    assert "Math" in text
 
 def test_build_checklist_text_with_data():
     recs = [

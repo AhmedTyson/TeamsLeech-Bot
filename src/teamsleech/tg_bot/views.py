@@ -71,8 +71,8 @@ def _format_recording_item(idx: int, rec: Recording, override_name: str | None =
 
 def _build_footer(total: int, n_video: int, n_doc: int) -> str:
     if n_video and n_doc:
-        return f"📊 **{total}** files — {n_video} 🎬 + {n_doc} 📄. Select to upload:"
-    return f"📊 **{total}** file(s). Select to upload:"
+        return f"📊 **{total}** files — {n_video} 🎬 + {n_doc} 📄. Tap numbers to select, then 🚀 Upload:"
+    return f"📊 **{total}** file(s). Tap numbers to select, then 🚀 Upload:"
 
 def build_checklist_text(
     results: dict[str, list[Recording]],
@@ -86,7 +86,7 @@ def build_checklist_text(
         header = "📡 **Scan Results**"
         if scan_label:
             header += f"\n📅 _{scan_label}_"
-        return f"{header}\n{DIVIDER_THICK}\n\n✅ **No new files found.**\n_{subjects_checked}_"
+        return f"{header}\n{DIVIDER_THICK}\n\n✅ Nothing in {scan_label or 'this scope'} for _{subjects_checked}_."
 
     overrides = rename_overrides or {}
     is_multi = len(results) > 1

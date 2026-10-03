@@ -27,7 +27,7 @@ def register_commands(
             "📚 `/subjects` — Manage your courses\n"
             "⚙️ `/runner`   — Manage background workflow\n\n"
             "💡 **𝗤𝘂𝗶𝗰𝗸 𝗔𝗰𝗰𝗲𝘀𝘀:**\n"
-            "• Tap a subject → scans **this week** automatically\n"
+            "• Tap a subject → pick scope (60 days default)\n"
             "• Send a date: `2026-04-01`\n"
             "• Send a range: `2026-04-01 to 2026-04-07`\n"
             "• Type `today` or `this week`\n\n"
@@ -45,6 +45,7 @@ def register_commands(
         keyboard = build_subject_keyboard(subjects)
         await message.reply(
             "**What do you want to check?**\n\n"
+            "Scope defaults to the last 60 days.\n"
             "💡 _Tip: Send a date like_ `2026-04-01` _or range like_\n"
             "`2026-04-01 to 2026-04-07` _to check specific dates._",
             reply_markup=keyboard,
