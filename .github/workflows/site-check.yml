@@ -1,0 +1,140 @@
+# TEMPORARY probe — delete after verdict. Manual dispatch only.
+# For one mp4 per team site: attempt createLink (view/anonymous), log status,
+# delete the link if created. No downloads. Shapes/statuses ONLY.
+name: Site sharing check (temporary)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    env:
+      TEAMS_REFRESH_TOKEN: ${{ secrets.TEAMS_REFRESH_TOKEN }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SUBJECTS_JSON: ${{ secrets.SUBJECTS_JSON }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      - name: Check sharing per site
+        run: |
+          cat > /tmp/site_check.py <<'PYEOF'
+          """Temporary: createLink attempt for one mp4 per team site."""
+          import asyncio
+          import sys
+
+          import httpx
+
+          sys.path.insert(0, "src")
+          from teamsleech.core.constants import GRAPH_BASE_URL
+          from teamsleech.services.auth import authenticate
+
+
+          async def main() -> None:
+              token = await authenticate()  # rotates secret like a normal run
+              print("SITECHECK: token OK", flush=True)
+              auth = {"Authorization": f"Bearer {token}"}
+              async with httpx.AsyncClient(timeout=30.0) as client:
+                  teams = (
+                      await client.get(
+                          f"{GRAPH_BASE_URL}/me/joinedTeams", headers=auth
+                      )
+                  ).json()["value"]
+                  print(f"SITECHECK: teams={len(teams)}", flush=True)
+                  for team in teams:
+                      tname = team.get("displayName", "?")[:40]
+                      site = (
+                          await client.get(
+                              f"{GRAPH_BASE_URL}/groups/{team['id']}/sites/root",
+                              headers=auth,
+                          )
+                      ).json()
+                      if not site.get("id"):
+                          print(f"SITECHECK: team={tname} site=none", flush=True)
+                          continue
+                      drives = (
+                          await client.get(
+                              f"{GRAPH_BASE_URL}/sites/{site['id']}/drives",
+                              headers=auth,
+                          )
+                      ).json().get("value", [])
+                      tested = False
+                      for drive in drives:
+                          res = (
+                              await client.get(
+                                  f"{GRAPH_BASE_URL}/drives/{drive['id']}"
+                                  "/root/search(q='.mp4')",
+                                  headers=auth,
+                              )
+                          ).json()
+                          target = next(
+                              (
+                                  i
+                                  for i in res.get("value", [])
+                                  if i.get("name", "").lower().endswith(".mp4")
+                              ),
+                              None,
+                          )
+                          if target is None:
+                              continue
+                          link_resp = await client.post(
+                              f"{GRAPH_BASE_URL}/drives/{drive['id']}/items/"
+                              f"{target['id']}/createLink",
+                              headers=auth,
+                              json={"type": "view", "scope": "anonymous"},
+                          )
+                          line = (
+                              f"SITECHECK: team={tname} "
+                              f"createLink={link_resp.status_code}"
+                          )
+                          if link_resp.status_code in (200, 201):
+                              perm = link_resp.json()
+                              scope = perm.get("link", {}).get("scope", "?")
+                              line += f" scope={scope}"
+                              perm_id = perm.get("id", "")
+                              if perm_id:
+                                  d = await client.delete(
+                                      f"{GRAPH_BASE_URL}/drives/{drive['id']}/items/"
+                                      f"{target['id']}/permissions/{perm_id}",
+                                      headers=auth,
+                                  )
+                                  line += f" cleanup={d.status_code}"
+                          else:
+                              try:
+                                  err = link_resp.json().get("error", {})
+                                  line += f" code={err.get('code', '?')}"
+                              except Exception:
+                                  line += " code=parse-fail"
+                          print(line, flush=True)
+                          tested = True
+                          break
+                      if not tested:
+                          print(f"SITECHECK: team={tname} mp4=none", flush=True)
+
+
+          asyncio.run(main())
+          PYEOF
+          PYTHONPATH=src uv run python /tmp/site_check.py
