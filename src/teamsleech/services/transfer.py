@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 from collections.abc import Callable
+from urllib.parse import urlsplit
 
 import httpx
 from pyrogram import Client
@@ -15,6 +16,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from teamsleech.core.constants import CHUNK_SIZE_BYTES, GRAPH_BASE_URL
 from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import Recording
+from teamsleech.services.auth import authenticate_sharepoint
 from teamsleech.services.graph import GraphClient
 from teamsleech.services.state import StateManager
 
@@ -45,6 +47,7 @@ class TransferService:
         self.chat_id = chat_id
         self._progress_last_time: float = 0.0
         self._progress_last_bytes: int = 0
+        self._sp_tokens: dict[str, str | None] = {}
 
     _retry_download = retry(
         stop=stop_after_attempt(3),
@@ -123,6 +126,11 @@ class TransferService:
             log.warning("Thumbnail extraction failed: %s", exc)
         return None
 
+    async def _sharepoint_token(self, host: str) -> str | None:
+        if host not in self._sp_tokens:
+            self._sp_tokens[host] = await authenticate_sharepoint(host)
+        return self._sp_tokens[host]
+
     @_retry_download
     async def _download_recording(
         self, rec: Recording, dest_path: str
@@ -175,24 +183,45 @@ class TransferService:
                     f" for {rec.name}: {body}"
                 )
 
-            # Step 2: fetch bytes with NO Graph auth headers. The
-            # pre-authenticated URL carries its own token in query.
+            # Step 2: fetch bytes in the user's own SharePoint context
+            # when possible, else anonymously via the pre-authed URL.
+            host = urlsplit(download_url).hostname or ""
+            sp_token = await self._sharepoint_token(host) if host else None
+            dl_headers = (
+                {"Authorization": f"Bearer {sp_token}"}
+                if sp_token
+                else None
+            )
+            if sp_token:
+                log.info("Downloading %s with user SharePoint token.", rec.name)
+            else:
+                log.info(
+                    "Downloading %s anonymously (no SharePoint token).", rec.name
+                )
             try:
                 async with client.stream(
                     "GET",
                     download_url,
+                    headers=dl_headers,
                     timeout=60.0,
                     follow_redirects=True,
                 ) as resp:
                     try:
                         resp.raise_for_status()
                     except httpx.HTTPStatusError as exc:
+                        hint = (
+                            "user-context token also denied — account"
+                            " lacks download rights or Block-Download"
+                            " policy applies"
+                            if sp_token
+                            else "check Conditional Access / Block-Download"
+                            " policy / site permissions for the"
+                            " service account"
+                        )
                         raise DownloadError(
                             f"SharePoint download failed"
                             f" [{resp.status_code}] for {rec.name}:"
-                            f" check Conditional Access / Block-Download"
-                            f" policy / site permissions for the"
-                            f" service account. ({exc})"
+                            f" {hint}. ({exc})"
                         ) from exc
                     total_written = 0
                     with open(dest_path, "wb") as f:

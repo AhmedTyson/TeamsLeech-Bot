@@ -59,6 +59,41 @@ class TestExchangeRefreshToken:
             await exchange_refresh_token()
 
 
+class TestAuthenticateSharepoint:
+    async def test_success_posts_sharepoint_scope(self, mock_login_api, mock_github_api):
+        route = mock_login_api.post(TOKEN_URL).respond(
+            200,
+            json={"access_token": "sp_at", "refresh_token": "rt3"},
+        )
+        mock_github_api.get("/repos/user/repo/actions/secrets/public-key").respond(
+            200,
+            json={"key": "dGVzdA==", "key_id": "k1"},
+        )
+        mock_github_api.put(
+            "/repos/user/repo/actions/secrets/TEAMS_REFRESH_TOKEN"
+        ).respond(200, text="ok")
+
+        from teamsleech.services.auth import authenticate_sharepoint
+        token = await authenticate_sharepoint("tenant.sharepoint.com")
+        assert token == "sp_at"
+        body = route.calls[0].request.content.decode()
+        assert "tenant.sharepoint.com" in body
+
+    async def test_failure_returns_none(self, mock_login_api):
+        mock_login_api.post(TOKEN_URL).respond(
+            400,
+            json={"error": "invalid_grant", "error_description": "Consent missing"},
+        )
+        from teamsleech.services.auth import authenticate_sharepoint
+        assert await authenticate_sharepoint("tenant.sharepoint.com") is None
+
+    async def test_no_refresh_token_returns_none(self, monkeypatch):
+        from teamsleech.core.config import settings
+        from teamsleech.services.auth import authenticate_sharepoint
+        monkeypatch.setattr(settings, "teams_refresh_token", "")
+        assert await authenticate_sharepoint("tenant.sharepoint.com") is None
+
+
 class TestAuthenticate:
     async def test_no_refresh_token(self, monkeypatch):
         from teamsleech.core.config import settings

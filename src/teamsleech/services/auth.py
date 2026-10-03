@@ -23,20 +23,27 @@ SCOPE = "https://graph.microsoft.com/.default offline_access"
 SECRET_NAME = "TEAMS_REFRESH_TOKEN"
 MS_TIMEOUT = 30.0
 
+def sharepoint_scope(host: str) -> str:
+    return f"https://{host}/.default offline_access"
+
 @retry_http
 async def _post_token(payload: dict[str, str]) -> httpx.Response:
     async with httpx.AsyncClient() as client:
         return await client.post(TOKEN_URL, data=payload, timeout=MS_TIMEOUT)
 
-async def exchange_refresh_token() -> tuple[str, str]:
+async def exchange_refresh_token(
+    refresh_token: str | None = None,
+    scope: str = SCOPE,
+) -> tuple[str, str]:
     """
     Exchange the configured refresh_token for a fresh (access_token, new_refresh_token).
     """
+    active_refresh = refresh_token or settings.teams_refresh_token
     payload = {
         "client_id": settings.teams_client_id,
         "grant_type": "refresh_token",
-        "refresh_token": settings.teams_refresh_token,
-        "scope": SCOPE,
+        "refresh_token": active_refresh,
+        "scope": scope,
     }
     
     try:
@@ -76,4 +83,31 @@ async def authenticate() -> str:
     except Exception as e:
         log.error("Secret rotation failed (non-fatal): %s", e)
         
+    return access_token
+
+async def authenticate_sharepoint(host: str) -> str | None:
+    """
+    Trade the current refresh token for a SharePoint-audience access token
+    (same user account, `https://<host>/.default` scope) so file downloads
+    run in the user's own context instead of anonymously. Returns None when
+    the exchange fails — caller falls back to the anonymous pre-authed URL.
+    """
+    if not settings.teams_refresh_token:
+        return None
+
+    try:
+        access_token, new_refresh = await exchange_refresh_token(
+            settings.teams_refresh_token, sharepoint_scope(host)
+        )
+    except TokenManagerError as e:
+        log.warning("SharePoint token exchange failed for %s: %s", host, e)
+        return None
+
+    settings.teams_refresh_token = new_refresh
+    try:
+        await rotate_github_secret(SECRET_NAME, new_refresh)
+    except Exception as e:
+        log.error("Secret rotation failed (non-fatal): %s", e)
+
+    log.info("SharePoint token acquired for %s (user context).", host)
     return access_token

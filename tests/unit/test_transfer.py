@@ -100,6 +100,13 @@ class TestExtractThumbnail:
 
 
 class TestDownloadRecording:
+    @pytest.fixture(autouse=True)
+    def _no_sp_token(self):
+        with patch(
+            "teamsleech.services.transfer.authenticate_sharepoint",
+            AsyncMock(return_value=None),
+        ):
+            yield
     def _mock_client(self, mock_cls, graph_resp=None, dl_resp=None,
                      get_side_effect=None, stream_side_effect=None):
         mock_client = MagicMock()
@@ -153,7 +160,7 @@ class TestDownloadRecording:
         _, graph_kwargs = mock_client.get.await_args
         assert graph_kwargs["headers"]["Authorization"] == "Bearer fake_token"
         _, stream_kwargs = mock_client.stream.call_args
-        assert "headers" not in stream_kwargs
+        assert stream_kwargs.get("headers") is None
 
     async def test_download_network_error(self, transfer_service, sample_recordings, tmp_path):
         rec = sample_recordings[0]
@@ -228,7 +235,51 @@ class TestDownloadRecording:
                 await transfer_service._download_recording(rec, dest)
             # SharePoint fetch must not carry the Graph Bearer.
             _, stream_kwargs = mock_client.stream.call_args
-            assert "headers" not in stream_kwargs
+            assert stream_kwargs.get("headers") is None
+
+    async def test_download_uses_sharepoint_token_when_available(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
+        chunk = b"x" * 1024
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        with (
+            patch(
+                "teamsleech.services.transfer.authenticate_sharepoint",
+                AsyncMock(return_value="sp_at"),
+            ),
+            patch("httpx.AsyncClient") as mock_cls,
+        ):
+            mock_client = self._mock_client(
+                mock_cls,
+                graph_resp=self._graph_redirect(),
+                dl_resp=self._dl_resp(chunk),
+            )
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        _, stream_kwargs = mock_client.stream.call_args
+        assert stream_kwargs["headers"] == {"Authorization": "Bearer sp_at"}
+
+    async def test_sharepoint_token_cached_per_host(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        with (
+            patch(
+                "teamsleech.services.transfer.authenticate_sharepoint",
+                AsyncMock(return_value="sp_at"),
+            ) as mock_sp,
+            patch("httpx.AsyncClient") as mock_cls,
+        ):
+            self._mock_client(
+                mock_cls,
+                graph_resp=self._graph_redirect(),
+                dl_resp=self._dl_resp(),
+            )
+            await transfer_service._download_recording(rec, dest)
+            await transfer_service._download_recording(rec, dest)
+        assert mock_sp.await_count == 1
 
 
 class TestUploadToTelegram:
