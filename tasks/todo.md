@@ -91,13 +91,13 @@
 **Description:** `git diff` shows an unrelated `uv.lock` hunk (`teamsleech 2.1.0` → `2.3.1`, stale-lock side effect of the earlier `uv run`). Keep it only if intended (lock was stale vs `pyproject.toml:7`); otherwise `git checkout -- uv.lock`. Then commit the two real files and push.
 
 **Acceptance criteria:**
-- [ ] Diff contains only intended files (`transfer.py`, `test_transfer.py`, `tasks/plan.md`, `tasks/todo.md`, plus `uv.lock` iff deliberately kept)
-- [ ] Commit pushed to `AhmedTyson/TeamsLeech-Bot`
+- [x] Diff contains only intended files (`transfer.py`, `test_transfer.py`, `tasks/plan.md`, `tasks/todo.md`, plus `uv.lock` version sync 2.1.0→2.3.1 kept deliberately — lock was stale vs `pyproject.toml`)
+- [x] Commit pushed to `AhmedTyson/TeamsLeech-Bot` (`1457956`, CI `37126910281` success)
 
 **Verification:**
-- [ ] `git status --short` shows expected set
-- [ ] `git diff --stat` reviewed
-- [ ] Push succeeds
+- [x] `git status --short` shows expected set
+- [x] `git diff --stat` reviewed
+- [x] Push succeeds
 
 **Dependencies:** Task 4
 
@@ -109,10 +109,11 @@
 
 ## Task 6: Rerun workflow, read new log line
 
-**Description:** Trigger the `TeamsLeech Bot` workflow (`workflow_dispatch`, same subject/file as the failure) and check whether download succeeds or which new side-identifying error appears (`Graph denied content [...]` vs `SharePoint download failed [401] ...`).
+**Description:** Trigger the `TeamsLeech Bot` workflow (`workflow_dispatch`, same subject/file as the failure) and check whether download succeeds or which new side-identifying error appears (`Graph denied content [...]` vs `SharePoint download failed [401] ...`). NOTE: dispatch boots the bot idle — the upload itself is user-driven via Telegram (`/check` → select → upload) while the runner is live.
 
 **Acceptance criteria:**
-- [ ] Workflow run completed for the failing file
+- [x] Workflow run triggered on fixed code (run `37126928203`, checkout includes `1457956`)
+- [ ] Upload of the failing file attempted via Telegram while runner live
 - [ ] Outcome recorded: success, Graph-side error, or SharePoint-side error
 
 **Verification:**
