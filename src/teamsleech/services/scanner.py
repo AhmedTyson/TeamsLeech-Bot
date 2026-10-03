@@ -13,6 +13,10 @@ log = logging.getLogger("scanner")
 
 MIN_KEYWORD_LEN = 3
 
+def subject_key(subject) -> str:
+    """Stable unique key per subject: short code preferred, name fallback."""
+    return (subject.short or subject.name).strip()
+
 def validate_keyword_lists(
     keywords: list[str], doctor_keywords: list[str]
 ) -> list[str]:
@@ -29,6 +33,18 @@ def validate_keyword_lists(
                     f" (min {MIN_KEYWORD_LEN} letters/digits)"
                 )
     return errors
+
+
+def duplicate_shorts(subjects: list) -> list[str]:
+    """Short codes already used more than once (case-insensitive)."""
+    seen: dict[str, str] = {}
+    dupes: list[str] = []
+    for s in subjects:
+        code = (s.short or s.name).strip().lower()
+        if code in seen and code not in dupes:
+            dupes.append(code)
+        seen.setdefault(code, s.name)
+    return dupes
 
 
 class ScannerService:
@@ -272,7 +288,7 @@ class ScannerService:
                         drive_id=drive_id,
                         item_id=item_id,
                         team_name=team.display_name,
-                        subject_name=subject.name,
+                        subject_name=subject_key(subject),
                         is_video=is_video,
                     )
                 )
@@ -309,9 +325,10 @@ class ScannerService:
             all_teams = await discovery.get_all_joined_teams()
         except GraphAPIError as e:
             log.error("Failed to fetch teams: %s", e)
-            return {s.name: [] for s in subjects}
+            return {subject_key(s): [] for s in subjects}
 
         for subject in subjects:
+            key = subject_key(subject)
             try:
                 matched_teams = self._match_teams(all_teams, subject)
                 seen_ids: set[str] = set()
@@ -354,18 +371,18 @@ class ScannerService:
                     r for batch in team_results for r in batch
                 ]
                 recordings.sort(key=lambda r: r.created, reverse=True)
-                results[subject.name] = recordings
+                results[key] = recordings
 
                 log.info(
                     "'%s' scan complete: %d recordings found.",
-                    subject.name,
+                    key,
                     len(recordings),
                 )
             except Exception as e:
                 log.error(
                     "Scan failed for subject '%s': %s",
-                    subject.name, e,
+                    key, e,
                 )
-                results[subject.name] = []
+                results[key] = []
 
         return results

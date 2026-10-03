@@ -145,6 +145,17 @@ def register_search_inputs(
             elif field == "name":
                 subj.name = text
             elif field == "short":
+                clash = any(
+                    i != idx
+                    and (s.short or s.name).strip().lower() == text.strip().lower()
+                    for i, s in enumerate(existing)
+                )
+                if clash:
+                    await message.reply(
+                        f"❌ Short code `{text.strip()}` is already used."
+                        " Send another, or `keep`."
+                    )
+                    return
                 subj.short = text
             elif field == "doctor":
                 subj.doctor = "" if text.lower() == "clear" else text
@@ -244,6 +255,16 @@ def register_search_inputs(
 
         if session.pending_add_step == "ask_short":
             session.pending_add_data["short"] = text
+            existing_codes = {
+                (s.short or s.name).strip().lower()
+                for s in ScannerService(discovery.graph, state).load_subjects()
+            }
+            if text.strip().lower() in existing_codes:
+                await message.reply(
+                    f"❌ Short code `{text.strip()}` is already used."
+                    " Send a different one, or `cancel`."
+                )
+                return
             session.pending_add_step = "ask_subj_kw"
             team = session.pending_add_team
             team_name = team.display_name if team else "this team"

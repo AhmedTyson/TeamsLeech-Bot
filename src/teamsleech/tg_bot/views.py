@@ -95,11 +95,16 @@ def build_checklist_text(
     results: dict[str, list[Recording]],
     scan_label: str = "",
     rename_overrides: dict[int, str] | None = None,
-    doctors: dict[str, str] | None = None,
+    subjects: dict[str, object] | None = None,
 ) -> str:
     total = sum(len(recs) for recs in results.values())
     if total == 0:
-        subjects_checked = ", ".join(results.keys()) if results else "all subjects"
+        if subjects:
+            subjects_checked = ", ".join(
+                getattr(subjects[k], "name", k) for k in results.keys()
+            )
+        else:
+            subjects_checked = ", ".join(results.keys()) if results else "all subjects"
         header = "📡 **Scan Results**"
         if scan_label:
             header += f"\n📅 _{scan_label}_"
@@ -114,15 +119,17 @@ def build_checklist_text(
     lines = _build_header(scan_label, n_video, n_doc)
 
     idx = 0
-    for subj_name, recs in results.items():
-        doctor = (doctors or {}).get(subj_name, "")
+    for key, recs in results.items():
+        cfg = (subjects or {}).get(key)
+        disp_name = getattr(cfg, "name", key)
+        doctor = getattr(cfg, "doctor", "")
         doctor_line = f"\n👨‍🏫 {doctor}" if doctor else ""
         if not recs:
             if is_multi:
-                lines.append(f"\n📚 **{subj_name}**{doctor_line} — ✅ No files")
+                lines.append(f"\n📚 **{disp_name}**{doctor_line} — ✅ No files")
             continue
         if is_multi:
-            lines.append(f"\n📚 **{subj_name}**{doctor_line}")
+            lines.append(f"\n📚 **{disp_name}**{doctor_line}")
             lines.append(DIVIDER_THIN)
         ordered = videos_first(recs)
         n_vid = sum(1 for r in ordered if r.is_video)

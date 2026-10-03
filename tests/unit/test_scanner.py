@@ -414,8 +414,8 @@ class TestScanRecordings:
         with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
             mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=[])
             result = await scanner.scan_recordings(subject_filter="Math")
-        assert "Math" in result
-        assert "Physics" not in result
+        assert "MTH" in result
+        assert "PHY" not in result
 
     async def test_scan_with_subject_filter_no_match(self, scanner, monkeypatch):
         monkeypatch.setattr(
@@ -445,7 +445,7 @@ class TestScanRecordings:
                 side_effect=GraphAPIError("Teams fetch failed")
             )
             result = await scanner.scan_recordings()
-        assert result == {"Math": []}
+        assert result == {"MTH": []}
 
     async def test_scan_saves_last_run_when_recordings_found(
         self, scanner, monkeypatch, mock_graph_api
@@ -462,7 +462,58 @@ class TestScanRecordings:
             mock_disc.return_value.get_all_joined_teams = AsyncMock(return_value=[])
             scanner._match_teams = lambda teams, subject: []
             result = await scanner.scan_recordings()
-        assert result == {"Math": []}
+        assert result == {"MTH": []}
+
+    async def test_same_name_subjects_do_not_overwrite(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps({
+                "subjects": [
+                    {"name": "DS", "short": "D-H", "keywords": ["hany"],
+                     "doctor_keywords": ["hany"]},
+                    {"name": "DS", "short": "D-S", "keywords": ["soha"],
+                     "doctor_keywords": ["soha"]},
+                ]
+            }),
+        )
+        from teamsleech.models.domain import Recording
+        rec_h = Recording(
+            name="h.mp4", size_mb=1.0, created="2024-01-01",
+            drive_id="d", item_id="i1", team_name="T-H", subject_name="D-H",
+            is_video=True,
+        )
+        rec_s = Recording(
+            name="s.mp4", size_mb=1.0, created="2024-01-01",
+            drive_id="d", item_id="i2", team_name="T-S", subject_name="D-S",
+            is_video=True,
+        )
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(
+                return_value=[
+                    Team(id="t1", display_name="T-H Hany"),
+                    Team(id="t2", display_name="T-S Soha"),
+                ]
+            )
+            with patch.object(
+                scanner, "_process_team",
+                AsyncMock(side_effect=[[rec_h], [rec_s]]),
+            ):
+                result = await scanner.scan_recordings()
+        assert result == {"D-H": [rec_h], "D-S": [rec_s]}
+
+    def test_duplicate_shorts_detected(self):
+        from teamsleech.services.scanner import duplicate_shorts
+        subs = [
+            SubjectConfig(name="A", short="X"),
+            SubjectConfig(name="B", short="x"),
+            SubjectConfig(name="C", short="Y"),
+        ]
+        assert duplicate_shorts(subs) == ["x"]
+
+    def test_no_duplicate_shorts(self):
+        from teamsleech.services.scanner import duplicate_shorts
+        subs = [SubjectConfig(name="A", short="X")]
+        assert duplicate_shorts(subs) == []
 
     async def test_scan_defaults_to_unbounded(self, scanner, monkeypatch):
         monkeypatch.setattr(

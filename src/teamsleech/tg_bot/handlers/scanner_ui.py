@@ -11,7 +11,7 @@ from pyrogram.types import (
     Message,
 )
 
-from teamsleech.services.scanner import ScannerService
+from teamsleech.services.scanner import ScannerService, subject_key
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_answer, safe_edit_text
@@ -112,8 +112,10 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         session.rename_overrides.clear()
         session.scan_label = label
 
-        doctors = {s.name: s.doctor for s in scanner.load_subjects()}
-        text = build_checklist_text(results, label, doctors=doctors)
+        subj_map = {}
+        for s in scanner.load_subjects():
+            subj_map[subject_key(s)] = s
+        text = build_checklist_text(results, label, subjects=subj_map)
         keyboard = (
             build_checklist_keyboard(
                 session.pending_recordings, session.selected_indices

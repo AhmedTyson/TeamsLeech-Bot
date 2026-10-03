@@ -7,7 +7,7 @@ from pyrogram.types import (
 )
 
 from teamsleech.models.domain import Recording
-from teamsleech.services.scanner import ScannerService
+from teamsleech.services.scanner import ScannerService, subject_key
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.filters import owner_only
@@ -21,7 +21,7 @@ def _get_rename_suggestion(
 ) -> str | None:
     subjects = scanner.load_subjects()
     subj_config = next(
-        (s for s in subjects if s.name == rec.subject_name), None
+        (s for s in subjects if subject_key(s) == rec.subject_name), None
     )
     if not subj_config:
         return None
@@ -42,10 +42,10 @@ def register_upload_ui(
         if not session.pending_recordings:
             return
 
-        doctors = {s.name: s.doctor for s in scanner.load_subjects()}
+        subj_map = {subject_key(s): s for s in scanner.load_subjects()}
         text = build_checklist_text(
             session.grouped_recordings, session.scan_label, session.rename_overrides,
-            doctors=doctors,
+            subjects=subj_map,
         )
         keyboard = build_checklist_keyboard(
             session.pending_recordings,

@@ -8,7 +8,12 @@ from teamsleech.services.auth import TokenExpiredError, authenticate
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.graph import GraphClient
 from teamsleech.services.reauth import run_reauth_flow
-from teamsleech.services.scanner import ScannerService, validate_keyword_lists
+from teamsleech.services.scanner import (
+    ScannerService,
+    duplicate_shorts,
+    subject_key,
+    validate_keyword_lists,
+)
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.handlers import register_all_handlers
@@ -35,6 +40,10 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
     lines = [
         f"🔍 **Matching verify** — {len(subjects)} subjects, {len(teams)} teams:"
     ]
+    for code in duplicate_shorts(subjects):
+        lines.append(
+            f"⚠️ short code `{code}` used by multiple subjects — fix in manage UI."
+        )
     team_hits: dict[str, list[str]] = {}
     for subj in subjects:
         matched = scanner._match_teams(teams, subj)
@@ -71,17 +80,17 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
     if results:
         lines.append("\n🎞 **Recordings grabbed per subject:**")
         for subj in subjects:
-            recs = results.get(subj.name, [])
+            recs = results.get(subject_key(subj), [])
             n_vid = sum(1 for r in recs if r.is_video)
             n_doc = len(recs) - n_vid
             got_teams = sorted({r.team_name for r in recs})
             if recs:
                 lines.append(
-                    f"   - **{subj.name}**: {n_vid} 🎬 + {n_doc} 📄"
+                    f"   - **{subj.name}** ({subj.short}): {n_vid} 🎬 + {n_doc} 📄"
                     f" from {', '.join(got_teams)}"
                 )
             else:
-                lines.append(f"   - **{subj.name}**: nothing found")
+                lines.append(f"   - **{subj.name}** ({subj.short}): nothing found")
 
     lines.append("\n📦 **Drive search depth (.mp4 first page):**")
     for subj in subjects:
@@ -229,8 +238,10 @@ def main():
                     session.pending_recordings = [r for recs in results.values() for r in recs]
                     session.scan_label = label
 
-                    doctors = {s.name: s.doctor for s in scanner_service.load_subjects()}
-                    text = build_checklist_text(results, label, doctors=doctors)
+                    subj_map = {}
+                    for s in scanner_service.load_subjects():
+                        subj_map[subject_key(s)] = s
+                    text = build_checklist_text(results, label, subjects=subj_map)
                     keyboard = build_checklist_keyboard(session.pending_recordings, session.selected_indices)
 
                     await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
