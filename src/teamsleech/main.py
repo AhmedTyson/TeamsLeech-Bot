@@ -85,7 +85,7 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
     for subj in subjects:
         matched = scanner._match_teams(teams, subj)
         for team in matched:
-            for drive in await scanner.team_drives(team):
+            for drive in await scanner.team_all_drives(team):
                 try:
                     count, truncated = await scanner.drive_mp4_stats(drive["id"])
                 except Exception as e:

@@ -208,6 +208,37 @@ class TestDriveStats:
         scanner.graph.get = AsyncMock(side_effect=GraphAPIError("nope"))
         assert await scanner.team_drives(sample_team) == []
 
+    async def test_channel_drives_added_and_deduped(self, scanner, sample_team):
+        async def side_effect(endpoint, **kw):
+            if endpoint.endswith("/sites/root"):
+                return {"id": "site1"}
+            if endpoint.endswith("/drives"):
+                return {"value": [{"id": "d1", "name": "Documents"}]}
+            if endpoint.endswith("/channels"):
+                return {"value": [
+                    {"id": "c1", "displayName": "G1",
+                     "membershipType": "private"},
+                    {"id": "c2", "displayName": "General",
+                     "membershipType": "standard"},
+                ]}
+            if "filesFolder" in endpoint:
+                return {"parentReference": {"driveId": "dc1"}}
+            raise AssertionError(f"unexpected: {endpoint}")
+        scanner.graph.get = AsyncMock(side_effect=side_effect)
+        drives = await scanner.team_all_drives(sample_team)
+        assert [d["id"] for d in drives] == ["d1", "dc1"]
+
+    async def test_channel_lookup_failure_ignored(self, scanner, sample_team):
+        async def side_effect(endpoint, **kw):
+            if endpoint.endswith("/sites/root"):
+                return {"id": "site1"}
+            if endpoint.endswith("/drives"):
+                return {"value": [{"id": "d1"}]}
+            raise GraphAPIError("denied")
+        scanner.graph.get = AsyncMock(side_effect=side_effect)
+        drives = await scanner.team_all_drives(sample_team)
+        assert [d["id"] for d in drives] == ["d1"]
+
 
 class TestRecordingsFolderStats:
     async def test_counts_mp4_and_nextlink(self, scanner):
@@ -259,9 +290,12 @@ class TestProcessTeam:
         assert recordings == []
 
     async def test_with_date_start_filter(self, scanner, sample_subject, sample_team):
+        from teamsleech.core.constants import SEARCH_EXTENSIONS
         scanner.graph.get = AsyncMock(side_effect=[
             {"id": "site1"},
             {"value": [{"id": "d1"}]},
+            {"value": []},
+            *[{"value": []} for _ in SEARCH_EXTENSIONS],
         ])
         scanner.graph.get_all_pages = AsyncMock(return_value=[])
         recordings = await scanner._process_team(
@@ -269,6 +303,27 @@ class TestProcessTeam:
             "2024-06-01", "2024-06-30", set(),
         )
         assert recordings == []
+
+    async def test_mov_counts_as_video(self, scanner, sample_subject, sample_team):
+        from teamsleech.core.constants import SEARCH_EXTENSIONS
+        item = self._item_on("2024-06-15")
+        item["id"] = "m1"
+        item["name"] = "clip.MOV"
+        idx = SEARCH_EXTENSIONS.index(".mov")
+        responses = [{"value": []} for _ in SEARCH_EXTENSIONS]
+        responses[idx] = {"value": [item]}
+        scanner.graph.get = AsyncMock(side_effect=[
+            {"id": "site1"},
+            {"value": [{"id": "d1"}]},
+            {"value": []},
+            *responses,
+        ])
+        recordings = await scanner._process_team(
+            sample_team, sample_subject,
+            "2024-06-01", "2024-06-30", set(),
+        )
+        assert len(recordings) == 1
+        assert recordings[0].is_video is True
 
     def _item_on(self, day: str):
         return {
@@ -280,12 +335,14 @@ class TestProcessTeam:
         }
 
     def _graph_side_effect_item(self, day: str):
+        from teamsleech.core.constants import SEARCH_EXTENSIONS
         empty = {"value": []}
         return [
             {"id": "site1"},
             {"value": [{"id": "d1"}]},
+            {"value": []},
             {"value": [self._item_on(day)]},
-            empty, empty, empty, empty, empty, empty, empty, empty,
+            *[empty for _ in SEARCH_EXTENSIONS[1:]],
         ]
 
     async def test_explicit_range_includes_matching_day(self, scanner, sample_subject, sample_team):

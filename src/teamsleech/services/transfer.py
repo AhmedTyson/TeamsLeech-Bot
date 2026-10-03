@@ -489,17 +489,7 @@ class TransferService:
             start_time_file = asyncio.get_event_loop().time()
             log.info("Downloading: %s", rec.name)
 
-            ext = (
-                ".mp4"
-                if rec.is_video
-                else (
-                    ".pdf"
-                    if ".pdf" in rec.name.lower()
-                    else ""
-                )
-            )
-            if not ext and "." in rec.name:
-                ext = "." + rec.name.split(".")[-1]
+            ext = "." + rec.name.split(".")[-1].lower() if "." in rec.name else ""
 
             tmp_file = tempfile.NamedTemporaryFile(
                 suffix=ext, prefix="teamsleech_", delete=False

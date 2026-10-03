@@ -4,7 +4,7 @@ import logging
 import re
 
 from teamsleech.core.config import settings
-from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES
+from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES, SEARCH_EXTENSIONS, VIDEO_EXTENSIONS
 from teamsleech.models.domain import Recording, SubjectConfig, Team
 from teamsleech.services.graph import GraphAPIError, GraphClient
 from teamsleech.services.state import StateManager
@@ -106,6 +106,42 @@ class ScannerService:
             log.warning("Could not list drives for team %s: %s", team.display_name, e)
             return []
 
+    async def _channel_drives(self, team: Team) -> list[dict]:
+        """Drives of private/shared channel sites (separate site collections)."""
+        try:
+            data = await self.graph.get(f"/teams/{team.id}/channels")
+        except GraphAPIError as e:
+            log.warning("Could not list channels for team %s: %s", team.display_name, e)
+            return []
+        out = []
+        for ch in data.get("value", []):
+            if ch.get("membershipType") not in ("private", "shared"):
+                continue
+            try:
+                folder = await self.graph.get(
+                    f"/teams/{team.id}/channels/{ch['id']}/filesFolder"
+                )
+            except GraphAPIError as e:
+                log.warning("Could not get filesFolder for channel %s: %s", ch.get("displayName"), e)
+                continue
+            drive_id = (folder.get("parentReference") or {}).get("driveId")
+            if drive_id:
+                out.append({
+                    "id": drive_id,
+                    "name": f"channel:{ch.get('displayName', '')}",
+                })
+        return out
+
+    async def team_all_drives(self, team: Team) -> list[dict]:
+        """Site drives + private/shared channel drives, deduped."""
+        drives = await self.team_drives(team)
+        seen = {d.get("id") for d in drives}
+        for d in await self._channel_drives(team):
+            if d["id"] not in seen:
+                seen.add(d["id"])
+                drives.append(d)
+        return drives
+
     async def drive_mp4_stats(self, drive_id: str) -> tuple[int, bool]:
         """(first-page .mp4 hits, truncated?) — detects search paging loss."""
         data = await self.graph.get(f"/drives/{drive_id}/root/search(q='.mp4')")
@@ -141,45 +177,22 @@ class ScannerService:
     ) -> list[Recording]:
         recordings = []
 
-        try:
-            site = await self.graph.get(f"/groups/{team.id}/sites/root")
-            site_id = site.get("id")
-            if not site_id:
-                return []
-        except GraphAPIError as e:
-            log.warning(
-                "Could not get site for team %s: %s",
-                team.display_name, e,
-            )
-            return []
-
-        try:
-            drives_data = await self.graph.get(
-                f"/sites/{site_id}/drives"
-            )
-            drives = drives_data.get("value", [])
-        except GraphAPIError as e:
-            log.warning(
-                "Could not list drives for site %s: %s", site_id, e
-            )
+        drives = await self.team_all_drives(team)
+        if not drives:
             return []
 
         async def search_drive(drive_id: str):
-            extensions = [
-                ".mp4", ".pdf", ".pptx", ".ppt",
-                ".docx", ".doc", ".xlsx", ".zip", ".rar",
-            ]
             tasks = [
                 self.graph.get(
                     f"/drives/{drive_id}/root/search(q='{ext}')"
                 )
-                for ext in extensions
+                for ext in SEARCH_EXTENSIONS
             ]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             items = []
-            for ext, res in zip(extensions, results, strict=True):
+            for ext, res in zip(SEARCH_EXTENSIONS, results, strict=True):
                 if not isinstance(res, Exception):
                     for i in res.get("value", []):
                         name = i.get("name", "").lower()
@@ -216,7 +229,7 @@ class ScannerService:
                 size_bytes = item.get("size", 0)
                 duration_ms = item.get("video", {}).get("duration", 0)
                 is_video = (
-                    item.get("name", "").lower().endswith(".mp4")
+                    item.get("name", "").lower().endswith(tuple(VIDEO_EXTENSIONS))
                 )
 
                 recordings.append(
