@@ -22,15 +22,27 @@ def transfer_service(graph_client, mock_pyrogram_client):
 def sample_recordings():
     return [
         Recording(
-            name="lecture1.mp4", size_mb=100.0, created="2024-01-15",
-            time="10:00", duration_ms=1_800_000, drive_id="d1",
-            item_id="i1", team_name="CS-A", subject_name="Math",
+            name="lecture1.mp4",
+            size_mb=100.0,
+            created="2024-01-15",
+            time="10:00",
+            duration_ms=1_800_000,
+            drive_id="d1",
+            item_id="i1",
+            team_name="CS-A",
+            subject_name="Math",
             is_video=True,
         ),
         Recording(
-            name="notes.pdf", size_mb=5.0, created="2024-01-15",
-            time="10:00", duration_ms=0, drive_id="d1",
-            item_id="i2", team_name="CS-A", subject_name="Math",
+            name="notes.pdf",
+            size_mb=5.0,
+            created="2024-01-15",
+            time="10:00",
+            duration_ms=0,
+            drive_id="d1",
+            item_id="i2",
+            team_name="CS-A",
+            subject_name="Math",
             is_video=False,
         ),
     ]
@@ -100,7 +112,7 @@ class TestExtractThumbnail:
 
 
 class TestDownloadRecording:
-    async def test_download_success(self, transfer_service, sample_recordings):
+    async def test_download_success(self, transfer_service, sample_recordings, tmp_path):
         chunk = b"x" * 1024
         rec = sample_recordings[0]
         with patch("httpx.AsyncClient") as mock_cls:
@@ -109,31 +121,136 @@ class TestDownloadRecording:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = AsyncMock()
             resp.__aenter__.return_value = resp
+            resp.status_code = 200
             resp.raise_for_status = MagicMock()
 
             async def _iter():
                 yield chunk
+
             resp.aiter_bytes = MagicMock(return_value=_iter())
 
             mock_client.stream.return_value = resp
 
-            size = await transfer_service._download_recording(rec, "/tmp/t.mp4")
+            size = await transfer_service._download_recording(rec, str(tmp_path / "t.mp4"))
         assert size == len(chunk)
 
-    async def test_download_network_error(self, transfer_service, sample_recordings):
+    async def test_redirect_strips_auth(self, transfer_service, sample_recordings, tmp_path):
+        chunk = b"y" * 2048
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "redir.mp4")
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+            first = AsyncMock()
+            first.__aenter__.return_value = first
+            first.status_code = 302
+            first.headers = {"location": "https://cdn.example.com/file?token=abc"}
+            second = AsyncMock()
+            second.__aenter__.return_value = second
+            second.status_code = 200
+            second.raise_for_status = MagicMock()
+
+            async def _iter():
+                yield chunk
+
+            second.aiter_bytes = MagicMock(return_value=_iter())
+
+            def _route(_method: str, url: str, **_kw: object) -> AsyncMock:
+                return first if "drives" in url else second
+
+            mock_client.stream.side_effect = _route
+
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        # First call carries Bearer; second must not.
+        first_kwargs = mock_client.stream.call_args_list[0].kwargs
+        assert "authorization" in str(first_kwargs.get("headers", {})).lower()
+        second_kwargs = mock_client.stream.call_args_list[1].kwargs
+        assert "headers" not in second_kwargs or (
+            "authorization" not in str(second_kwargs.get("headers", "")).lower()
+        )
+        assert mock_client.stream.call_args_list[1].args[1] == (
+            "https://cdn.example.com/file?token=abc"
+        )
+
+    async def test_redirect_missing_location(self, transfer_service, sample_recordings, tmp_path):
         rec = sample_recordings[0]
         with patch("httpx.AsyncClient") as mock_cls:
             mock_client = MagicMock()
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-            mock_client.stream.side_effect = __import__(
-                "httpx"
-            ).RequestError("Connection refused")
+            first = AsyncMock()
+            first.__aenter__.return_value = first
+            first.status_code = 302
+            first.headers = {}
+            mock_client.stream.return_value = first
+
+            with pytest.raises(DownloadError, match="missing redirect location"):
+                await transfer_service._download_recording(rec, str(tmp_path / "x.mp4"))
+
+    async def test_graph_error_status(self, transfer_service, sample_recordings, tmp_path):
+        rec = sample_recordings[0]
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+            first = AsyncMock()
+            first.__aenter__.return_value = first
+            first.status_code = 401
+            first.raise_for_status = MagicMock(
+                side_effect=httpx.HTTPStatusError(
+                    "unauthorized",
+                    request=MagicMock(),
+                    response=MagicMock(status_code=401),
+                )
+            )
+            mock_client.stream.return_value = first
+
+            with pytest.raises(DownloadError, match="401"):
+                await transfer_service._download_recording(rec, str(tmp_path / "x.mp4"))
+
+    async def test_cdn_error_status(self, transfer_service, sample_recordings, tmp_path):
+        rec = sample_recordings[0]
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+            first = AsyncMock()
+            first.__aenter__.return_value = first
+            first.status_code = 302
+            first.headers = {"location": "https://cdn.example.com/f"}
+            second = AsyncMock()
+            second.__aenter__.return_value = second
+            second.raise_for_status = MagicMock(
+                side_effect=httpx.HTTPStatusError(
+                    "forbidden",
+                    request=MagicMock(),
+                    response=MagicMock(status_code=403),
+                )
+            )
+            second.aiter_bytes = MagicMock()
+            mock_client.stream.side_effect = lambda _m, url, **_k: (
+                first if "drives" in url else second
+            )
+
+            with pytest.raises(DownloadError, match="403"):
+                await transfer_service._download_recording(rec, str(tmp_path / "x.mp4"))
+
+    async def test_download_network_error(self, transfer_service, sample_recordings, tmp_path):
+        rec = sample_recordings[0]
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_client.stream.side_effect = __import__("httpx").RequestError("Connection refused")
 
             with pytest.raises(DownloadError, match="Connection refused"):
-                await transfer_service._download_recording(rec, "/tmp/t.mp4")
+                await transfer_service._download_recording(rec, str(tmp_path / "t.mp4"))
 
-    async def test_download_stream_error_midway(self, transfer_service, sample_recordings):
+    async def test_download_stream_error_midway(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
         """Simulate stream failing mid-download after some chunks."""
         rec = sample_recordings[0]
         with patch("httpx.AsyncClient") as mock_cls:
@@ -142,6 +259,7 @@ class TestDownloadRecording:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = AsyncMock()
             resp.__aenter__.return_value = resp
+            resp.status_code = 200
             resp.raise_for_status = MagicMock()
 
             async def fail_after_one():
@@ -152,7 +270,7 @@ class TestDownloadRecording:
             mock_client.stream.return_value = resp
 
             with pytest.raises(DownloadError, match="Stream interrupted"):
-                await transfer_service._download_recording(rec, "/tmp/t.mp4")
+                await transfer_service._download_recording(rec, str(tmp_path / "t.mp4"))
 
 
 class TestUploadToTelegram:
@@ -181,16 +299,12 @@ class TestUploadToTelegram:
             )
         assert msg.id == 43
 
-    async def test_upload_video_fallback_to_document(
-        self, transfer_service, sample_recordings
-    ):
+    async def test_upload_video_fallback_to_document(self, transfer_service, sample_recordings):
         sent_msg = AsyncMock()
         sent_msg.id = 44
         from pyrogram.errors import BadRequest
 
-        transfer_service._tg_send_video = AsyncMock(
-            side_effect=BadRequest("VIDEO_FILE_INVALID")
-        )
+        transfer_service._tg_send_video = AsyncMock(side_effect=BadRequest("VIDEO_FILE_INVALID"))
         transfer_service._tg_send_document = AsyncMock(return_value=sent_msg)
 
         with (
@@ -203,23 +317,17 @@ class TestUploadToTelegram:
         assert msg.id == 44
         transfer_service._tg_send_document.assert_awaited_once()
 
-    async def test_upload_non_video_bad_request_raises(
-        self, transfer_service, sample_recordings
-    ):
+    async def test_upload_non_video_bad_request_raises(self, transfer_service, sample_recordings):
         from pyrogram.errors import BadRequest
 
-        transfer_service._tg_send_document = AsyncMock(
-            side_effect=BadRequest("FILE_TOO_BIG")
-        )
+        transfer_service._tg_send_document = AsyncMock(side_effect=BadRequest("FILE_TOO_BIG"))
         with pytest.raises(BadRequest):
             await transfer_service._upload_to_telegram(
                 "/tmp/doc.pdf", "doc.pdf", False, AsyncMock()
             )
 
     async def test_upload_network_error(self, transfer_service, sample_recordings):
-        transfer_service._tg_send_video = AsyncMock(
-            side_effect=TimeoutError("Upload timed out")
-        )
+        transfer_service._tg_send_video = AsyncMock(side_effect=TimeoutError("Upload timed out"))
         with pytest.raises(TransferError, match="Upload failed"):
             await transfer_service._upload_to_telegram(
                 "/tmp/lecture.mp4", "lecture.mp4", True, AsyncMock()
@@ -264,22 +372,16 @@ class TestUploadRecordings:
         assert "start" in called_signals
         assert "all_done" in called_signals
 
-    async def test_upload_producer_download_error(
-        self, transfer_service, sample_recordings
-    ):
+    async def test_upload_producer_download_error(self, transfer_service, sample_recordings):
         cb = AsyncMock()
-        transfer_service._download_recording = AsyncMock(
-            side_effect=DownloadError("Disk full")
-        )
+        transfer_service._download_recording = AsyncMock(side_effect=DownloadError("Disk full"))
 
         results = await transfer_service.upload_recordings(sample_recordings, cb)
         assert len(results) == 2
         assert not results[0]["success"]
         assert "Disk full" in results[0]["error"]
 
-    async def test_upload_consumer_upload_error(
-        self, transfer_service, sample_recordings
-    ):
+    async def test_upload_consumer_upload_error(self, transfer_service, sample_recordings):
         cb = AsyncMock()
         transfer_service._download_recording = AsyncMock(return_value=1024)
         transfer_service._upload_to_telegram = AsyncMock(
@@ -292,14 +394,10 @@ class TestUploadRecordings:
         # The other should also pass through
         assert any(not r["success"] for r in results)
 
-    async def test_upload_cleans_up_temp_files(
-        self, transfer_service, sample_recordings
-    ):
+    async def test_upload_cleans_up_temp_files(self, transfer_service, sample_recordings):
         with patch("os.unlink") as mock_unlink:
             transfer_service._download_recording = AsyncMock(return_value=1024)
-            transfer_service._upload_to_telegram = AsyncMock(
-                return_value=AsyncMock(id=1)
-            )
+            transfer_service._upload_to_telegram = AsyncMock(return_value=AsyncMock(id=1))
 
             await transfer_service.upload_recordings(sample_recordings)
             # Each recording gets a temp file cleaned up
