@@ -1,192 +1,240 @@
-# Todo: 401 Unauthorized download fix (ordered)
+# Todo: UI overhaul — 10 phases (ordered)
 
-## Task 1: Diagnose 401 source
+> UI detail specs live in `tasks/phases/phase-01…10`. Each phase file has exact
+> texts, button layouts, flows, and edge cases — the task below is the checklist.
 
-**Description:** Trace the failing SharePoint `download.aspx?UniqueId=...` URL to the exact code path and confirm why direct links work but the GitHub runner fails.
+## Phase 1: Delete Background Runner feature
+
+**Description:** Remove runner management: `/runner` command, `⚙️ Background Runner` reply-keyboard button, actions panel (trigger/status), keeping only what Phase 6 re-adds. Delete `actions_ui.py`, `github_actions.py` usages, keyboards, tests.
 
 **Acceptance criteria:**
-- [x] Failing URL identified as Graph `/content` 302 redirect target, not the Graph request itself
-- [x] `httpx 0.28.1` cross-origin auth-stripping behavior verified in installed source
-- [x] Unhandled `HTTPStatusError` path confirmed (`except RequestError` misses it; verified `issubclass` is `False`)
+- [ ] No `/runner`, no `⚙️` button, no `act:*` callbacks, no trigger/status code paths
+- [ ] `test_run.py` removed or repurposed (no dead references)
+- [ ] Full suite green
 
 **Verification:**
-- [x] `transfer.py:130-156` read; `_client.py:546-571` redirect logic read
-- [x] `python -c` subclass check executed
+- [ ] `pytest tests/unit -q` passes
+- [ ] `ruff check src/ tests/` clean
+- [ ] Grep shows no `act:run`, `act:status`, `trigger_workflow` references
 
 **Dependencies:** None
 
 **Files likely touched:**
-- `src/teamsleech/services/transfer.py` (read-only)
-- `src/teamsleech/tg_bot/handlers/upload_ui.py` (read-only)
+- `src/teamsleech/tg_bot/handlers/actions_ui.py` (delete)
+- `src/teamsleech/services/github_actions.py` (delete or trim to cancel-only — see Phase 6)
+- `src/teamsleech/tg_bot/keyboards.py`, `handlers/__init__.py`, `handlers/commands.py`
+- `test_run.py`, `tests/unit/test_actions_ui.py`, `tests/unit/test_github_actions.py`
 
-**Estimated scope:** Small (2 files, read-only)
+**Estimated scope:** Medium (5+ files, mostly deletions)
 
-## Task 2: Baseline test run
+## Checkpoint: After Phase 1
+- [ ] Tests pass, bot boots, `/start` keyboard has no runner button
 
-**Description:** Run the existing transfer tests with the system Python 3.12 toolchain (uv-managed 3.13 cannot build `tgcrypto` on this machine) to record pre-fix state.
+## Phase 2: Scan harmony — 60-day default, no last-run filter
 
-**Acceptance criteria:**
-- [x] Baseline recorded: 21/23 pass, 2 fail only on Windows `/tmp` path (pre-existing, unrelated)
-
-**Verification:**
-- [x] `pytest tests/unit/test_transfer.py -v` executed
-
-**Dependencies:** Task 1
-
-**Files likely touched:** none
-
-**Estimated scope:** XS (test run only)
-
-## Checkpoint: After Tasks 1-2
-- [x] Root cause written down before any code change
-- [x] Baseline test result recorded
-
-## Task 3: Rewrite `_download_recording` two-step
-
-**Description:** Request Graph `/content` with `follow_redirects=False`; on 302 fetch `Location` with no auth headers; wrap Graph denials and SharePoint 401s as `DownloadError` with side-identifying messages; handle inline-200 and missing-`Location` edges.
+**Description:** Delete last-run filtering everywhere: every scan covers all joined teams over the last 60 days unless the user gives scope (today / this week / custom range / All Time). State (`last_run`, `last_lecture`) stays as knowledge only — written, never read as a filter. Remove `ignore_last_run`, `subj:__ALL__` "since last run" semantics, auto-check label.
 
 **Acceptance criteria:**
-- [x] Step 1 sends Graph Bearer, does not auto-follow
-- [x] Step 2 sends no `Authorization` / `Accept: application/json`
-- [x] SharePoint 401 raises `DownloadError` mentioning Conditional Access / Block-Download / permissions (retryable ×3)
-- [x] Full download URL never logged (host/path only)
+- [ ] No code path drops a recording because of stored `last_run`
+- [ ] No-date scan = `today - 60d` … today on every team
+- [ ] Explicit dates / All Time still work; 30-day cap revisited (raise to 60+ or drop)
+- [ ] State still records `last_run`/`last_lecture` per subject (knowledge only)
 
 **Verification:**
-- [x] Read edited `transfer.py:126-200`
-- [x] `ruff check src/teamsleech/services/transfer.py` clean
+- [ ] New/updated `test_scanner.py`: old recording included with no dates; 61-day-old excluded by default; explicit range overrides
+- [ ] Full suite green; live `/check` shows 60-day label
 
-**Dependencies:** Tasks 1–2
+**Dependencies:** Phase 1
 
 **Files likely touched:**
-- `src/teamsleech/services/transfer.py`
+- `src/teamsleech/services/scanner.py`
+- `src/teamsleech/tg_bot/handlers/scanner_ui.py`, `main.py` (auto-check)
+- `tests/unit/test_scanner.py`, `tests/unit/test_scanner_ui.py`
 
-**Estimated scope:** Small (1 file)
+**Estimated scope:** Medium (3–5 files)
 
-## Task 4: Update + extend `test_transfer.py`
+## Phase 3: Doctor + subject matching model
 
-**Description:** Remock the two-step flow (`get` → 302, `stream` → bytes), fix Windows `/tmp` paths via `tmp_path`, and add regression tests: SharePoint 401 wrapped as `DownloadError`, Graph 401 hint, missing `Location`, no-auth-forwarded assertion.
+**Description:** Fix cross-doctor bleed: matching becomes AND — team must match subject keywords AND (when set) doctor keywords. Extend `SubjectConfig` with `doctor_keywords: list[str]` (keep `doctor` label for rename suggestions). Either list may be empty (optional), mirroring Phase 4 validation (≥1 required at creation).
 
 **Acceptance criteria:**
-- [x] 26/26 transfer tests pass (incl. 3 new + 1 regression test)
-- [x] No test writes outside `tmp_path`
+- [ ] Team matching wrong doctor but right subject is excluded when `doctor_keywords` set
+- [ ] Empty `doctor_keywords` = old behavior (subject-only); empty subject keywords + doctor set = doctor-only
+- [ ] Old secrets without `doctor_keywords` load fine (default `[]`, pydantic `extra=ignore` already)
 
 **Verification:**
-- [x] `pytest tests/unit/test_transfer.py -v` → 26 passed
-- [x] `pytest tests/unit -q` → 127 passed
+- [ ] `test_scanner.py` `_match_teams` cases: both-match, subject-only, doctor-only, cross-doctor excluded
+- [ ] Migration check: existing `SUBJECTS_JSON` loads unchanged
 
-**Dependencies:** Task 3
+**Dependencies:** Phase 2
 
 **Files likely touched:**
+- `src/teamsleech/models/domain.py`
+- `src/teamsleech/services/scanner.py`
+- `tests/unit/test_scanner.py`, `tests/unit/test_domain.py`
+
+**Estimated scope:** Small (2–3 files)
+
+## Checkpoint: After Phases 2–3
+- [ ] Scan returns 60-day all-teams results, correctly split by doctor+subject
+- [ ] Live check on one subject verified by human
+
+## Phase 4: Add flow collects subject + doctor
+
+**Description:** Rework subject setup: after picking a team, ask for subject keywords AND doctor keywords (each skippable via `skip`, but at least one required — reject empty/empty). Store both lists; keep name/short/doctor-label steps.
+
+**Acceptance criteria:**
+- [ ] `skip`/`skip` rejected with re-prompt; any other combo accepted
+- [ ] Saved `SUBJECTS_JSON` contains both keyword lists
+- [ ] `cancel` works at every step
+
+**Verification:**
+- [ ] Handler tests cover skip/skip, subject-only, doctor-only, both, cancel-midway
+- [ ] Live add of one subject verified
+
+**Dependencies:** Phase 3
+
+**Files likely touched:**
+- `src/teamsleech/tg_bot/handlers/search_inputs.py`
+- `tests/unit/` new or extended search-input tests
+
+**Estimated scope:** Medium (2–3 files + tests)
+
+## Phase 5: Numbered manage UI with edit
+
+**Description:** Replace per-subject `❌ Delete X` button wall with a numbered list (same style as scan results). User taps/selects a number → gets `✏️ Edit` / `❌ Delete` for that entry. Edit walks name → short → doctor label → subject keywords → doctor keywords (each keepable via `skip`/empty = keep current), then saves to `SUBJECTS_JSON` secret like add/delete do.
+
+**Acceptance criteria:**
+- [ ] Management message lists subjects numbered; selection by number buttons (paginated if long)
+- [ ] Edit updates chosen fields, keeps rest, persists to secret + runtime settings
+- [ ] Delete keeps current behavior via the same number flow
+
+**Verification:**
+- [ ] Handler tests: select → edit doctor only; select → delete; invalid number handled
+- [ ] Live edit + delete verified
+
+**Dependencies:** Phases 3–4
+
+**Files likely touched:**
+- `src/teamsleech/tg_bot/handlers/commands.py` (dashboard text)
+- `src/teamsleech/tg_bot/handlers/search_inputs.py` (select/edit/delete flows)
+- `src/teamsleech/tg_bot/keyboards.py`, `views.py` (numbered management render)
+
+**Estimated scope:** Medium (4–5 files)
+
+## Checkpoint: After Phases 4–5
+- [ ] Add → scan → manage → edit → delete full loop works live end-to-end
+
+## Phase 6: Cancel-only workflow button
+
+**Description:** Single `🛑 Cancel Workflow` button (reply keyboard, replacing the removed runner row) that cancels active `bot-runner` runs via kept `cancel_run`/`get_active_runs` helpers. No trigger, no status panel.
+
+**Acceptance criteria:**
+- [ ] One button, one action: cancels active runs, reports count or "idle"
+- [ ] No trigger/status code resurrected
+
+**Verification:**
+- [ ] Unit test with mocked runs (2 active → "cancelled 2"; none → idle message)
+- [ ] Live cancel verified
+
+**Dependencies:** Phase 1
+
+**Files likely touched:**
+- `src/teamsleech/services/github_actions.py` (trim to cancel + list)
+- `src/teamsleech/tg_bot/keyboards.py`, `handlers/commands.py` (+ new tiny handler or reuse)
+- `tests/unit/test_github_actions.py`
+
+**Estimated scope:** Small (2–3 files)
+
+## Phase 7: Fix progress visibility
+
+**Description:** Investigate first (repro: multi-file upload, watch chat): current `file_progress` fires only on multiples of 5% and shares an edited message with completion lines — easy to miss. Then fix: guaranteed visible per-file download % + upload state in ONE live message (e.g. `⬇️ 45% name` → `⬆️ sending name` → `✅ name`), failures already standalone (keep), final summary kept.
+
+**Acceptance criteria:**
+- [ ] Root cause of "didn't see it" written down (throttling/edit-collision/overwrite)
+- [ ] Every file shows download progress then upload state in the live message
+- [ ] No message spam (single progress message + standalone failures + summary)
+
+**Verification:**
+- [ ] Unit test asserts callback sequence for a 2-file upload
+- [ ] Live 2-file upload observed by human
+
+**Dependencies:** Phase 2 (scan output feeds it)
+
+**Files likely touched:**
+- `src/teamsleech/services/transfer.py` (`_report_progress`, producer/consumer cadence)
+- `src/teamsleech/tg_bot/handlers/upload_ui.py` (progress message render)
 - `tests/unit/test_transfer.py`
 
-**Estimated scope:** Small (1–2 files)
+**Estimated scope:** Medium (2–3 files)
 
-## Checkpoint: After Tasks 3-4
-- [x] 26/26 transfer tests pass
-- [x] 127/127 unit tests pass, ruff clean
-- [ ] Human reviews diff before push
+## Checkpoint: After Phases 6–7
+- [ ] Cancel button + visible progress verified live
 
-## Task 5: Decide `uv.lock` hunk, commit, push
+## Phase 8: Copy polish
 
-**Description:** `git diff` shows an unrelated `uv.lock` hunk (`teamsleech 2.1.0` → `2.3.1`, stale-lock side effect of the earlier `uv run`). Keep it only if intended (lock was stale vs `pyproject.toml:7`); otherwise `git checkout -- uv.lock`. Then commit the two real files and push.
+**Description:** Consistent tone + truthful help: fix `/start` text (no auto-this-week claim), state the active scope rule (60 days default) wherever dates are asked, unify empty-state/error phrasing, document cookie-expiry + reauth in one `/help`-style text if cheap.
 
 **Acceptance criteria:**
-- [x] Diff contains only intended files (`transfer.py`, `test_transfer.py`, `tasks/plan.md`, `tasks/todo.md`, plus `uv.lock` version sync 2.1.0→2.3.1 kept deliberately — lock was stale vs `pyproject.toml`)
-- [x] Commit pushed to `AhmedTyson/TeamsLeech-Bot` (`1457956`, CI `37126910281` success)
+- [ ] No stale claims about last-run/this-week behavior anywhere
+- [ ] Scope rule + 30/60-day cap stated before input, not after violation
+- [ ] Consistent emoji/voice pass over touched messages
 
 **Verification:**
-- [x] `git status --short` shows expected set
-- [x] `git diff --stat` reviewed
-- [x] Push succeeds
+- [ ] Grep review of user-facing strings by human
+- [ ] Unit tests updated where they assert old copy
 
-**Dependencies:** Task 4
+**Dependencies:** Phases 2, 5, 7 (copy depends on final behaviors)
 
 **Files likely touched:**
-- `uv.lock` (keep or revert)
-- `tasks/plan.md`, `tasks/todo.md` (new)
+- `src/teamsleech/tg_bot/handlers/commands.py`, `scanner_ui.py`, `upload_ui.py`, `search_inputs.py`
+- `src/teamsleech/tg_bot/views.py`
 
-**Estimated scope:** XS (version control only)
+**Estimated scope:** Small (scattered strings + test updates)
 
-## Task 6: Rerun workflow, read new log line
+## Phase 9: Rename-button friction research
 
-**Description:** Trigger the `TeamsLeech Bot` workflow (`workflow_dispatch`, same subject/file as the failure) and check whether download succeeds or which new side-identifying error appears (`Graph denied content [...]` vs `SharePoint download failed [401] ...`). NOTE: dispatch boots the bot idle — the upload itself is user-driven via Telegram (`/check` → select → upload) while the runner is live.
-
-**Acceptance criteria:**
-- [x] Workflow run triggered on fixed code (run `37126928203`, checkout includes `1457956`)
-- [ ] Upload of the failing file attempted via Telegram while runner live
-- [ ] Outcome recorded: success, Graph-side error, or SharePoint-side error
-
-**Verification:**
-- [x] Actions log line for `Downloading: <name>` + `Graph redirect ...` captured
-- [x] Telegram result (`Upload complete` vs `failed: ...`) captured
-- [x] 2026-10-03 run: `aud=00000003-0000-0ff1-ce00-000000000000 scp=user_impersonation` (correct SP audience) yet REST `$value` + `download.aspx` both `401` with user Bearer → tenant-side deny proven, not code
-
-**Dependencies:** Task 5
-
-**Files likely touched:** none (Actions UI only)
-
-**Estimated scope:** XS (remote run + log read)
-
-## Checkpoint: After Tasks 5-6
-- [ ] Download works end-to-end, or failing side (Graph vs SharePoint) is named by the new message
-- [ ] Review with human before tenant-side changes
-
-## Task 7: Entra sign-in logs + site permission check (conditional: SharePoint-side 401 persists)
-
-**Description:** Confirm the service identity used by `TEAMS_REFRESH_TOKEN` has download (not view-only) rights on `BIS-DataSecurity-Dr.HanyGouda-L4` and find the 401 reason in Entra/SharePoint audit logs.
+**Description:** Research-only first: can per-item `✏️` buttons go without hurting the common select flow? Options: (a) tap toggles, long-press/double-tap renames (Telegram has no long-press callbacks — likely dead); (b) select-then-rename mode button (`✏️ Rename mode` toggles buttons into rename targets); (c) keep as-is. Spike (b) behind nothing (small change) only if research favors it.
 
 **Acceptance criteria:**
-- [ ] Effective permission of the service account on the site library recorded
-- [ ] Deny reason from logs recorded (policy vs permission vs expiry)
+- [ ] Decision written: keep / mode-toggle / other, with Telegram-limits justification
+- [ ] If change: button count per item drops in default view
 
 **Verification:**
-- [ ] Site permissions screenshot / log excerpt saved
-- [ ] Manual check: same account downloads the file in browser (proves code path vs rights)
+- [ ] Human approves decision before any edit
+- [ ] If changed: existing toggle tests still green + new mode tests
 
-**Dependencies:** Task 6
+**Dependencies:** Phase 8
 
-**Files likely touched:** none (tenant admin UI)
+**Files likely touched (if changed):**
+- `src/teamsleech/tg_bot/keyboards.py`, `handlers/upload_ui.py`
 
-**Estimated scope:** Small (admin console only)
+**Estimated scope:** XS research (Small if changed)
 
-## Task 8: Exempt runner or fix account scope (conditional: Task 7 finds policy/permission block)
+## Checkpoint: After Phases 8–9
+- [ ] Copy + rename decisions reviewed with human
 
-**Description:** Apply the minimal tenant fix: Conditional Access / compliant-network exemption for the runner path, Block-Download exclusion, or grant download rights / broaden token scope — then rerun Task 6.
+## Phase 10: Full-text buttons research (last)
+
+**Description:** Research-only first, adopted only if viable: can toggle buttons carry full recording text without hiding actions? Check current Telegram limits (button text length, 8-per-row / 100-button caps, wrapping behavior — numbers stay as fallback). Spike on one checklist if promising; otherwise document "numbers stay" with reasons and close.
 
 **Acceptance criteria:**
-- [ ] Minimal policy/account change applied and documented
-- [ ] Workflow rerun downloads the file to Telegram
+- [ ] Measured limits documented (chars, rows, total) from live test or current docs
+- [ ] Adopt full-text OR keep numbered toggles with explicit justification
+- [ ] If adopted: actions (upload/filters/cancel) remain visible without scrolling on typical lists
 
 **Verification:**
-- [ ] `Upload complete` in Telegram for the previously failing file
-- [ ] Change recorded (what was exempted/granted, why minimal)
+- [ ] Live checklist screenshot/review by human
+- [ ] Full suite green either way
 
-**Dependencies:** Task 7
+**Dependencies:** Phases 7–9
 
-**Files likely touched:** none (tenant admin UI; code unchanged unless scope string moves, then `src/teamsleech/services/auth.py`)
+**Files likely touched (if changed):**
+- `src/teamsleech/tg_bot/keyboards.py`, `views.py`, handler tests
 
-**Estimated scope:** Small (config only)
+**Estimated scope:** XS research (Medium if adopted)
 
-## Task 9: Adopt cookie download (proven Oct 2 path)
-
-**Description:** Port the `state`-branch cookie downloader into the main bot: `SP_COOKIES_JSON` secret → `cookies.py` parser → first download candidate per file. User exports browser cookies once (Cookie-Editor JSON), no portal/admin needed.
-
-**Acceptance criteria:**
-- [x] `cookies.py` parses EditThisCookie JSON, `[]` on empty/invalid
-- [x] Cookie candidate tried first when configured; stale cookies fall through with re-export hint
-- [x] 161/161 unit tests pass, ruff clean
-
-**Verification:**
-- [x] `pytest tests/unit/test_cookies.py tests/unit/test_transfer.py` → 41 passed
-- [x] `pytest tests/unit -q` → 161 passed
-- [ ] `SP_COOKIES_JSON` secret created by user; live download retested
-
-**Dependencies:** Task 6
-
-**Files likely touched:**
-- `src/teamsleech/services/cookies.py` (new)
-- `src/teamsleech/services/transfer.py`
-- `src/teamsleech/core/config.py`
-- `.github/workflows/bot-runner.yml`, `.env.example`, `docs/cookie-download.md`
-
-**Estimated scope:** Small (3–4 files)
+## Checkpoint: Complete
+- [ ] All 10 phases acceptance-checked
+- [ ] Live end-to-end: add (doctor+subject) → 60-day scan → select → progress → deliver → manage/edit → cancel-button
+- [ ] Ready for review

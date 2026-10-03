@@ -1,51 +1,64 @@
-# Implementation Plan: Fix 401 Unauthorized on SharePoint download (GitHub runner intermediary)
+# Implementation Plan: UI overhaul (10 phases)
 
 ## Overview
-`TransferService._download_recording` followed Graph `/content` 302s with auth headers attached and let SharePoint 401s escape as raw `HTTPStatusError` (no retry, no diagnosis). Fix: two-step download (Graph with auth, SharePoint bytes without auth), wrap all HTTP failures as `DownloadError`, distinguish Graph-side vs SharePoint-side 401s, prove with unit tests, then rerun the `TeamsLeech Bot` workflow and resolve any remaining tenant-side block (Conditional Access / Block-Download / view-only account).
+Rebuild the bot UX around three rules: scans always cover all joined teams over
+the last 60 days unless the user scopes them (last-run filtering deleted, state
+kept as knowledge only); subjects match doctor AND subject keywords (either
+optional, at least one required); management uses numbered select-then-act
+instead of button walls. Runner surface shrinks to a single cancel button.
+Research spikes (rename buttons, full-text buttons) land last and only if viable.
 
 ## Architecture Decisions
-- Two-step download instead of `follow_redirects=True`: Graph Bearer is for `graph.microsoft.com` audience only; SharePoint pre-authed `Location` URL carries its own token. No auth headers on step 2. (`src/teamsleech/services/transfer.py`)
-- Catch `httpx.HTTPError` (covers `HTTPStatusError` + `RequestError`), re-raise as `DownloadError` so the existing `@_retry_download` (3 attempts) applies and `upload_ui` reports a meaningful message.
-- Never log full download URL (contains `tempauth`); log host/path only.
-- Tests mock `AsyncClient.get` (302) + `AsyncClient.stream` (bytes) separately and assert step 2 carries no `headers`.
+- State (`last_run`/`last_lecture`) stays write-only knowledge; nothing filters on it.
+- `SubjectConfig` gains `doctor_keywords`; matcher is AND across the two lists.
+- Numbered selection reuses the scan-results pattern users already know.
+- Cookie/token download chain untouched; progress work is display-only.
+- Phases 9–10 are research-first; no edits without measured justification.
 
 ## Task List
 
-### Phase 1: Foundation (done)
-- [x] Task 1: Diagnose 401 source
-- [x] Task 2: Baseline test run
+### Phase 1: Delete runner
+- [ ] Task: remove panel/trigger/status, keep cancel helpers for Phase 6
 
-### Checkpoint: Foundation
-- [x] Root cause identified (post-redirect SharePoint 401 + unhandled `HTTPStatusError`)
+### Checkpoint: boots clean, no runner surface
 
-### Phase 2: Core fix (done)
-- [x] Task 3: Rewrite `_download_recording` two-step
-- [x] Task 4: Update + extend `test_transfer.py`
+### Phases 2–3: Scan + model
+- [ ] Task: 60-day default scope, last-run filter deleted
+- [ ] Task: doctor+subject AND matching
 
-### Checkpoint: Core fix
-- [x] 26/26 transfer tests, 127/127 unit, ruff clean
+### Checkpoint: live scan verified
 
-### Phase 3: Ship + live verify (todo)
-- [ ] Task 5: Decide `uv.lock` hunk, commit, push
-- [ ] Task 6: Rerun `TeamsLeech Bot` workflow, read new error/log line
+### Phases 4–5: Add + manage
+- [ ] Task: add flow collects both keyword sets
+- [ ] Task: numbered manage UI with edit + delete
 
-### Checkpoint: Live verify
-- [ ] Download succeeds, or error names Graph-side vs SharePoint-side
+### Checkpoint: full subject lifecycle live
 
-### Phase 4: Tenant-side resolution (conditional on Task 6)
-- [ ] Task 7: Entra sign-in logs + site permission check
-- [ ] Task 8: Conditional Access / Block-Download exemption or account scope fix
+### Phases 6–7: Cancel + progress
+- [ ] Task: single cancel-workflow button
+- [ ] Task: investigate + fix progress visibility
+
+### Checkpoint: cancel + progress verified live
+
+### Phase 8: Copy
+- [ ] Task: truthful help, consistent tone
+
+### Phases 9–10: Research spikes
+- [ ] Task: rename-button friction decision
+- [ ] Task: full-text button limits, adopt-or-document
 
 ### Checkpoint: Complete
-- [ ] File downloads via runner and reaches Telegram, or tenant block documented with owner action
+- [ ] End-to-end live pass, ready for review
 
 ## Risks and Mitigations
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Runner IP blocked by tenant policy (not code) | High — code fix won't clear 401 | Task 6 log line distinguishes sides; Tasks 7–8 resolve tenant-side |
-| Pre-authed URL expiry on large/slow downloads | Med | Immediate step-2 fetch; retry ×3; redirect logged |
-| `uv.lock` version hunk pollutes diff | Low | Task 5 explicit keep/revert decision |
+| `SUBJECTS_JSON` schema drift (old secrets lack `doctor_keywords`) | Med | Pydantic defaults `[]`; migration check in Phase 3 tests |
+| 60-day scan slower than incremental | Med | Keep per-team semaphore; measure live in Phase 2 |
+| Cookie expiry confuses new UI testing | Low | Re-export flow already documented; error hint exists |
+| Scope creep into download chain | High | Explicitly out of scope; display-only changes in Phase 7 |
 
 ## Open Questions
-- Does the failing file's site (`BIS-DataSecurity-Dr.HanyGouda-L4`) enforce Block-Download or view-only for the service account?
-- Full SharePoint error body on runner (HTML snippet) — obtain from Task 6 logs?
+- Cancel button placement: reply keyboard row vs checklist action row? (Proposed: reply keyboard; confirm in Phase 6 review.)
+- Raise/remove the 30-day range cap in Phase 2? (Proposed: align with 60-day default.)
+- Edit flow: which fields editable? (Proposed: name, short, doctor, both keyword lists.)
