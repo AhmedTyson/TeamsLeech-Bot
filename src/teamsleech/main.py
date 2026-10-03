@@ -55,6 +55,26 @@ async def _verify_matching(app, discovery, scanner, chat_id: int) -> None:
     else:
         lines.append("\n✅ No cross-matched teams.")
 
+    try:
+        results = await scanner.scan_recordings()
+    except Exception as e:
+        lines.append(f"\n❌ Scan failed: {e}")
+        results = {}
+    if results:
+        lines.append("\n🎞 **Recordings grabbed per subject:**")
+        for subj in subjects:
+            recs = results.get(subj.name, [])
+            n_vid = sum(1 for r in recs if r.is_video)
+            n_doc = len(recs) - n_vid
+            got_teams = sorted({r.team_name for r in recs})
+            if recs:
+                lines.append(
+                    f"   - **{subj.name}**: {n_vid} 🎬 + {n_doc} 📄"
+                    f" from {', '.join(got_teams)}"
+                )
+            else:
+                lines.append(f"   - **{subj.name}**: nothing found")
+
     text = "\n".join(lines)
     log.info("Verify report:\n%s", text)
     await app.send_message(chat_id, text[:4000])
@@ -112,7 +132,6 @@ def main():
         )
         
         await app.start()
-        await state_manager.initialize()
 
         run_mode = os.getenv("RUN_MODE", "normal")
         if run_mode == "reauth":
@@ -142,10 +161,12 @@ def main():
                 total = sum(len(recs) for recs in results.values())
                 if total > 0:
                     from teamsleech.tg_bot.keyboards import build_checklist_keyboard
-                    from teamsleech.tg_bot.views import build_checklist_text
+                    from teamsleech.tg_bot.views import build_checklist_text, videos_first
 
                     label = "All Recordings"
                     session = state_manager.get_session(settings.telegram_chat_id)
+                    for subj_name in results:
+                        results[subj_name] = videos_first(results[subj_name])
                     session.pending_recordings = [r for recs in results.values() for r in recs]
                     session.scan_label = label
 

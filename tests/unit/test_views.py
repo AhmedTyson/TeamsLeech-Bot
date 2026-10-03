@@ -5,6 +5,7 @@ from teamsleech.tg_bot.views import (
     format_date_short,
     format_duration,
     num_label,
+    videos_first,
 )
 
 
@@ -56,3 +57,37 @@ def test_build_checklist_text_with_data():
     assert "Vid1" in text
     assert "10.0 MB" in text
     assert "1m 00s" in text
+
+
+def _rec(name, video, team="T1"):
+    return Recording(
+        name=name, size_mb=1.0, created="2026-04-01", team_name=team,
+        drive_id="d1", item_id=f"i-{name}", subject_name="Math",
+        is_video=video,
+    )
+
+
+def test_sections_separate_videos_and_docs():
+    text = build_checklist_text(
+        {"Math": [_rec("b.pdf", False), _rec("a.mp4", True)]}, "All"
+    )
+    vid_pos = text.index("🎬 **Recordings**")
+    doc_pos = text.index("📄 **Documents**")
+    assert vid_pos < doc_pos
+    assert text.index("a.mp4") < text.index("b.pdf")
+
+
+def test_video_only_notes_no_documents():
+    text = build_checklist_text({"Math": [_rec("a.mp4", True)]}, "All")
+    assert "No documents found" in text
+    assert "📄 **Documents**" not in text
+
+
+def test_doc_only_notes_no_recordings():
+    text = build_checklist_text({"Math": [_rec("b.pdf", False)]}, "All")
+    assert "No recordings found" in text
+
+
+def test_videos_first_ordering():
+    recs = [_rec("b.pdf", False), _rec("a.mp4", True), _rec("c.mp4", True)]
+    assert [r.name for r in videos_first(recs)] == ["a.mp4", "c.mp4", "b.pdf"]

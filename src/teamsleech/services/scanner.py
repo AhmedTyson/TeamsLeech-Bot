@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime
 
 from teamsleech.core.config import settings
 from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES
@@ -247,17 +246,6 @@ class ScannerService:
                 recordings.sort(key=lambda r: r.created, reverse=True)
                 results[subject.name] = recordings
 
-                if recordings:
-                    latest = max(r.created for r in recordings)
-                    try:
-                        timestamp = datetime.fromisoformat(
-                            f"{latest}T23:59:59+00:00"
-                        )
-                        await self.state.save_last_run(
-                            subject.name, timestamp
-                        )
-                    except Exception:
-                        pass
                 log.info(
                     "'%s' scan complete: %d recordings found.",
                     subject.name,

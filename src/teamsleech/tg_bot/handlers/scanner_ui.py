@@ -16,7 +16,7 @@ from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
-from teamsleech.tg_bot.views import build_checklist_text, format_date_short
+from teamsleech.tg_bot.views import build_checklist_text, format_date_short, videos_first
 
 MAX_DATE_RANGE_DAYS = 60
 
@@ -104,8 +104,10 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         session = state.get_session(chat_id)
         session.pending_recordings = [
-            r for recs in results.values() for r in recs
+            r for recs in results.values() for r in videos_first(recs)
         ]
+        for subj_name in results:
+            results[subj_name] = videos_first(results[subj_name])
         session.selected_indices.clear()
         session.rename_overrides.clear()
         session.scan_label = label

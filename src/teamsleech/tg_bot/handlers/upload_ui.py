@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from pyrogram import Client, filters
 from pyrogram.types import (
     CallbackQuery,
@@ -29,8 +27,7 @@ def _get_rename_suggestion(
         return None
     short = subj_config.short or subj_config.name
     doc = subj_config.doctor
-    last_lec = state.get_last_lecture(rec.subject_name)
-    name = f"{short} - L{last_lec + 1}"
+    name = f"{short}"
     if doc:
         name += f" - {doc}"
     return name
@@ -296,29 +293,6 @@ def register_upload_ui(
             )
             success = sum(1 for r in results if r.get("success"))
             failed = sum(1 for r in results if not r.get("success"))
-
-            for res in results:
-                if not res.get("success"):
-                    continue
-                rec = res.get("rec")
-                if not rec:
-                    continue
-
-                rec_time_str = f"{rec.created}T{rec.time or '00:00'}:00+00:00"
-                try:
-                    rec_date = datetime.fromisoformat(rec_time_str)
-                    if rec_date > state.get_last_run(rec.subject_name):
-                        await state.save_last_run(rec.subject_name, rec_date)
-                        await state.save_last_lecture(
-                            rec.subject_name,
-                            state.get_last_lecture(rec.subject_name) + 1,
-                        )
-                except ValueError:
-                    await state.save_last_run(rec.subject_name)
-                    await state.save_last_lecture(
-                        rec.subject_name,
-                        state.get_last_lecture(rec.subject_name) + 1,
-                    )
 
             summary = (
                 f"✅ **Upload complete!**\n"

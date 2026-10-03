@@ -69,10 +69,27 @@ def _format_recording_item(idx: int, rec: Recording, override_name: str | None =
         f"   {icon} `{display_name}`\n"
     )
 
-def _build_footer(total: int, n_video: int, n_doc: int) -> str:
+def _build_footer(total: int, n_video: int, n_doc: int) -> list[str]:
+    lines = []
     if n_video and n_doc:
-        return f"📊 **{total}** files — {n_video} 🎬 + {n_doc} 📄. Tap numbers to select, then 🚀 Upload:"
-    return f"📊 **{total}** file(s). Tap numbers to select, then 🚀 Upload:"
+        lines.append(
+            f"📊 **{total}** files — {n_video} 🎬 + {n_doc} 📄."
+            " Tap numbers to select, then 🚀 Upload:"
+        )
+    elif n_video:
+        lines.append(f"📊 **{total}** recording(s). Tap numbers to select, then 🚀 Upload:")
+        lines.append("📄 _No documents found._")
+    elif n_doc:
+        lines.append(f"📊 **{total}** document(s). Tap numbers to select, then 🚀 Upload:")
+        lines.append("🎬 _No recordings found._")
+    else:
+        lines.append(f"📊 **{total}** file(s). Tap numbers to select, then 🚀 Upload:")
+    return lines
+
+
+def videos_first(recs: list[Recording]) -> list[Recording]:
+    """Stable partition: recordings, then documents."""
+    return [r for r in recs if r.is_video] + [r for r in recs if not r.is_video]
 
 def build_checklist_text(
     results: dict[str, list[Recording]],
@@ -102,17 +119,23 @@ def build_checklist_text(
         doctor_line = f"\n👨‍🏫 {doctor}" if doctor else ""
         if not recs:
             if is_multi:
-                lines.append(f"\n📚 **{subj_name}**{doctor_line} — ✅ No new files")
+                lines.append(f"\n📚 **{subj_name}**{doctor_line} — ✅ No files")
             continue
         if is_multi:
             lines.append(f"\n📚 **{subj_name}**{doctor_line}")
             lines.append(DIVIDER_THIN)
-        for rec in recs:
+        ordered = videos_first(recs)
+        n_vid = sum(1 for r in ordered if r.is_video)
+        if n_vid:
+            lines.append("🎬 **Recordings**")
+        for pos, rec in enumerate(ordered):
+            if pos == n_vid and n_vid < len(ordered):
+                lines.append("📄 **Documents**")
             lines.append(_format_recording_item(idx, rec, overrides.get(idx)))
             idx += 1
 
     lines.append(DIVIDER_THICK)
-    lines.append(_build_footer(total, n_video, n_doc))
+    lines.extend(_build_footer(total, n_video, n_doc))
 
     full_text = "\n".join(lines)
     if len(full_text) <= TG_MAX_MSG_LENGTH:
