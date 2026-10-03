@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from teamsleech.core.config import settings
 from teamsleech.core.constants import MAX_CONCURRENT_SEARCHES
@@ -56,11 +56,9 @@ class ScannerService:
         self,
         team: Team,
         subject: SubjectConfig,
-        last_run: datetime,
         date_start: str | None,
         date_end: str | None,
         seen_ids: set[str],
-        ignore_last_run: bool = False,
     ) -> list[Recording]:
         recordings = []
 
@@ -135,16 +133,6 @@ class ScannerService:
                     else:
                         if created_date_only != date_start:
                             continue
-                else:
-                    if not ignore_last_run:
-                        try:
-                            created_dt = datetime.fromisoformat(
-                                created_str.replace("Z", "+00:00")
-                            )
-                            if created_dt <= last_run:
-                                continue
-                        except ValueError:
-                            continue
 
                 size_bytes = item.get("size", 0)
                 duration_ms = item.get("video", {}).get("duration", 0)
@@ -169,14 +157,20 @@ class ScannerService:
 
         return recordings
 
+    DEFAULT_SCOPE_DAYS = 60
+
     async def scan_recordings(
         self,
         subject_filter: str | None = None,
         date_start: str | None = None,
         date_end: str | None = None,
-        ignore_last_run: bool = False,
     ) -> dict[str, list[Recording]]:
         subjects = self.load_subjects()
+
+        if date_start is None and date_end is None:
+            today = datetime.now(UTC).date()
+            date_end = today.isoformat()
+            date_start = (today - timedelta(days=self.DEFAULT_SCOPE_DAYS)).isoformat()
 
         if subject_filter:
             filter_lower = subject_filter.lower()
@@ -204,15 +198,15 @@ class ScannerService:
 
         for subject in subjects:
             try:
-                last_run = self.state.get_last_run(subject.name)
                 matched_teams = self._match_teams(all_teams, subject)
                 seen_ids: set[str] = set()
 
                 log.info(
-                    "Scanning '%s': %d teams. Since: %s",
+                    "Scanning '%s': %d teams. Range: %s to %s",
                     subject.name,
                     len(matched_teams),
-                    last_run,
+                    date_start,
+                    date_end,
                 )
 
                 sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
@@ -221,21 +215,17 @@ class ScannerService:
                     team: Team,
                     _sem=sem,
                     _subject=subject,
-                    _last_run=last_run,
                     _date_start=date_start,
                     _date_end=date_end,
                     _seen_ids=seen_ids,
-                    _ignore_last_run=ignore_last_run,
                 ):
                     async with _sem:
                         return await self._process_team(
                             team,
                             _subject,
-                            _last_run,
                             _date_start,
                             _date_end,
                             _seen_ids,
-                            _ignore_last_run,
                         )
 
                 tasks = [bounded_process(t) for t in matched_teams]

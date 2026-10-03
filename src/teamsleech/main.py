@@ -96,7 +96,7 @@ def main():
                     from teamsleech.tg_bot.keyboards import build_checklist_keyboard
                     from teamsleech.tg_bot.views import build_checklist_text
 
-                    label = "Since Last Run"
+                    label = "Last 60 Days"
                     session = state_manager.get_session(settings.telegram_chat_id)
                     session.pending_recordings = [r for recs in results.values() for r in recs]
                     session.scan_label = label

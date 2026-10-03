@@ -18,7 +18,7 @@ from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
 from teamsleech.tg_bot.views import build_checklist_text, format_date_short
 
-MAX_DATE_RANGE_DAYS = 30
+MAX_DATE_RANGE_DAYS = 60
 
 def _get_current_week_range() -> tuple[str, str]:
     today = datetime.now(UTC).date()
@@ -93,11 +93,10 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         date_start: str | None,
         date_end: str | None,
         label: str,
-        ignore_last_run: bool = False,
     ):
         try:
             results = await scanner.scan_recordings(
-                subject_filter, date_start, date_end, ignore_last_run
+                subject_filter, date_start, date_end
             )
         except Exception as e:
             await client.send_message(chat_id, f"❌ Fetch error: {e}")
@@ -129,7 +128,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         session = state.get_session(chat_id)
 
         if subject_key == "__ALL__":
-            label = "Since Last Run"
+            label = "Last 60 Days"
             await safe_edit_text(
                 cb.message,
                 f"🔍 Scanning **all subjects** — {label}...",
@@ -143,6 +142,11 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             session.subject_filter = subject_key
 
             kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🗓 Last 60 Days", callback_data="date_btn:60d"
+                    ),
+                ],
                 [
                     InlineKeyboardButton(
                         "📅 Today", callback_data="date_btn:today"
@@ -162,7 +166,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
                 f"📚 **{subject_key}** selected.\n\n"
                 "**Select Date Range**\n"
                 "Tap a button below, or type a custom date like `2026-04-01`.\n"
-                "_Type `cancel` to exit._"
+                "_Ranges up to 60 days. Type `cancel` to exit._"
             )
             await safe_edit_text(cb.message, prompt, reply_markup=kb)
             await cb.answer()
@@ -181,16 +185,32 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         
         await cb.answer("Starting scan...")
 
-        if action == "all":
-            label = "All Time"
+        if action == "60d":
+            today = datetime.now(UTC).date()
+            ds = (today - timedelta(days=60)).isoformat()
+            de = today.isoformat()
+            label = "Last 60 Days"
             await safe_edit_text(
                 cb.message,
                 f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
                 f" — {label}...",
             )
             await run_scan_and_reply(
-                client, chat_id, session.subject_filter, None, None, label,
-                ignore_last_run=True,
+                client, chat_id, session.subject_filter, ds, de, label
+            )
+            return
+
+        if action == "all":
+            label = "All Time"
+            today = datetime.now(UTC).date().isoformat()
+            await safe_edit_text(
+                cb.message,
+                f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
+                f" — {label}...",
+            )
+            await run_scan_and_reply(
+                client, chat_id, session.subject_filter,
+                "2000-01-01", today, label,
             )
             return
 
@@ -215,6 +235,11 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
+                    "🗓 Last 60 Days", callback_data="date_btn:60d"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     "📅 Today", callback_data="date_btn:today"
                 ),
                 InlineKeyboardButton(
@@ -232,7 +257,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             cb.message,
             "**Change Date Range**\n\n"
             "Tap a button below, or type a custom date like `2026-04-01`.\n"
-            "_Type `cancel` to exit._",
+            "_Ranges up to 60 days. Type `cancel` to exit._",
             reply_markup=kb,
         )
         await cb.answer()

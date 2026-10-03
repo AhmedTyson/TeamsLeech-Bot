@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from datetime import date as date_type
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -130,16 +131,14 @@ class TestProcessTeam:
     async def test_no_site_id_returns_empty(self, scanner, sample_subject, sample_team):
         scanner.graph.get = AsyncMock(return_value={})
         recordings = await scanner._process_team(
-            sample_team, sample_subject, datetime.min.replace(tzinfo=UTC),
-            None, None, set(),
+            sample_team, sample_subject, None, None, set(),
         )
         assert recordings == []
 
     async def test_site_lookup_failure_returns_empty(self, scanner, sample_subject, sample_team):
         scanner.graph.get = AsyncMock(side_effect=GraphAPIError("Site not found"))
         recordings = await scanner._process_team(
-            sample_team, sample_subject, datetime.min.replace(tzinfo=UTC),
-            None, None, set(),
+            sample_team, sample_subject, None, None, set(),
         )
         assert recordings == []
 
@@ -150,8 +149,7 @@ class TestProcessTeam:
             raise GraphAPIError("Drives error")
         scanner.graph.get = AsyncMock(side_effect=side_effect)
         recordings = await scanner._process_team(
-            sample_team, sample_subject, datetime.min.replace(tzinfo=UTC),
-            None, None, set(),
+            sample_team, sample_subject, None, None, set(),
         )
         assert recordings == []
 
@@ -162,51 +160,49 @@ class TestProcessTeam:
         ])
         scanner.graph.get_all_pages = AsyncMock(return_value=[])
         recordings = await scanner._process_team(
-            sample_team, sample_subject, datetime.min.replace(tzinfo=UTC),
+            sample_team, sample_subject,
             "2024-06-01", "2024-06-30", set(),
         )
         assert recordings == []
 
-    def _old_item(self):
+    def _item_on(self, day: str):
         return {
-            "id": "old1",
-            "name": "old-lecture.mp4",
-            "createdDateTime": "2020-05-01T10:00:00Z",
+            "id": f"id-{day}",
+            "name": f"lec-{day}.mp4",
+            "createdDateTime": f"{day}T10:00:00Z",
             "size": 1024,
             "video": {"duration": 1000},
         }
 
-    def _graph_side_effect_old_item(self):
+    def _graph_side_effect_item(self, day: str):
         empty = {"value": []}
         return [
             {"id": "site1"},
             {"value": [{"id": "d1"}]},
-            {"value": [self._old_item()]},
+            {"value": [self._item_on(day)]},
             empty, empty, empty, empty, empty, empty, empty, empty,
         ]
 
-    async def test_last_run_filters_old_recordings(self, scanner, sample_subject, sample_team):
+    async def test_explicit_range_includes_matching_day(self, scanner, sample_subject, sample_team):
         scanner.graph.get = AsyncMock(
-            side_effect=self._graph_side_effect_old_item()
+            side_effect=self._graph_side_effect_item("2024-06-15")
         )
         recordings = await scanner._process_team(
             sample_team, sample_subject,
-            datetime(2024, 1, 1, tzinfo=UTC),
-            None, None, set(),
-        )
-        assert recordings == []
-
-    async def test_ignore_last_run_includes_old_recordings(self, scanner, sample_subject, sample_team):
-        scanner.graph.get = AsyncMock(
-            side_effect=self._graph_side_effect_old_item()
-        )
-        recordings = await scanner._process_team(
-            sample_team, sample_subject,
-            datetime(2024, 1, 1, tzinfo=UTC),
-            None, None, set(), True,
+            "2024-06-01", "2024-06-30", set(),
         )
         assert len(recordings) == 1
-        assert recordings[0].name == "old-lecture.mp4"
+        assert recordings[0].name == "lec-2024-06-15.mp4"
+
+    async def test_explicit_range_excludes_other_day(self, scanner, sample_subject, sample_team):
+        scanner.graph.get = AsyncMock(
+            side_effect=self._graph_side_effect_item("2024-07-15")
+        )
+        recordings = await scanner._process_team(
+            sample_team, sample_subject,
+            "2024-06-01", "2024-06-30", set(),
+        )
+        assert recordings == []
 
 
 class TestScanRecordings:
@@ -285,28 +281,7 @@ class TestScanRecordings:
             result = await scanner.scan_recordings()
         assert result == {"Math": []}
 
-    async def test_scan_forwards_ignore_last_run(self, scanner, monkeypatch):
-        monkeypatch.setattr(
-            "teamsleech.services.scanner.settings.subjects_json",
-            json.dumps({
-                "subjects": [
-                    {"name": "Math", "short": "MTH", "keywords": ["math"]},
-                ]
-            }),
-        )
-        team = Team(id="t1", display_name="Math Group")
-        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
-            mock_disc.return_value.get_all_joined_teams = AsyncMock(
-                return_value=[team]
-            )
-            with patch.object(
-                scanner, "_process_team", AsyncMock(return_value=[])
-            ) as mock_process:
-                await scanner.scan_recordings(ignore_last_run=True)
-        mock_process.assert_awaited_once()
-        assert mock_process.await_args.args[6] is True
-
-    async def test_scan_defaults_to_last_run_filter(self, scanner, monkeypatch):
+    async def test_scan_defaults_to_60_day_window(self, scanner, monkeypatch):
         monkeypatch.setattr(
             "teamsleech.services.scanner.settings.subjects_json",
             json.dumps({
@@ -325,4 +300,29 @@ class TestScanRecordings:
             ) as mock_process:
                 await scanner.scan_recordings()
         mock_process.assert_awaited_once()
-        assert mock_process.await_args.args[6] is False
+        ds, de = mock_process.await_args.args[2:4]
+        assert (datetime.now(UTC).date() - date_type.fromisoformat(ds)).days == 60
+        assert de == datetime.now(UTC).date().isoformat()
+
+    async def test_scan_explicit_dates_passed_through(self, scanner, monkeypatch):
+        monkeypatch.setattr(
+            "teamsleech.services.scanner.settings.subjects_json",
+            json.dumps({
+                "subjects": [
+                    {"name": "Math", "short": "MTH", "keywords": ["math"]},
+                ]
+            }),
+        )
+        team = Team(id="t1", display_name="Math Group")
+        with patch("teamsleech.services.discovery.DiscoveryService") as mock_disc:
+            mock_disc.return_value.get_all_joined_teams = AsyncMock(
+                return_value=[team]
+            )
+            with patch.object(
+                scanner, "_process_team", AsyncMock(return_value=[])
+            ) as mock_process:
+                await scanner.scan_recordings(
+                    date_start="2024-06-01", date_end="2024-06-30"
+                )
+        mock_process.assert_awaited_once()
+        assert mock_process.await_args.args[2:4] == ("2024-06-01", "2024-06-30")
