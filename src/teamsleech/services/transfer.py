@@ -22,14 +22,18 @@ log = logging.getLogger("transfer")
 
 THUMBNAIL_TIMESTAMP = "00:00:02"
 
+
 class TransferError(Exception):
     pass
+
 
 class DownloadError(TransferError):
     pass
 
+
 class TelegramUploadError(TransferError):
     pass
+
 
 class TransferService:
     def __init__(
@@ -58,30 +62,52 @@ class TransferService:
         self, chat_id, file_path, file_name, caption, thumb, progress
     ) -> Message:
         return await self.tg.send_document(
-            chat_id=chat_id, document=file_path,
-            file_name=file_name, caption=caption,
-            thumb=thumb, progress=progress,
+            chat_id=chat_id,
+            document=file_path,
+            file_name=file_name,
+            caption=caption,
+            thumb=thumb,
+            progress=progress,
         )
 
     @retry_tg
     async def _tg_send_video(
-        self, chat_id, file_path, file_name, caption,
-        duration, width, height, thumb, progress,
+        self,
+        chat_id,
+        file_path,
+        file_name,
+        caption,
+        duration,
+        width,
+        height,
+        thumb,
+        progress,
     ) -> Message:
         return await self.tg.send_video(
-            chat_id=chat_id, video=file_path,
-            file_name=file_name, caption=caption,
+            chat_id=chat_id,
+            video=file_path,
+            file_name=file_name,
+            caption=caption,
             supports_streaming=True,
-            duration=duration, width=width, height=height,
-            thumb=thumb, progress=progress,
+            duration=duration,
+            width=width,
+            height=height,
+            thumb=thumb,
+            progress=progress,
         )
 
     def _probe_video(self, file_path: str) -> tuple[int, int, int]:
         try:
             result = subprocess.run(
                 [
-                    "ffprobe", "-v", "quiet", "-print_format", "json",
-                    "-show_streams", "-show_format", file_path,
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_streams",
+                    "-show_format",
+                    file_path,
                 ],
                 capture_output=True,
                 text=True,
@@ -100,7 +126,13 @@ class TransferService:
             fmt = data.get("format", {})
             dur = fmt.get("duration", 0)
             return int(float(dur)), 1280, 720
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError, OSError, TimeoutError) as exc:
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            json.JSONDecodeError,
+            OSError,
+            TimeoutError,
+        ) as exc:
             log.warning("ffprobe failed: %s", exc)
         return 0, 1280, 720
 
@@ -109,9 +141,17 @@ class TransferService:
         try:
             subprocess.run(
                 [
-                    "ffmpeg", "-y", "-i", video_path,
-                    "-ss", THUMBNAIL_TIMESTAMP, "-vframes", "1",
-                    "-q:v", "2", thumb_path,
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    video_path,
+                    "-ss",
+                    THUMBNAIL_TIMESTAMP,
+                    "-vframes",
+                    "1",
+                    "-q:v",
+                    "2",
+                    thumb_path,
                 ],
                 capture_output=True,
                 timeout=20,
@@ -123,37 +163,59 @@ class TransferService:
             log.warning("Thumbnail extraction failed: %s", exc)
         return None
 
+    _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+
+    async def _stream_to_file(self, resp: httpx.Response, dest_path: str) -> int:
+        resp.raise_for_status()
+        total_written = 0
+        with open(dest_path, "wb") as f:
+            async for chunk in resp.aiter_bytes(chunk_size=CHUNK_SIZE_BYTES):
+                f.write(chunk)
+                total_written += len(chunk)
+        return total_written
+
     @_retry_download
-    async def _download_recording(
-        self, rec: Recording, dest_path: str
-    ) -> int:
-        url = (
-            f"{GRAPH_BASE_URL}/drives/{rec.drive_id}"
-            f"/items/{rec.item_id}/content"
-        )
+    async def _download_recording(self, rec: Recording, dest_path: str) -> int:
+        url = f"{GRAPH_BASE_URL}/drives/{rec.drive_id}/items/{rec.item_id}/content"
 
         async with httpx.AsyncClient() as client:
             try:
+                # Step 1: Graph only, never follow cross-host with Bearer.
                 async with client.stream(
                     "GET",
                     url,
                     headers=self.graph.headers,
                     timeout=60.0,
-                    follow_redirects=True,
+                    follow_redirects=False,
+                ) as first:
+                    if first.status_code in self._REDIRECT_STATUSES:
+                        location = first.headers.get("location")
+                        if not location:
+                            raise DownloadError("Graph download missing redirect location")
+                    elif first.status_code == 200:
+                        return await self._stream_to_file(first, dest_path)
+                    else:
+                        try:
+                            first.raise_for_status()
+                        except httpx.HTTPStatusError as exc:
+                            raise DownloadError(
+                                f"Graph download failed [{exc.response.status_code}]"
+                            ) from exc
+                        raise DownloadError(f"Graph download failed [{first.status_code}]")
+                # Step 2: pre-authenticated URL, bare GET (no Bearer).
+                async with client.stream(
+                    "GET",
+                    location,
+                    timeout=300.0,
                 ) as resp:
-                    resp.raise_for_status()
-                    total_written = 0
-                    with open(dest_path, "wb") as f:
-                        async for chunk in resp.aiter_bytes(
-                            chunk_size=CHUNK_SIZE_BYTES
-                        ):
-                            f.write(chunk)
-                            total_written += len(chunk)
-                    return total_written
-            except httpx.RequestError as exc:
-                raise DownloadError(
-                    f"Graph download failed: {exc}"
-                ) from exc
+                    try:
+                        return await self._stream_to_file(resp, dest_path)
+                    except httpx.HTTPStatusError as exc:
+                        raise DownloadError(
+                            f"Download failed [{exc.response.status_code}]"
+                        ) from exc
+            except httpx.HTTPError as exc:
+                raise DownloadError(f"Graph download failed: {exc}") from exc
 
     async def _upload_to_telegram(
         self,
@@ -166,12 +228,8 @@ class TransferService:
             duration, width, height = 0, 0, 0
             thumb_path = None
         else:
-            duration, width, height = await asyncio.to_thread(
-                self._probe_video, file_path
-            )
-            thumb_path = await asyncio.to_thread(
-                self._extract_thumbnail, file_path
-            )
+            duration, width, height = await asyncio.to_thread(self._probe_video, file_path)
+            thumb_path = await asyncio.to_thread(self._extract_thumbnail, file_path)
 
         ext = ""
         if "." in filename:
@@ -187,27 +245,40 @@ class TransferService:
         try:
             if not is_video:
                 sent_msg = await self._tg_send_document(
-                    self.chat_id, file_path, save_filename, caption, None, tg_progress_cb,
+                    self.chat_id,
+                    file_path,
+                    save_filename,
+                    caption,
+                    None,
+                    tg_progress_cb,
                 )
             else:
                 sent_msg = await self._tg_send_video(
-                    self.chat_id, file_path, save_filename, caption,
-                    duration, width, height, thumb_path, tg_progress_cb,
+                    self.chat_id,
+                    file_path,
+                    save_filename,
+                    caption,
+                    duration,
+                    width,
+                    height,
+                    thumb_path,
+                    tg_progress_cb,
                 )
         except BadRequest:
             if is_video:
-                log.warning(
-                    "send_video rejected — falling back to send_document"
-                )
+                log.warning("send_video rejected — falling back to send_document")
                 sent_msg = await self._tg_send_document(
-                    self.chat_id, file_path, save_filename, caption, thumb_path, tg_progress_cb,
+                    self.chat_id,
+                    file_path,
+                    save_filename,
+                    caption,
+                    thumb_path,
+                    tg_progress_cb,
                 )
             else:
                 raise
         except (RPCError, TimeoutError, ConnectionError, OSError) as exc:
-            raise TelegramUploadError(
-                f"Upload failed: {exc}"
-            ) from exc
+            raise TelegramUploadError(f"Upload failed: {exc}") from exc
         finally:
             if thumb_path and os.path.exists(thumb_path):
                 try:
@@ -232,8 +303,7 @@ class TransferService:
             now = asyncio.get_event_loop().time()
             elapsed_chunk = now - self._progress_last_time
             speed_mbps = (
-                ((current - self._progress_last_bytes) / (1024 * 1024))
-                / elapsed_chunk
+                ((current - self._progress_last_bytes) / (1024 * 1024)) / elapsed_chunk
                 if elapsed_chunk > 0
                 else 0.0
             )
@@ -272,12 +342,8 @@ class TransferService:
                 await self._report_progress(current, total, _i, _name, progress_cb)
 
             try:
-                await self._upload_to_telegram(
-                    tmp_path, rec.name, rec.is_video, _tg_progress
-                )
-                elapsed_file = (
-                    asyncio.get_event_loop().time() - start_time_file
-                )
+                await self._upload_to_telegram(tmp_path, rec.name, rec.is_video, _tg_progress)
+                elapsed_file = asyncio.get_event_loop().time() - start_time_file
 
                 if progress_cb:
                     await progress_cb(
@@ -289,9 +355,7 @@ class TransferService:
                             "elapsed_s": elapsed_file,
                         },
                     )
-                results.append(
-                    {"name": rec.name, "success": True, "error": None, "rec": rec}
-                )
+                results.append({"name": rec.name, "success": True, "error": None, "rec": rec})
             except (TelegramUploadError, OSError) as e:
                 if progress_cb:
                     await progress_cb(
@@ -302,9 +366,7 @@ class TransferService:
                             "error": str(e),
                         },
                     )
-                results.append(
-                    {"name": rec.name, "success": False, "error": str(e), "rec": rec}
-                )
+                results.append({"name": rec.name, "success": False, "error": str(e), "rec": rec})
             finally:
                 try:
                     os.unlink(tmp_path)
@@ -323,21 +385,11 @@ class TransferService:
             start_time_file = asyncio.get_event_loop().time()
             log.info("Downloading: %s", rec.name)
 
-            ext = (
-                ".mp4"
-                if rec.is_video
-                else (
-                    ".pdf"
-                    if ".pdf" in rec.name.lower()
-                    else ""
-                )
-            )
+            ext = ".mp4" if rec.is_video else (".pdf" if ".pdf" in rec.name.lower() else "")
             if not ext and "." in rec.name:
                 ext = "." + rec.name.split(".")[-1]
 
-            tmp_file = tempfile.NamedTemporaryFile(
-                suffix=ext, prefix="teamsleech_", delete=False
-            )
+            tmp_file = tempfile.NamedTemporaryFile(suffix=ext, prefix="teamsleech_", delete=False)
             tmp_path = tmp_file.name
             tmp_file.close()
 
@@ -375,9 +427,7 @@ class TransferService:
                             "error": str(e),
                         },
                     )
-                results.append(
-                    {"name": rec.name, "success": False, "error": str(e), "rec": rec}
-                )
+                results.append({"name": rec.name, "success": False, "error": str(e), "rec": rec})
                 try:
                     os.unlink(tmp_path)
                 except OSError:
@@ -413,8 +463,7 @@ class TransferService:
                 {
                     "total": len(recordings),
                     "total_mb": total_size_mb,
-                    "elapsed_s": asyncio.get_event_loop().time()
-                    - start_time_all,
+                    "elapsed_s": asyncio.get_event_loop().time() - start_time_all,
                 },
             )
 
