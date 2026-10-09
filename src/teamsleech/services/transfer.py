@@ -350,6 +350,10 @@ class TransferService:
         if not save_filename.lower().endswith(ext):
             save_filename += ext
 
+        log.info(
+            "Telegram send: file_name='%s' caption='%s'",
+            save_filename, caption,
+        )
         try:
             if not is_video:
                 sent_msg = await self._tg_send_document(

@@ -5,6 +5,7 @@ from pyrogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+import logging
 
 from teamsleech.models.domain import Recording
 from teamsleech.services.scanner import ScannerService, subject_key
@@ -14,6 +15,8 @@ from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
 from teamsleech.tg_bot.views import build_checklist_text
+
+log = logging.getLogger("upload_ui")
 
 
 def _get_rename_suggestion(
@@ -221,6 +224,10 @@ def register_upload_ui(
 
                 override_name = session.rename_overrides.get(i)
                 if override_name:
+                    log.info(
+                        "Rename applied: '%s' -> '%s'",
+                        rec.name, override_name,
+                    )
                     rec.name = override_name
 
         await safe_edit_text(
