@@ -1,3 +1,5 @@
+import logging
+
 from pyrogram import Client, filters
 from pyrogram.types import (
     CallbackQuery,
@@ -5,7 +7,6 @@ from pyrogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-import logging
 
 from teamsleech.models.domain import Recording
 from teamsleech.services.scanner import ScannerService, subject_key
