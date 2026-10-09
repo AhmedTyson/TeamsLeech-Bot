@@ -177,8 +177,7 @@ def register_upload_ui(
 
         await safe_edit_text(
             cb.message,
-            f"✅ Renamed to: **{session.rename_overrides[idx]}**\n"
-            "_Type another name to override._",
+            f"✅ Renamed to: **{session.rename_overrides[idx]}**",
         )
         await cb.answer("✅ Name saved!")
 
@@ -197,20 +196,6 @@ def register_upload_ui(
             await message.reply(
                 f"✅ Renamed to: **{session.rename_overrides[idx]}**"
             )
-        elif (
-            len(session.selected_indices) == 1
-            and not session.pending_add_step
-            and not session.is_searching_teams
-            and not session.date_input_pending
-        ):
-            idx = next(iter(session.selected_indices))
-            if idx < len(session.pending_recordings):
-                session.rename_overrides[idx] = message.text.strip()
-                await message.reply(
-                    f"✅ Renamed to: **{session.rename_overrides[idx]}**"
-                )
-                return
-            message.continue_propagation()
         else:
             message.continue_propagation()
 
