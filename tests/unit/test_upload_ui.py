@@ -87,3 +87,75 @@ async def test_upload_ui_handlers(mock_transfer, mock_scanner, mock_state):
                 await func(mock_client, msg)
             except Exception:
                 pass
+
+
+def _rig():
+    from teamsleech.services.state import StateManager
+    app = MagicMock()
+    cbs, msgs = {}, {}
+    app.on_callback_query.side_effect = (
+        lambda *a, **k: (lambda f: cbs.setdefault(f.__name__, f) or f)
+    )
+    app.on_message.side_effect = (
+        lambda *a, **k: (lambda f: msgs.setdefault(f.__name__, f) or f)
+    )
+    state = StateManager(MagicMock(), 123)
+    scanner = MagicMock()
+    scanner.load_subjects.return_value = []
+    register_upload_ui(app, MagicMock(), state, scanner)
+    return cbs, msgs, state
+
+
+def _mkmsg(text):
+    msg = AsyncMock()
+    msg.continue_propagation = MagicMock()
+    msg.text = text
+    msg.chat = MagicMock(spec=Chat)
+    msg.chat.id = 123
+    return msg
+
+
+def _one_rec(state):
+    ses = state.get_session(123)
+    ses.pending_recordings = [
+        Recording(
+            name="Week 01.mp4", size_mb=10.0, created="2026-10-01",
+            drive_id="d", item_id="i", team_name="T", subject_name="S",
+            is_video=True,
+        )
+    ]
+    ses.selected_indices = {0}
+    return ses
+
+
+@pytest.mark.asyncio
+async def test_typed_name_after_accept_overrides():
+    cbs, msgs, state = _rig()
+    ses = _one_rec(state)
+    ses.rename_overrides[0] = "Short"
+    ses.pending_rename_idx = None
+    await msgs["handle_rename_input"](MagicMock(), _mkmsg("A Much Longer Name Here"))
+    assert ses.rename_overrides[0] == "A Much Longer Name Here"
+
+
+@pytest.mark.asyncio
+async def test_typed_name_multi_select_propagates():
+    cbs, msgs, state = _rig()
+    ses = _one_rec(state)
+    ses.pending_recordings.append(ses.pending_recordings[0])
+    ses.selected_indices = {0, 1}
+    msg = _mkmsg("Some Name")
+    await msgs["handle_rename_input"](MagicMock(), msg)
+    msg.continue_propagation.assert_called_once()
+    assert ses.rename_overrides == {}
+
+
+@pytest.mark.asyncio
+async def test_typed_name_during_other_flow_propagates():
+    cbs, msgs, state = _rig()
+    ses = _one_rec(state)
+    ses.date_input_pending = True
+    msg = _mkmsg("Some Name")
+    await msgs["handle_rename_input"](MagicMock(), msg)
+    msg.continue_propagation.assert_called_once()
+    assert ses.rename_overrides == {}
