@@ -533,6 +533,36 @@ class TestUploadToTelegram:
                 "/tmp/lecture.mp4", "lecture.mp4", True, AsyncMock()
             )
 
+    async def test_dotted_name_without_ext_kept_whole(self, transfer_service):
+        sent = AsyncMock()
+        sent.id = 1
+        transfer_service._tg_send_video = AsyncMock(return_value=sent)
+        with (
+            patch.object(transfer_service, "_probe_video", return_value=(60, 1280, 720)),
+            patch.object(transfer_service, "_extract_thumbnail", return_value=None),
+        ):
+            await transfer_service._upload_to_telegram(
+                "/tmp/f.mp4", "DSS - L01 - Dr. Hany Gouda", True, AsyncMock()
+            )
+        args = transfer_service._tg_send_video.await_args.args
+        assert args[3] == "DSS - L01 - Dr. Hany Gouda"
+        assert args[2] == "DSS - L01 - Dr. Hany Gouda.mp4"
+
+    async def test_real_extension_still_split(self, transfer_service):
+        sent = AsyncMock()
+        sent.id = 1
+        transfer_service._tg_send_video = AsyncMock(return_value=sent)
+        with (
+            patch.object(transfer_service, "_probe_video", return_value=(60, 1280, 720)),
+            patch.object(transfer_service, "_extract_thumbnail", return_value=None),
+        ):
+            await transfer_service._upload_to_telegram(
+                "/tmp/f.mp4", "Lecture Final.MOV", True, AsyncMock()
+            )
+        args = transfer_service._tg_send_video.await_args.args
+        assert args[3] == "Lecture Final"
+        assert args[2] == "Lecture Final.MOV"
+
 
 class TestProgressReporting:
     async def test_report_progress_calls_callback(self, transfer_service):

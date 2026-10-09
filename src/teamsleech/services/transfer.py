@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -340,15 +341,17 @@ class TransferService:
             )
 
         ext = ""
-        if "." in filename:
-            ext = "." + filename.split(".")[-1].lower()
+        caption = filename
+        m = re.search(r"\.([A-Za-z0-9]{1,5})$", filename)
+        if m:
+            ext = "." + m.group(1).lower()
             caption = filename[: -len(ext)]
-        else:
-            caption = filename
 
         save_filename = filename
-        if not save_filename.lower().endswith(ext):
+        if ext and not save_filename.lower().endswith(ext):
             save_filename += ext
+        elif not ext and is_video:
+            save_filename += ".mp4"
 
         log.info(
             "Telegram send: file_name='%s' caption='%s'",
