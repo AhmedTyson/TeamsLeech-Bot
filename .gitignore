@@ -19,6 +19,9 @@ venv/
 # Bot state persistence
 .state/
 
+# Browser cookie export (secret — paste into SP_COOKIES_JSON, never commit)
+sp_cookies.json
+
 # IDE / Editor
 .vscode/
 .idea/
