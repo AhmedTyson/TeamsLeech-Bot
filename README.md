@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📡 TeamsLeech Bot v2.x
+# <img src="docs/icons/satellite-dish.svg" width="32" height="32" align="center" alt="Satellite Dish" /> TeamsLeech Bot v2.x
 
 > **An asynchronous Telegram Bot for discovering and mirroring Microsoft Teams academic recordings.**
 > Built for students to eliminate manual downloads and save mobile data, running entirely on free cloud infrastructure with zero local intervention required.
@@ -9,7 +9,7 @@
 
 ---
 
-## ✨ Features
+## <img src="docs/icons/sparkles.svg" width="24" height="24" align="center" alt="Features" /> Features
 
 - **Zero-Data Downloads**: Streams massive Teams recordings directly to Telegram servers without using your device's bandwidth or local storage.
 - **Dynamic Discovery**: Automatically finds new recordings (and PDFs/Documents) even when you are added to new classes or groups mid-semester.
@@ -19,7 +19,7 @@
 
 ---
 
-## 🔀 Architecture
+## <img src="docs/icons/git-pull-request.svg" width="24" height="24" align="center" alt="Architecture" /> Architecture
 
 ```text
        Telegram /check
@@ -43,7 +43,7 @@ Graph API joinedTeams scan
 
 ---
 
-## 📁 Project Structure
+## <img src="docs/icons/folder-tree.svg" width="24" height="24" align="center" alt="Project Structure" /> Project Structure
 
 ```text
 TeamsLeech-Bot/
@@ -70,7 +70,7 @@ TeamsLeech-Bot/
 
 ---
 
-## 🔑 Required GitHub Secrets
+## <img src="docs/icons/key.svg" width="24" height="24" align="center" alt="Required Secrets" /> Required GitHub Secrets
 
 | Secret Name           | Description                                                   |
 | --------------------- | ------------------------------------------------------------- |
@@ -84,7 +84,7 @@ TeamsLeech-Bot/
 
 ---
 
-## 🔄 Manual Trigger & Token Rotation
+## <img src="docs/icons/refresh-cw.svg" width="24" height="24" align="center" alt="Manual Trigger" /> Manual Trigger & Token Rotation
 
 If the bot encounters auth failures or you need an immediate check outside the schedule:
 1. **Manual Trigger**: Go to **Actions** → **TeamsLeech Bot** → **Run workflow**.
@@ -95,7 +95,7 @@ If the bot encounters auth failures or you need an immediate check outside the s
 
 ---
 
-## 🚀 Local Development
+## <img src="docs/icons/rocket.svg" width="24" height="24" align="center" alt="Local Development" /> Local Development
 
 To develop or test locally:
 1. Clone the repository and navigate into it.
@@ -114,6 +114,6 @@ To develop or test locally:
 
 ---
 
-## 📄 License
+## <img src="docs/icons/file-text.svg" width="24" height="24" align="center" alt="License" /> License
 
 Built for **personal use only**. This tool is not licensed for commercial redistribution or SaaS operation.
