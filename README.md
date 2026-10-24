@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="https://api.iconify.design/lucide:satellite-dish.svg?color=%238A2BE2" width="32" height="32" align="center" /> TeamsLeech Bot v2.x
+# 📡 TeamsLeech Bot v2.x
 
 > **An asynchronous Telegram Bot for discovering and mirroring Microsoft Teams academic recordings.**
 > Built for students to eliminate manual downloads and save mobile data, running entirely on free cloud infrastructure with zero local intervention required.
@@ -9,7 +9,7 @@
 
 ---
 
-## <img src="https://api.iconify.design/lucide:sparkles.svg?color=%238A2BE2" width="24" height="24" align="center" /> Features
+## ✨ Features
 
 - **Zero-Data Downloads**: Streams massive Teams recordings directly to Telegram servers without using your device's bandwidth or local storage.
 - **Dynamic Discovery**: Automatically finds new recordings (and PDFs/Documents) even when you are added to new classes or groups mid-semester.
@@ -19,7 +19,7 @@
 
 ---
 
-## <img src="https://api.iconify.design/lucide:git-pull-request.svg?color=%238A2BE2" width="24" height="24" align="center" /> Architecture
+## 🔀 Architecture
 
 ```text
        Telegram /check
@@ -43,7 +43,7 @@ Graph API joinedTeams scan
 
 ---
 
-## <img src="https://api.iconify.design/lucide:folder-tree.svg?color=%238A2BE2" width="24" height="24" align="center" /> Project Structure
+## 📁 Project Structure
 
 ```text
 TeamsLeech-Bot/
@@ -70,7 +70,7 @@ TeamsLeech-Bot/
 
 ---
 
-## <img src="https://api.iconify.design/lucide:key.svg?color=%238A2BE2" width="24" height="24" align="center" /> Required GitHub Secrets
+## 🔑 Required GitHub Secrets
 
 | Secret Name           | Description                                                   |
 | --------------------- | ------------------------------------------------------------- |
@@ -84,7 +84,7 @@ TeamsLeech-Bot/
 
 ---
 
-## <img src="https://api.iconify.design/lucide:refresh-cw.svg?color=%238A2BE2" width="24" height="24" align="center" /> Manual Trigger & Token Rotation
+## 🔄 Manual Trigger & Token Rotation
 
 If the bot encounters auth failures or you need an immediate check outside the schedule:
 1. **Manual Trigger**: Go to **Actions** → **TeamsLeech Bot** → **Run workflow**.
@@ -95,7 +95,7 @@ If the bot encounters auth failures or you need an immediate check outside the s
 
 ---
 
-## <img src="https://api.iconify.design/lucide:rocket.svg?color=%238A2BE2" width="24" height="24" align="center" /> Local Development
+## 🚀 Local Development
 
 To develop or test locally:
 1. Clone the repository and navigate into it.
@@ -114,6 +114,6 @@ To develop or test locally:
 
 ---
 
-## <img src="https://api.iconify.design/lucide:file-text.svg?color=%238A2BE2" width="24" height="24" align="center" /> License
+## 📄 License
 
 Built for **personal use only**. This tool is not licensed for commercial redistribution or SaaS operation.
