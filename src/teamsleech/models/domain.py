@@ -64,6 +64,7 @@ class UserSession(BaseModel):
     pending_edit_field: str = ""
 
     date_input_pending: bool = False
+    cal_start: str | None = None
     subject_filter: str | None = None
     scan_label: str = ""
 

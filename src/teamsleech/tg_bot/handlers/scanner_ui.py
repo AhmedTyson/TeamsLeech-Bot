@@ -15,10 +15,62 @@ from teamsleech.services.scanner import ScannerService, subject_key
 from teamsleech.services.state import StateManager
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_answer, safe_edit_text
-from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from teamsleech.tg_bot.keyboards import (
+    build_calendar_keyboard,
+    build_checklist_keyboard,
+)
 from teamsleech.tg_bot.views import build_checklist_text, format_date_short, videos_first
 
 MAX_DATE_RANGE_DAYS = 60
+
+DATE_PROMPT = (
+    "**Select Date Range** (default: everything)\n"
+    "Tap a button, pick dates from the calendar, "
+    "or type a date like `2026-04-01`.\n"
+    "_Ranges up to 60 days. Type `cancel` to exit._"
+)
+
+def _build_date_choice_keyboard() -> InlineKeyboardMarkup:
+    today = datetime.now(UTC).date()
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🗓 Last 60 Days", callback_data="date_btn:60d"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📆 Pick Dates",
+                callback_data=f"cal:open:{today.year:04d}-{today.month:02d}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📅 Today", callback_data="date_btn:today"
+            ),
+            InlineKeyboardButton(
+                "📅 This Week", callback_data="date_btn:this week"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "♾️ All Time", callback_data="date_btn:all"
+            ),
+        ],
+    ])
+
+def _render_calendar(
+    year: int, month: int, subject: str | None, start: str | None
+) -> tuple[str, InlineKeyboardMarkup]:
+    if start:
+        title = (
+            f"📆 Start: **{format_date_short(start)}**"
+            " — now pick the **end date**"
+        )
+    else:
+        title = "📆 Pick the **start date**"
+    title += f"\n_Subject: {subject or 'All Subjects'}_"
+    return title, build_calendar_keyboard(year, month, picked_start=start)
 
 def _get_current_week_range() -> tuple[str, str]:
     today = datetime.now(UTC).date()
@@ -155,34 +207,12 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             session.date_input_pending = True
             session.subject_filter = subject_key
 
-            kb = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(
-                        "🗓 Last 60 Days", callback_data="date_btn:60d"
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "📅 Today", callback_data="date_btn:today"
-                    ),
-                    InlineKeyboardButton(
-                        "📅 This Week", callback_data="date_btn:this week"
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        "♾️ All Time", callback_data="date_btn:all"
-                    ),
-                ],
-            ])
-
-            prompt = (
-                f"📚 **{subject_key}** selected.\n\n"
-                "**Select Date Range** (default: everything)\n"
-                "Tap a button below, or type a custom date like `2026-04-01`.\n"
-                "_Ranges up to 60 days. Type `cancel` to exit._"
+            prompt = f"📚 **{subject_key}** selected.\n\n" + DATE_PROMPT
+            await safe_edit_text(
+                cb.message,
+                prompt,
+                reply_markup=_build_date_choice_keyboard(),
             )
-            await safe_edit_text(cb.message, prompt, reply_markup=kb)
             await cb.answer()
 
     @app.on_callback_query(filters.regex(r"^date_btn:") & owner_only)
@@ -196,6 +226,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         action = cb.data.split(":", 1)[1]
         session.date_input_pending = False
+        session.cal_start = None
         
         await cb.answer("Starting scan...")
 
@@ -244,35 +275,91 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         session = state.get_session(chat_id)
         session.date_input_pending = True
 
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "🗓 Last 60 Days", callback_data="date_btn:60d"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "📅 Today", callback_data="date_btn:today"
-                ),
-                InlineKeyboardButton(
-                    "📅 This Week", callback_data="date_btn:this week"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "♾️ All Time", callback_data="date_btn:all"
-                ),
-            ],
-        ])
-
         await safe_edit_text(
             cb.message,
-            "**Change Date Range** (default: everything)\n\n"
-            "Tap a button below, or type a custom date like `2026-04-01`.\n"
-            "_Ranges up to 60 days. Type `cancel` to exit._",
-            reply_markup=kb,
+            "**Change Date Range** (default: everything)\n\n" + DATE_PROMPT,
+            reply_markup=_build_date_choice_keyboard(),
         )
         await cb.answer()
+
+    @app.on_callback_query(filters.regex(r"^cal:open:") & owner_only)
+    async def handle_cal_open(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        session.cal_start = None
+        year, month = (int(p) for p in cb.data.split(":")[2].split("-"))
+        title, kb = _render_calendar(
+            year, month, session.subject_filter, None
+        )
+        await safe_edit_text(cb.message, title, reply_markup=kb)
+        await safe_answer(cb)
+
+    @app.on_callback_query(filters.regex(r"^cal:nav:") & owner_only)
+    async def handle_cal_nav(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        year, month = (int(p) for p in cb.data.split(":")[2].split("-"))
+        title, kb = _render_calendar(
+            year, month, session.subject_filter, session.cal_start
+        )
+        await safe_edit_text(cb.message, title, reply_markup=kb)
+        await safe_answer(cb)
+
+    @app.on_callback_query(filters.regex(r"^cal:day:") & owner_only)
+    async def handle_cal_day(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        picked = cb.data.split(":", 2)[2]
+        year, month = int(picked[:4]), int(picked[5:7])
+
+        if not session.cal_start:
+            session.cal_start = picked
+            title, kb = _render_calendar(
+                year, month, session.subject_filter, session.cal_start
+            )
+            await safe_edit_text(cb.message, title, reply_markup=kb)
+            await safe_answer(cb, f"Start: {format_date_short(picked)}")
+            return
+
+        ds, de = session.cal_start, picked
+        if de < ds:
+            ds, de = de, ds
+
+        ok, err = _validate_date_range(ds, de)
+        if not ok:
+            await cb.answer(err, show_alert=True)
+            title, kb = _render_calendar(
+                year, month, session.subject_filter, session.cal_start
+            )
+            await safe_edit_text(cb.message, title, reply_markup=kb)
+            return
+
+        session.cal_start = None
+        session.date_input_pending = False
+        label = f"{format_date_short(ds)} – {format_date_short(de)}"
+        await safe_answer(cb, "Starting scan...")
+        await safe_edit_text(
+            cb.message,
+            f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
+            f" — {label}...",
+        )
+        await run_scan_and_reply(
+            client, chat_id, session.subject_filter, ds, de, label
+        )
+
+    @app.on_callback_query(filters.regex(r"^cal:cancel$") & owner_only)
+    async def handle_cal_cancel(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        session.cal_start = None
+        session.date_input_pending = False
+        session.subject_filter = None
+        await safe_edit_text(cb.message, "❌ Date selection cancelled.")
+        await safe_answer(cb)
+
+    @app.on_callback_query(filters.regex(r"^cal:noop$") & owner_only)
+    async def handle_cal_noop(client: Client, cb: CallbackQuery):
+        await safe_answer(cb)
 
     @app.on_message(
         filters.text & filters.private & owner_only, group=2
@@ -289,6 +376,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         if text.lower() == "cancel":
             session.date_input_pending = False
+            session.cal_start = None
             session.subject_filter = None
             await message.reply("❌ Date selection cancelled.")
             return
