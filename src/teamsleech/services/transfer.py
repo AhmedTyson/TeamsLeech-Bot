@@ -232,6 +232,12 @@ class TransferService:
                     preauth_url = item_resp.json().get(
                         "@microsoft.graph.downloadUrl"
                     )
+                    log.info(
+                        "downloadUrl for %s: present=%s tempauth=%s",
+                        rec.name,
+                        preauth_url is not None,
+                        bool(preauth_url and "tempauth=" in preauth_url),
+                    )
             except Exception as exc:
                 log.warning(
                     "downloadUrl lookup failed for %s: %s", rec.name, exc
@@ -333,6 +339,22 @@ class TransferService:
                 except httpx.HTTPStatusError as exc:
                     failures.append(f"{label} [{exc.response.status_code}]")
                     log.warning("%s failed for %s: %s", label, rec.name, exc)
+                    try:
+                        hdrs = exc.response.headers
+                        log.warning(
+                            "%s [%s] diagnostics for %s:"
+                            " www-authenticate=%s x-ms-diagnostics=%s"
+                            " sprequestguid=%s body=%s",
+                            label,
+                            exc.response.status_code,
+                            rec.name,
+                            hdrs.get("www-authenticate", "<none>")[:400],
+                            hdrs.get("x-ms-diagnostics", "<none>")[:400],
+                            hdrs.get("sprequestguid", "<none>"),
+                            exc.response.text[:400].replace("\n", " "),
+                        )
+                    except Exception:
+                        pass
                     continue
                 except httpx.HTTPError as exc:
                     failures.append(f"{label} ({exc})")
