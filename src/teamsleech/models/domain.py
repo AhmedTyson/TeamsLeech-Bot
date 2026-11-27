@@ -74,6 +74,7 @@ class UserSession(BaseModel):
     triage_flags: dict[int, str] = Field(default_factory=dict)
     proposed_numbers: dict[int, int] = Field(default_factory=dict)
     last_uploads: list[UploadedItem] = Field(default_factory=list)
+    failed_downloads: list[Recording] = Field(default_factory=list)
 
     @property
     def video_count(self) -> int:

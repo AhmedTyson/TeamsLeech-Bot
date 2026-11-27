@@ -1,3 +1,5 @@
+import logging
+
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
@@ -14,9 +16,15 @@ from teamsleech.tg_bot.keyboards import (
     build_subject_keyboard,
 )
 
+log = logging.getLogger("commands")
+
 
 def register_commands(
-    app: Client, scanner: ScannerService, state: StateManager, discovery: DiscoveryService
+    app: Client,
+    scanner: ScannerService,
+    state: StateManager,
+    discovery: DiscoveryService,
+    transfer=None,
 ):
     @app.on_message(filters.command("start") & filters.private & owner_only)
     async def handle_start(client: Client, message: Message):
@@ -95,6 +103,22 @@ def register_commands(
             await message.reply(
                 f"⚠️ Logged in and saved, but refreshing this run failed: {e}"
             )
+
+        # Auto-retry downloads that failed before the login.
+        session = state.get_session(settings.telegram_chat_id)
+        if transfer is not None and session.failed_downloads:
+            try:
+                from teamsleech.tg_bot.retry_failed import (
+                    retry_failed_downloads,
+                )
+
+                await message.reply(
+                    f"🔁 Retrying {len(session.failed_downloads)} failed"
+                    " download(s) with the new session…"
+                )
+                await retry_failed_downloads(client, message, transfer, state)
+            except Exception as e:
+                log.warning("Auto-retry after login failed: %s", e)
 
     @app.on_message(filters.command("login") & filters.private & owner_only)
     async def handle_login(client: Client, message: Message):
