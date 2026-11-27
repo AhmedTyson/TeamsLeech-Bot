@@ -40,7 +40,30 @@ def test_filter_session_cookies_keeps_auth_domains():
     assert len(kept) == 3
     assert "FedAuth" in found
     assert "rtFa" in found
-    assert "ESTSAUTH" in found
+    # ESTSAUTH is a login-flow cookie, not a SharePoint session marker.
+    assert "ESTSAUTH" not in found
+
+
+def test_login_page_cookies_are_not_a_session():
+    """Regression: the login PAGE sets RpsContextCookie before any password
+    is typed — it must never count as a saved session."""
+    cookies = [
+        {"name": "RpsContextCookie", "value": "r", "domain": ".login.microsoftonline.com"},
+        {"name": "ESTSAUTH", "value": "e", "domain": ".login.microsoftonline.com"},
+        {"name": "ESTSAUTHPERSISTENT", "value": "p", "domain": ".login.microsoftonline.com"},
+        {"name": "buid", "value": "b", "domain": ".login.microsoftonline.com"},
+    ]
+    kept, found = bl.filter_session_cookies(cookies)
+    assert len(kept) == 4
+    assert found == []
+
+
+def test_marker_on_wrong_domain_does_not_count():
+    cookies = [
+        {"name": "FedAuth", "value": "x", "domain": ".login.microsoftonline.com"},
+    ]
+    _, found = bl.filter_session_cookies(cookies)
+    assert found == []
 
 
 def test_filter_session_cookies_no_markers():
@@ -48,14 +71,6 @@ def test_filter_session_cookies_no_markers():
     kept, found = bl.filter_session_cookies(cookies)
     assert len(kept) == 1
     assert found == []
-
-
-def test_filter_session_cookies_prefix_markers():
-    cookies = [
-        {"name": "ESTSAUTHPERSISTENT", "value": "p", "domain": ".microsoftonline.com"},
-    ]
-    _, found = bl.filter_session_cookies(cookies)
-    assert "ESTSAUTHPERSISTENT" in found
 
 
 def test_export_cookie_list_shape():
@@ -124,6 +139,7 @@ class FakeProc:
     def __init__(self, lines=None):
         self.stdout = FakeStream(lines or [])
         self.terminated = False
+        self.returncode = None
 
     def terminate(self):
         self.terminated = True
@@ -200,8 +216,16 @@ async def test_run_browser_login_saves_cookies_and_dispatches():
     async def dispatch(wf):
         dispatched.append(wf)
 
+    async def healthy_local(**kwargs):
+        return True
+
+    async def healthy_public(*args, **kwargs):
+        return 200
+
     with (
         patch.object(bl, "_spawn", _fake_spawn(["https://abc-def.trycloudflare.com\n"])),
+        patch.object(bl, "wait_for_local_origin", healthy_local),
+        patch.object(bl, "wait_for_public_tunnel", healthy_public),
         patch.object(bl, "rotate_github_secret", rotate),
         patch.object(bl, "dispatch_workflow", dispatch),
         patch.dict(sys.modules, {"playwright.async_api": pw_module}),
@@ -254,8 +278,16 @@ async def test_run_browser_login_timeout_notifies():
     async def _timeout_wait(context, timeout_seconds, poll_seconds=0):
         raise TimeoutError("no cookies")
 
+    async def healthy_local(**kwargs):
+        return True
+
+    async def healthy_public(*args, **kwargs):
+        return 200
+
     with (
         patch.object(bl, "_spawn", _fake_spawn(["https://x-y.trycloudflare.com\n"])),
+        patch.object(bl, "wait_for_local_origin", healthy_local),
+        patch.object(bl, "wait_for_public_tunnel", healthy_public),
         patch.object(bl, "wait_for_session_cookies", _timeout_wait),
         patch.dict(sys.modules, {"playwright.async_api": pw_module}),
     ):
@@ -377,3 +409,121 @@ async def test_browser_login_button_dispatch_failure(monkeypatch):
     msg = AsyncMock()
     await handlers["handle_browser_login"](mock_client, msg)
     assert "Could not start" in msg.reply.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_wait_for_local_origin_success(respx_mock):
+    respx_mock.get("http://localhost:6080/vnc.html").mock(
+        return_value=__import__("httpx").Response(200)
+    )
+    assert await bl.wait_for_local_origin(timeout=5, poll_seconds=0.01) is True
+
+
+@pytest.mark.asyncio
+async def test_wait_for_local_origin_never_up(respx_mock):
+    respx_mock.get("http://localhost:6080/vnc.html").mock(
+        return_value=__import__("httpx").Response(502)
+    )
+    assert await bl.wait_for_local_origin(timeout=0.1, poll_seconds=0.01) is False
+
+
+@pytest.mark.asyncio
+async def test_wait_for_public_tunnel_waits_for_200(respx_mock):
+    route = respx_mock.get("https://abc.trycloudflare.com/vnc.html")
+    route.side_effect = [
+        __import__("httpx").Response(502),
+        __import__("httpx").Response(200),
+    ]
+    status = await bl.wait_for_public_tunnel(
+        "https://abc.trycloudflare.com", timeout=5, poll_seconds=0.01
+    )
+    assert status == 200
+
+
+@pytest.mark.asyncio
+async def test_wait_for_public_tunnel_stays_broken(respx_mock):
+    respx_mock.get("https://abc.trycloudflare.com/vnc.html").mock(
+        return_value=__import__("httpx").Response(502)
+    )
+    status = await bl.wait_for_public_tunnel(
+        "https://abc.trycloudflare.com", timeout=0.1, poll_seconds=0.01
+    )
+    assert status == 502
+
+
+@pytest.mark.asyncio
+async def test_run_browser_login_local_origin_failure():
+    context = FakeContext([[]])
+    context.pages = [types.SimpleNamespace(goto=_async_noop())]
+    pw_module, _ = _fake_playwright(context)
+    notes = []
+
+    async def notify(text):
+        notes.append(text)
+
+    async def local_down(**kwargs):
+        return False
+
+    with (
+        patch.object(bl, "_spawn", _fake_spawn(["https://x-y.trycloudflare.com\n"])),
+        patch.object(bl, "wait_for_local_origin", local_down),
+        patch.dict(sys.modules, {"playwright.async_api": pw_module}),
+    ):
+        ok = await bl.run_browser_login(notify=notify, timeout_minutes=1)
+
+    assert ok is False
+    assert any("local viewer never came up" in n for n in notes)
+
+
+@pytest.mark.asyncio
+async def test_run_browser_login_public_tunnel_failure():
+    context = FakeContext([[]])
+    context.pages = [types.SimpleNamespace(goto=_async_noop())]
+    pw_module, _ = _fake_playwright(context)
+    notes = []
+
+    async def notify(text):
+        notes.append(text)
+
+    async def healthy_local(**kwargs):
+        return True
+
+    async def tunnel_broken(*args, **kwargs):
+        return 502
+
+    with (
+        patch.object(bl, "_spawn", _fake_spawn(["https://x-y.trycloudflare.com\n"])),
+        patch.object(bl, "wait_for_local_origin", healthy_local),
+        patch.object(bl, "wait_for_public_tunnel", tunnel_broken),
+        patch.dict(sys.modules, {"playwright.async_api": pw_module}),
+    ):
+        ok = await bl.run_browser_login(notify=notify, timeout_minutes=1)
+
+    assert ok is False
+    assert any("never came online" in n for n in notes)
+
+
+@pytest.mark.asyncio
+async def test_run_browser_login_helper_crash_detected():
+    context = FakeContext([[]])
+    context.pages = [types.SimpleNamespace(goto=_async_noop())]
+    pw_module, _ = _fake_playwright(context)
+    notes = []
+
+    async def notify(text):
+        notes.append(text)
+
+    async def spawn_with_dead(*args, pipe_output=False):
+        proc = FakeProc(["https://x-y.trycloudflare.com\n"] if pipe_output else [])
+        if args[0] == "websockify":
+            proc.returncode = 1  # died at startup
+        return proc
+
+    with (
+        patch.object(bl, "_spawn", spawn_with_dead),
+        patch.dict(sys.modules, {"playwright.async_api": pw_module}),
+    ):
+        ok = await bl.run_browser_login(notify=notify, timeout_minutes=1)
+
+    assert ok is False
+    assert any("Browser login failed" in n for n in notes)
