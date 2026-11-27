@@ -231,15 +231,17 @@ class TestDownloadRecording:
                 graph_resp=self._graph_redirect(location=dl_url + "&tempauth=tok"),
                 dl_resp=self._dl_resp(status_error=status_error),
             )
-            with pytest.raises(DownloadError, match=r"download\.aspx \(anonymous\) \[401\]"):
+            with pytest.raises(DownloadError, match=r"download\.aspx \(pre-authed\) \[401\]"):
                 await transfer_service._download_recording(rec, dest)
             # SharePoint fetch must not carry the Graph Bearer.
             _, stream_kwargs = mock_client.stream.call_args
             assert stream_kwargs.get("headers") is None
 
-    async def test_download_uses_sharepoint_token_when_available(
+    async def test_download_prefers_preauthed_url_over_token(
         self, transfer_service, sample_recordings, tmp_path
     ):
+        """Graph's pre-authed redirect is fetched bare before any token or
+        cookie is tried — a rejected bearer must never poison it."""
         chunk = b"x" * 1024
         rec = sample_recordings[0]
         dest = str(tmp_path / "t.mp4")
@@ -257,10 +259,49 @@ class TestDownloadRecording:
             )
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
+        assert mock_client.stream.call_count == 1
         first_call = mock_client.stream.call_args_list[0]
-        assert "GetFileById" in first_call.args[1]
-        assert first_call.args[1].endswith("/$value")
-        assert first_call.kwargs["headers"] == {"Authorization": "Bearer sp_at"}
+        assert "download.aspx" in first_call.args[1]
+        assert first_call.kwargs["headers"] is None
+
+    async def test_preauthed_401_falls_back_to_sharepoint_token(
+        self, transfer_service, sample_recordings, tmp_path
+    ):
+        """When the pre-authed URL is policy-blocked, the SharePoint bearer
+        REST path is tried next."""
+        chunk = b"x" * 1024
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        request = httpx.Request("GET", "https://x/")
+        err401 = httpx.HTTPStatusError(
+            "Client error '401'",
+            request=request,
+            response=httpx.Response(401, request=request),
+        )
+        with (
+            patch(
+                "teamsleech.services.transfer.authenticate_sharepoint",
+                AsyncMock(return_value="sp_at"),
+            ),
+            patch("httpx.AsyncClient") as mock_cls,
+        ):
+            mock_client = self._mock_client(
+                mock_cls,
+                graph_resp=self._graph_redirect(),
+            )
+            mock_client.stream = MagicMock(
+                side_effect=[
+                    self._dl_resp(status_error=err401),
+                    self._dl_resp(chunk),
+                ]
+            )
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        assert mock_client.stream.call_count == 2
+        second_call = mock_client.stream.call_args_list[1]
+        assert "GetFileById" in second_call.args[1]
+        assert second_call.args[1].endswith("/$value")
+        assert second_call.kwargs["headers"] == {"Authorization": "Bearer sp_at"}
 
     async def test_rest_fallback_to_download_aspx(
         self, transfer_service, sample_recordings, tmp_path
@@ -290,14 +331,20 @@ class TestDownloadRecording:
             mock_client.stream = MagicMock(
                 side_effect=[
                     self._dl_resp(status_error=rest_401),
+                    self._dl_resp(status_error=rest_401),
                     self._dl_resp(chunk),
                 ]
             )
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
-        assert mock_client.stream.call_count == 2
+        assert mock_client.stream.call_count == 3
+        first_call = mock_client.stream.call_args_list[0]
+        assert first_call.kwargs["headers"] is None
         second_call = mock_client.stream.call_args_list[1]
-        assert "download.aspx" in second_call.args[1]
+        assert "GetFileById" in second_call.args[1]
+        third_call = mock_client.stream.call_args_list[2]
+        assert "download.aspx" in third_call.args[1]
+        assert third_call.kwargs["headers"] == {"Authorization": "Bearer sp_at"}
 
     async def test_all_candidates_fail_reports_each(
         self, transfer_service, sample_recordings, tmp_path
@@ -381,7 +428,7 @@ class TestDownloadRecording:
         assert events[-1] == (2048, 2048, True)
         assert events[0][0] == 1024
 
-    async def test_cookies_tried_first_when_configured(
+    async def test_cookies_are_last_resort(
         self, transfer_service, sample_recordings, tmp_path, monkeypatch
     ):
         from teamsleech.core.config import settings
@@ -399,11 +446,13 @@ class TestDownloadRecording:
             )
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
+        # Pre-authed URL wins immediately; cookies are never sent.
+        assert mock_client.stream.call_count == 1
         first_call = mock_client.stream.call_args_list[0]
         assert "download.aspx" in first_call.args[1]
-        assert first_call.kwargs["headers"] == {"Cookie": "FedAuth=abc"}
+        assert first_call.kwargs["headers"] is None
 
-    async def test_stale_cookies_fall_through_to_anonymous(
+    async def test_preauthed_401_falls_back_to_cookies(
         self, transfer_service, sample_recordings, tmp_path, monkeypatch
     ):
         from teamsleech.core.config import settings
@@ -433,10 +482,12 @@ class TestDownloadRecording:
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
         assert mock_client.stream.call_count == 2
+        first_call = mock_client.stream.call_args_list[0]
+        assert first_call.kwargs.get("headers") is None
         second_call = mock_client.stream.call_args_list[1]
-        assert second_call.kwargs.get("headers") is None
+        assert second_call.kwargs["headers"] == {"Cookie": "FedAuth=stale"}
 
-    async def test_cookie_failure_hint_mentions_reexport(
+    async def test_failure_hint_points_to_login_button(
         self, transfer_service, sample_recordings, tmp_path, monkeypatch
     ):
         from teamsleech.core.config import settings
@@ -459,7 +510,7 @@ class TestDownloadRecording:
             mock_cls.return_value.__aenter__.return_value.stream = MagicMock(
                 side_effect=lambda *a, **k: self._dl_resp(status_error=err401)
             )
-            with pytest.raises(DownloadError, match="re-export SP_COOKIES_JSON"):
+            with pytest.raises(DownloadError, match="🔑 Login"):
                 await transfer_service._download_recording(rec, dest)
 
 
