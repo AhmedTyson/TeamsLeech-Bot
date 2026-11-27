@@ -94,7 +94,15 @@ def register_link_download(
         ok = [r for r in results if r.get("success") and r.get("message_id")]
         if not ok:
             err = results[0].get("error") if results else "unknown"
-            await safe_edit_text(status, f"❌ Download failed: {err}")
+            from teamsleech.tg_bot.handlers.upload_ui import _failure_keyboard
+            from teamsleech.tg_bot.retry_failed import record_failed
+
+            record_failed(state, settings.telegram_chat_id, rec)
+            await safe_edit_text(
+                status,
+                f"❌ Download failed: {err}",
+                reply_markup=_failure_keyboard(err),
+            )
             return
 
         session = state.get_session(settings.telegram_chat_id)
