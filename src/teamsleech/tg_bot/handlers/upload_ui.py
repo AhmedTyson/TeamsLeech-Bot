@@ -349,8 +349,8 @@ def register_upload_ui(
                 await safe_edit_text(progress_msg, summary, reply_markup=publish_kb)
             elif session.last_uploads:
                 summary += (
-                    "\n\n⚠️ Set the TELEGRAM_TARGET_CHAT_ID secret to the"
-                    " group id to enable one-tap publishing."
+                    "\n\n⚠️ Publishing is off: add the bot to the group and"
+                    " send /link inside a topic — the group id saves itself."
                 )
                 await safe_edit_text(progress_msg, summary)
             else:
