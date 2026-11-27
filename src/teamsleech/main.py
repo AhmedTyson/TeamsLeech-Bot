@@ -218,15 +218,52 @@ def main():
 
         # Show the persistent button bar every run so the owner never
         # needs /start to reach 🔍 Check or 🔑 Microsoft Login.
+        # Probe the saved SharePoint session up front: a dead session
+        # becomes one clear line here instead of a wall of download 401s.
         try:
+            from teamsleech.services.session_probe import (
+                probe_sharepoint_session,
+            )
             from teamsleech.tg_bot.keyboards import REPLY_KEYBOARD
 
-            await app.send_message(
-                settings.telegram_chat_id,
-                "✅ Bot is live. Tap 🔍 **Check Recordings** to scan,"
-                " or 🔑 **Microsoft Login** to refresh the session.",
-                reply_markup=REPLY_KEYBOARD,
+            session_ok, session_detail = await probe_sharepoint_session()
+            icon = "✅" if session_ok else "⚠️"
+            boot_text = (
+                "✅ Bot is live. Tap 🔍 **Check Recordings** to scan, 🗂 "
+                "**Scan Missing** for everything the group hasn't seen yet,"
+                " or 📊 **Status** anytime.\n"
+                f"{icon} SharePoint session: {session_detail}"
             )
+            boot_markup = REPLY_KEYBOARD
+            if not session_ok:
+                from pyrogram.types import (
+                    InlineKeyboardButton,
+                    InlineKeyboardMarkup,
+                )
+
+                boot_text += (
+                    "\n👉 Tap 🖥 **Browser Login** to refresh it —"
+                    " downloads fail until you do."
+                )
+                boot_markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "🖥 Browser Login", callback_data="login:browser"
+                    )
+                ]])
+                await app.send_message(
+                    settings.telegram_chat_id, boot_text,
+                    reply_markup=boot_markup,
+                )
+                await app.send_message(
+                    settings.telegram_chat_id,
+                    "⌨ Buttons:",
+                    reply_markup=REPLY_KEYBOARD,
+                )
+            else:
+                await app.send_message(
+                    settings.telegram_chat_id, boot_text,
+                    reply_markup=boot_markup,
+                )
         except Exception as e:
             log.warning("Could not send boot message: %s", e)
 
@@ -277,6 +314,42 @@ def main():
                     log.info("Auto-check found 0 new recordings. Staying completely silent.")
             except Exception as e:
                 log.error("Scheduled check failed: %s", e)
+
+        # Continuation watchdog: GitHub kills the job at timeout-minutes
+        # (55). Shortly before that, warn the owner and dispatch a fresh
+        # bot-runner run; the concurrency group retires this one, so the
+        # bot stays reachable instead of going silent mid-review.
+        import asyncio
+
+        from teamsleech.services import runclock
+
+        async def _continuation_watchdog():
+            try:
+                lead = runclock.CONTINUATION_LEAD_MINUTES
+                wait_s = max(
+                    0.0,
+                    (runclock.RUN_LIMIT_MINUTES - lead) * 60
+                    - runclock.elapsed_minutes() * 60,
+                )
+                await asyncio.sleep(wait_s)
+                if os.getenv("CONTINUE_RUN", "1") != "1":
+                    return
+                from teamsleech.services.github_actions import (
+                    dispatch_workflow,
+                )
+
+                await dispatch_workflow("bot-runner.yml")
+                await app.send_message(
+                    settings.telegram_chat_id,
+                    f"⏳ This run ends in ~{lead} min (GitHub's time cap)."
+                    " I started a fresh one — it takes over automatically,"
+                    " nothing is lost.",
+                )
+            except Exception as e:
+                log.warning("Continuation watchdog failed: %s", e)
+
+        if os.getenv("RUN_MODE", "normal") == "normal":
+            asyncio.create_task(_continuation_watchdog())
 
         from pyrogram import idle
         await idle()

@@ -171,3 +171,41 @@ def build_checklist_text(
         full_text[: cutoff if cutoff != -1 else TRUNCATE_LIMIT]
         + "\n\n_...list truncated due to Telegram limits._"
     )
+
+
+def build_status_text(
+    session_ok: bool,
+    session_detail: str,
+    subjects: list,
+    failed_count: int,
+    elapsed_min: float,
+    remaining_min: float,
+) -> str:
+    """/status report: session, topics, retry queue, run clock."""
+    icon = "✅" if session_ok else "⚠️"
+    lines = ["📊 **Bot status**", ""]
+    lines.append(f"{icon} SharePoint session: {session_detail}")
+    lines.append("")
+    lines.append("🗂 **Topics & numbering:**")
+    if not subjects:
+        lines.append("   (no subjects configured)")
+    for s in subjects:
+        topic = f"`{s.topic_id}`" if s.topic_id else "❌ not linked"
+        prefix = "Sec" if s.kind == "section" else "L"
+        lines.append(
+            f"   📚 **{s.name}** (`{s.short or s.name}`) — topic {topic},"
+            f" next: {prefix}{s.next_no:02d}"
+        )
+    lines.append("")
+    lines.append(f"🔁 Retry queue: {failed_count} failed download(s)")
+    lines.append(
+        f"⏱ Run: {elapsed_min:.0f} min in, ~{remaining_min:.0f} min left"
+        " (a fresh run starts automatically near the limit)"
+    )
+    if not session_ok:
+        lines.append("")
+        lines.append(
+            "👉 Tap 🖥 **Browser Login** to refresh the session — downloads"
+            " fail until you do."
+        )
+    return "\n".join(lines)

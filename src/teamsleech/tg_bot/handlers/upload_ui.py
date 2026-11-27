@@ -24,6 +24,7 @@ log = logging.getLogger("upload_ui")
 
 LOGIN_BUTTON_KB = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔁 Retry failed", callback_data="retry:failed")],
+    [InlineKeyboardButton("🖥 Browser Login", callback_data="login:browser")],
     [InlineKeyboardButton("🔑 Login", callback_data="login:start")],
 ])
 
@@ -230,6 +231,21 @@ def register_upload_ui(
             return
         await safe_answer(cb, "Retrying failed downloads...")
         await retry_failed_downloads(client, cb.message, transfer, state)
+
+    @app.on_callback_query(filters.regex(r"^upload:all$") & owner_only)
+    async def handle_upload_all(client: Client, cb: CallbackQuery):
+        """One-tap approve: select every clean (unflagged) item and upload."""
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+        if not session.pending_recordings:
+            await cb.answer("Nothing to upload.", show_alert=True)
+            return
+        session.selected_indices = {
+            i
+            for i in range(len(session.pending_recordings))
+            if i not in session.triage_flags
+        }
+        await handle_upload(client, cb)
 
     @app.on_callback_query(filters.regex(r"^upload:confirm") & owner_only)
     async def handle_upload(client: Client, cb: CallbackQuery):

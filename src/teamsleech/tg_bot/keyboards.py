@@ -11,6 +11,7 @@ REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🔍 Check Recordings"), KeyboardButton("📚 Subjects")],
         [KeyboardButton("🔑 Microsoft Login"), KeyboardButton("🖥 Browser Login")],
+        [KeyboardButton("🗂 Scan Missing"), KeyboardButton("📊 Status")],
         [KeyboardButton("🛑 Cancel Workflow")],
     ],
     resize_keyboard=True,
@@ -84,11 +85,20 @@ def _build_filter_row(flat: list[Recording], selections: set[int]) -> list[Inlin
     row.append(InlineKeyboardButton(text=label, callback_data="sel:all"))
     return row
 
-def _build_action_row() -> list[InlineKeyboardButton]:
-    return [
-        InlineKeyboardButton(text="📅 Change Date", callback_data="date:change"),
-        InlineKeyboardButton(text="❌ Cancel", callback_data="cancel:check"),
-    ]
+def _build_action_row(flat: list[Recording]) -> list[InlineKeyboardButton]:
+    row: list[InlineKeyboardButton] = []
+    if flat:
+        row.append(
+            InlineKeyboardButton(
+                text="✅ Approve all & Upload",
+                callback_data="upload:all",
+            )
+        )
+    row.append(
+        InlineKeyboardButton(text="📅 Change Date", callback_data="date:change")
+    )
+    row.append(InlineKeyboardButton(text="❌ Cancel", callback_data="cancel:check"))
+    return row
 
 def build_checklist_keyboard(
     flat: list[Recording],
@@ -99,7 +109,7 @@ def build_checklist_keyboard(
     buttons.extend(_build_toggle_rows(flat, selections))
     buttons.append(_build_upload_button(flat, selections))
     buttons.append(_build_filter_row(flat, selections))
-    buttons.append(_build_action_row())
+    buttons.append(_build_action_row(flat))
     return InlineKeyboardMarkup(buttons)
 
 

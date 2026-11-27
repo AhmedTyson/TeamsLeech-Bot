@@ -137,6 +137,13 @@ def register_commands(
         await safe_answer(cb, "Starting login...")
         await _do_login(client, cb.message)
 
+    @app.on_callback_query(filters.regex(r"^login:browser$") & owner_only)
+    async def handle_browser_login_cb(client: Client, cb):
+        from teamsleech.tg_bot.handlers import safe_answer
+
+        await safe_answer(cb, "Starting browser login...")
+        await _do_browser_login(client, cb.message)
+
     async def _do_browser_login(client: Client, message: Message):
         """Dispatch the remote-browser self-login run (browser-login.yml).
 
@@ -168,6 +175,25 @@ def register_commands(
     )
     async def handle_browser_login_button(client: Client, message: Message):
         await _do_browser_login(client, message)
+
+    @app.on_message(
+        (filters.command("status") | filters.regex("^📊 Status$"))
+        & filters.private
+        & owner_only
+    )
+    async def handle_status(client: Client, message: Message):
+        from teamsleech.services import runclock
+        from teamsleech.services.session_probe import probe_sharepoint_session
+        from teamsleech.tg_bot.views import build_status_text
+
+        ok, detail = await probe_sharepoint_session()
+        subjects = scanner.load_subjects()
+        failed = state.get_failed_downloads(settings.telegram_chat_id)
+        text = build_status_text(
+            ok, detail, subjects, len(failed),
+            runclock.elapsed_minutes(), runclock.remaining_minutes(),
+        )
+        await message.reply(text)
 
     @app.on_message(filters.command("topics") & filters.private & owner_only)
     async def handle_topics(client: Client, message: Message):
