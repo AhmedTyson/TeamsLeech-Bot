@@ -151,7 +151,18 @@ def register_commands(
         except Exception as e:
             await message.reply(f"❌ Linked, but saving failed: {e}")
             return
-        await message.reply(f"✅ **{subj.name}** linked to this topic.")
+
+        note = ""
+        if settings.target_chat_id() is None:
+            try:
+                await persist_target_chat_id(message.chat.id)
+                note = "\n📤 Group saved for publishing — no extra secret needed."
+            except Exception as e:
+                note = (
+                    "\n⚠️ Could not save the group id for publishing"
+                    f" automatically: {e}"
+                )
+        await message.reply(f"✅ **{subj.name}** linked to this topic.{note}")
 
     @app.on_message(
         filters.regex("^🛑 Cancel Workflow$")
@@ -177,3 +188,16 @@ def register_commands(
         await safe_edit_text(
             notice, f"✅ Cancelled {len(runs)} run(s)."
         )
+
+
+async def persist_target_chat_id(chat_id: int) -> None:
+    """Store the forum group id as TELEGRAM_TARGET_CHAT_ID (secret + memory).
+
+    Lets the first /link inside the group double as publishing setup, so the
+    owner never creates that secret by hand.
+    """
+    from teamsleech.services.github_secrets import rotate_github_secret
+
+    gid = str(chat_id)
+    await rotate_github_secret("TELEGRAM_TARGET_CHAT_ID", gid)
+    settings.telegram_target_chat_id = gid
