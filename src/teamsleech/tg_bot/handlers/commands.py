@@ -137,6 +137,38 @@ def register_commands(
         await safe_answer(cb, "Starting login...")
         await _do_login(client, cb.message)
 
+    async def _do_browser_login(client: Client, message: Message):
+        """Dispatch the remote-browser self-login run (browser-login.yml).
+
+        The owner logs into the real Microsoft page himself inside a remote
+        browser; the run saves the SharePoint cookies. Nothing he types
+        reaches the bot.
+        """
+        from teamsleech.services.github_actions import dispatch_workflow
+
+        try:
+            await dispatch_workflow("browser-login.yml")
+        except Exception as e:
+            await message.reply(f"❌ Could not start the browser login run: `{e}`")
+            return
+        await message.reply(
+            "🖥 **Browser login starting** — your private link arrives in"
+            " about a minute.\n\n"
+            "You log into Microsoft's real page yourself; nothing you type"
+            " reaches the bot. Once the SharePoint site loads, the session"
+            " is saved automatically and a fresh check run starts."
+        )
+
+    @app.on_message(filters.command("browserlogin") & filters.private & owner_only)
+    async def handle_browser_login(client: Client, message: Message):
+        await _do_browser_login(client, message)
+
+    @app.on_message(
+        filters.regex("^🖥 Browser Login$") & filters.private & owner_only
+    )
+    async def handle_browser_login_button(client: Client, message: Message):
+        await _do_browser_login(client, message)
+
     @app.on_message(filters.command("topics") & filters.private & owner_only)
     async def handle_topics(client: Client, message: Message):
         subjects = scanner.load_subjects()

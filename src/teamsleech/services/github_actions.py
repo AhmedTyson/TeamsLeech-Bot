@@ -40,6 +40,29 @@ async def get_active_runs() -> list[dict]:
         return [r for r in runs if r.get("status") != "completed"]
 
 @retry_http
+async def dispatch_workflow(
+    workflow_file: str, ref: str = "main", inputs: dict | None = None
+) -> None:
+    """Trigger a workflow_dispatch run (e.g. browser-login.yml)."""
+    if not settings.github_repository:
+        raise ValueError("GITHUB_REPOSITORY is not configured.")
+
+    url = (
+        f"{GH_API_BASE}/repos/{settings.github_repository}"
+        f"/actions/workflows/{workflow_file}/dispatches"
+    )
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            url,
+            headers=_get_headers(),
+            json={"ref": ref, "inputs": inputs or {}},
+            timeout=GH_TIMEOUT,
+        )
+        resp.raise_for_status()
+
+
+@retry_http
 async def cancel_run(run_id: int) -> None:
     if not settings.github_repository:
         raise ValueError("GITHUB_REPOSITORY is not configured.")

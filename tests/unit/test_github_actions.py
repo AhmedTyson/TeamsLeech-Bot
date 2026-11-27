@@ -7,6 +7,7 @@ from teamsleech.services.github_actions import (
     GH_API_BASE,
     _get_headers,
     cancel_run,
+    dispatch_workflow,
     get_active_runs,
 )
 
@@ -68,3 +69,32 @@ async def test_cancel_run_missing_repo(mock_settings):
     mock_settings.github_repository = ""
     with pytest.raises(ValueError, match="GITHUB_REPOSITORY is not configured."):
         await cancel_run(123)
+
+@pytest.mark.asyncio
+async def test_dispatch_workflow_success(respx_mock, mock_settings):
+    url = f"{GH_API_BASE}/repos/fake/repo/actions/workflows/browser-login.yml/dispatches"
+    route = respx_mock.post(url).mock(return_value=httpx.Response(204))
+
+    await dispatch_workflow("browser-login.yml")
+
+    assert route.called
+    import json as _json
+    body = _json.loads(route.calls[0].request.content)
+    assert body == {"ref": "main", "inputs": {}}
+
+@pytest.mark.asyncio
+async def test_dispatch_workflow_with_inputs(respx_mock, mock_settings):
+    url = f"{GH_API_BASE}/repos/fake/repo/actions/workflows/bot-runner.yml/dispatches"
+    route = respx_mock.post(url).mock(return_value=httpx.Response(204))
+
+    await dispatch_workflow("bot-runner.yml", inputs={"mode": "normal"})
+
+    import json as _json
+    body = _json.loads(route.calls[0].request.content)
+    assert body["inputs"] == {"mode": "normal"}
+
+@pytest.mark.asyncio
+async def test_dispatch_workflow_missing_repo(mock_settings):
+    mock_settings.github_repository = ""
+    with pytest.raises(ValueError, match="GITHUB_REPOSITORY is not configured."):
+        await dispatch_workflow("browser-login.yml")

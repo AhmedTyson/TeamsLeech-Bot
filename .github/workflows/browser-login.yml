@@ -1,0 +1,67 @@
+# TeamsLeech Browser Login — remote self-login for SharePoint cookies
+#
+# Trigger:  workflow_dispatch (fired by the bot's "🖥 Browser Login" button)
+# Purpose:  Start a headed Chromium on Xvfb, share it to the owner's phone
+#           through noVNC + a Cloudflare quick tunnel, let the OWNER log
+#           into Microsoft himself (credentials never touch the bot), then
+#           export the SharePoint session cookies into SP_COOKIES_JSON.
+# Lifetime: hard timeout; tunnel, VNC, browser and profile are all torn
+#           down and wiped at the end of the run.
+
+name: Browser Login
+
+on:
+  workflow_dispatch:
+
+jobs:
+  login:
+    name: Remote browser login
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: browser-login
+      cancel-in-progress: true
+
+    env:
+      TEAMS_REFRESH_TOKEN:  ${{ secrets.TEAMS_REFRESH_TOKEN }}
+      GH_PAT:               ${{ secrets.GH_PAT }}
+      GITHUB_REPOSITORY:    ${{ github.repository }}
+      TELEGRAM_API_ID:      ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH:    ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
+      SP_LOGIN_URL:         ${{ vars.SP_LOGIN_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies (+ Playwright)
+        run: uv sync --no-dev --extra browser
+
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Install VNC stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11vnc novnc websockify
+
+      - name: Install cloudflared
+        run: |
+          curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
+
+      - name: Run browser login
+        run: uv run python src/teamsleech/browser_login_main.py
+        timeout-minutes: 18
