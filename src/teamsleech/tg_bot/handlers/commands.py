@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
+from teamsleech.core.config import settings
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.github_actions import cancel_run, get_active_runs
 from teamsleech.services.scanner import ScannerService
@@ -71,6 +72,86 @@ def register_commands(
             "⚙️ Runner panel removed. Runs start on schedule or manual dispatch"
             " in GitHub. To stop one, use 🛑 Cancel Workflow."
         )
+
+    @app.on_message(filters.command("topics") & filters.private & owner_only)
+    async def handle_topics(client: Client, message: Message):
+        subjects = scanner.load_subjects()
+        if not subjects:
+            await message.reply("No subjects configured yet.")
+            return
+        lines = ["🗂 **Topic links & numbering**\n"]
+        for s in subjects:
+            topic = f"`{s.topic_id}`" if s.topic_id else "❌ not linked"
+            prefix = "Sec" if s.kind == "section" else "L"
+            lines.append(
+                f"📚 **{s.name}** (`{s.short or s.name}`)\n"
+                f"   topic: {topic}  |  type: {s.kind}  |  next: {prefix}{s.next_no:02d}"
+            )
+        lines.append(
+            "\n**Link a topic:** inside the group, open the topic and send"
+            " `/link <SHORT>` (e.g. `/link FT`).\n"
+            "**Fix numbering:** send `/setno <SHORT> <N>` here."
+        )
+        await message.reply("\n".join(lines))
+
+    @app.on_message(filters.command("setno") & filters.private & owner_only)
+    async def handle_setno(client: Client, message: Message):
+        parts = message.text.split()
+        if len(parts) != 3 or not parts[2].isdigit():
+            await message.reply("Usage: `/setno <SHORT> <N>` — e.g. `/setno FT 8`")
+            return
+        short, n = parts[1].strip().lower(), int(parts[2])
+        subjects = scanner.load_subjects()
+        subj = next(
+            (s for s in subjects if (s.short or s.name).strip().lower() == short),
+            None,
+        )
+        if not subj:
+            await message.reply(f"❌ No subject with short code `{parts[1]}`.")
+            return
+        subj.next_no = n
+        try:
+            from teamsleech.services.subjects_store import persist_subjects
+
+            await persist_subjects(subjects)
+        except Exception as e:
+            await message.reply(f"❌ Failed to save: {e}")
+            return
+        prefix = "Sec" if subj.kind == "section" else "L"
+        await message.reply(f"✅ **{subj.name}** will continue from {prefix}{n:02d}.")
+
+    @app.on_message(filters.command("link") & filters.group)
+    async def handle_link_topic(client: Client, message: Message):
+        # Only the owner may link topics, and only inside a forum topic.
+        sender = getattr(message, "from_user", None)
+        if not sender or sender.id != settings.telegram_chat_id:
+            return
+        thread_id = getattr(message, "message_thread_id", None)
+        if not thread_id:
+            await message.reply("⚠️ Send /link inside a forum topic.")
+            return
+        parts = message.text.split()
+        if len(parts) != 2:
+            await message.reply("Usage: `/link <SHORT>` — e.g. `/link FT`")
+            return
+        short = parts[1].strip().lower()
+        subjects = scanner.load_subjects()
+        subj = next(
+            (s for s in subjects if (s.short or s.name).strip().lower() == short),
+            None,
+        )
+        if not subj:
+            await message.reply(f"❌ No subject with short code `{parts[1]}`.")
+            return
+        subj.topic_id = thread_id
+        try:
+            from teamsleech.services.subjects_store import persist_subjects
+
+            await persist_subjects(subjects)
+        except Exception as e:
+            await message.reply(f"❌ Linked, but saving failed: {e}")
+            return
+        await message.reply(f"✅ **{subj.name}** linked to this topic.")
 
     @app.on_message(
         filters.regex("^🛑 Cancel Workflow$")
