@@ -1,8 +1,10 @@
-"""Download candidate order: Graph's @microsoft.graph.downloadUrl (pre-
-authenticated, tempauth) bare first; SharePoint bearer and cookies as
-fallbacks; the bare /content redirect Location last (not reliably pre-
-authenticated). A rejected bearer or stale cookie must never poison the
-URL that needs no auth."""
+"""Download candidate order: browser cookies first when configured (the
+only route token-rejecting tenants serve; it fetches the /content
+Location, never the pre-authed URL), then Graph's
+@microsoft.graph.downloadUrl (pre-authenticated, tempauth) bare, then
+SharePoint bearer routes; the bare /content redirect Location last (not
+reliably pre-authenticated). A rejected bearer or stale cookie must
+never poison the URL that needs no auth."""
 
 from teamsleech.core.config import settings
 from teamsleech.services.transfer import TransferService
@@ -24,20 +26,20 @@ def _labels(cands):
     return [label for label, _, _ in cands]
 
 
-def test_downloadurl_first_with_token_and_cookies(monkeypatch):
+def test_cookies_first_with_token_and_cookies(monkeypatch):
     cands = _candidates(
         monkeypatch, '[{"name":"rtFa","value":"v"}]', "tok123", PREAUTH
     )
     assert _labels(cands) == [
+        "download.aspx (browser cookies)",
         "Graph downloadUrl (pre-authed)",
         "SharePoint REST $value",
         "download.aspx (user token)",
-        "download.aspx (browser cookies)",
         "download.aspx (no auth)",
     ]
     # The pre-authed attempt must send no auth headers at all.
-    assert cands[0][1] == PREAUTH
-    assert cands[0][2] is None
+    assert cands[1][1] == PREAUTH
+    assert cands[1][2] is None
 
 
 def test_no_downloadurl_without_token(monkeypatch):
