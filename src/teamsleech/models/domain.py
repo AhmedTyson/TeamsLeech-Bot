@@ -21,6 +21,27 @@ class SubjectConfig(BaseModel):
     doctor: str = ""
     keywords: list[str] = Field(default_factory=list)
     doctor_keywords: list[str] = Field(default_factory=list)
+    # Group publishing: forum topic this subject posts into (None = not linked),
+    # kind selects the numbering prefix ("lecture" -> L, "section" -> Sec),
+    # next_no is the next lecture/section number, bumped only after a
+    # confirmed publish so offline weeks never shift numbering.
+    topic_id: int | None = None
+    kind: str = "lecture"
+    next_no: int = 1
+
+    model_config = {"extra": "ignore"}
+
+
+class UploadedItem(BaseModel):
+    """One file already uploaded to the review chat, awaiting publish."""
+    name: str
+    message_id: int
+    chat_id: int
+    subject_name: str
+    created: str = ""
+    time: str = ""
+    is_video: bool = False
+    assigned_no: int | None = None
 
     model_config = {"extra": "ignore"}
 
@@ -49,6 +70,9 @@ class UserSession(BaseModel):
     pending_recordings: list[Recording] = Field(default_factory=list)
     selected_indices: set[int] = Field(default_factory=set)
     rename_overrides: dict[int, str] = Field(default_factory=dict)
+    triage_flags: dict[int, str] = Field(default_factory=dict)
+    proposed_numbers: dict[int, int] = Field(default_factory=dict)
+    last_uploads: list[UploadedItem] = Field(default_factory=list)
 
     @property
     def video_count(self) -> int:
