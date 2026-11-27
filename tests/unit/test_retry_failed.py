@@ -29,9 +29,9 @@ def test_record_failed_dedupes(state):
     rec = make_rec()
     record_failed(state, 123, rec)
     record_failed(state, 123, rec)
-    assert len(state.get_session(123).failed_downloads) == 1
+    assert len(state.get_failed_downloads(123)) == 1
     record_failed(state, 123, make_rec(item_id="i2"))
-    assert len(state.get_session(123).failed_downloads) == 2
+    assert len(state.get_failed_downloads(123)) == 2
 
 
 @pytest.mark.asyncio
@@ -59,7 +59,7 @@ async def test_retry_success_clears(state):
     msg.chat.id = 123
     n = await retry_failed_downloads(MagicMock(), msg, transfer, state)
     assert n == 1
-    assert state.get_session(123).failed_downloads == []
+    assert state.get_failed_downloads(123) == []
     texts = [c.args[0] for c in msg.reply.call_args_list]
     assert any("Retrying 1" in t for t in texts)
     assert any("Retry complete" in t for t in texts)
@@ -82,7 +82,7 @@ async def test_retry_failure_keeps_and_reports(state):
     msg.chat.id = 123
     n = await retry_failed_downloads(MagicMock(), msg, transfer, state)
     assert n == 0
-    assert len(state.get_session(123).failed_downloads) == 1
+    assert len(state.get_failed_downloads(123)) == 1
     texts = [c.args[0] for c in msg.reply.call_args_list]
     assert any("failed again" in t for t in texts)
     assert any("Still failing" in t for t in texts)
@@ -111,7 +111,7 @@ async def test_retry_partial_success(state):
     msg.chat.id = 123
     n = await retry_failed_downloads(MagicMock(), msg, transfer, state)
     assert n == 1
-    remaining = state.get_session(123).failed_downloads
+    remaining = state.get_failed_downloads(123)
     assert len(remaining) == 1
     assert remaining[0].item_id == "i2"
     texts = [c.args[0] for c in msg.reply.call_args_list]
@@ -128,7 +128,7 @@ async def test_retry_run_exception(state):
     msg.chat.id = 123
     n = await retry_failed_downloads(MagicMock(), msg, transfer, state)
     assert n == 0
-    assert len(state.get_session(123).failed_downloads) == 1
+    assert len(state.get_failed_downloads(123)) == 1
     texts = [c.args[0] for c in msg.reply.call_args_list]
     assert any("Retry run failed" in t for t in texts)
 
@@ -159,10 +159,8 @@ async def test_login_success_triggers_auto_retry(monkeypatch):
     mock_client.on_message.side_effect = on_message_decorator
 
     rec = make_rec()
-    session_mock = MagicMock()
-    session_mock.failed_downloads = [rec]
     state = MagicMock()
-    state.get_session.return_value = session_mock
+    state.get_failed_downloads.return_value = [rec]
     transfer = MagicMock()
 
     register_commands(
@@ -205,10 +203,8 @@ async def test_login_success_no_failures_no_retry(monkeypatch):
 
     mock_client.on_message.side_effect = on_message_decorator
 
-    session_mock = MagicMock()
-    session_mock.failed_downloads = []
     state = MagicMock()
-    state.get_session.return_value = session_mock
+    state.get_failed_downloads.return_value = []
 
     register_commands(
         mock_client, MagicMock(), state, MagicMock(), MagicMock()
