@@ -161,11 +161,13 @@ class TransferService:
     def _download_candidates(
         self, download_url: str, sp_token: str | None
     ) -> list[tuple[str, str, dict[str, str] | None]]:
-        """Ordered (label, url, headers) attempts. The user's SharePoint
-        token first — it derives silently from the refresh token, so no
-        manual cookie exports. Browser cookies are the fallback for tenants
-        that reject the bearer token; anonymous pre-authed URL last."""
-        candidates = []
+        """Ordered (label, url, headers) attempts. The Graph-provided
+        pre-authenticated URL first, fetched with NO headers — attaching a
+        rejected bearer or stale cookies to a tempauth URL makes SharePoint
+        401 a URL that needed no auth at all. The user's SharePoint token
+        and browser cookies stay as fallbacks for tenants where the
+        pre-authed URL is policy-blocked."""
+        candidates = [("download.aspx (pre-authed)", download_url, None)]
         bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
         if sp_token:
             parts = urlsplit(download_url)
@@ -189,8 +191,6 @@ class TransferService:
                     {"Cookie": cookie_header(cookies)},
                 )
             )
-        if not sp_token:
-            candidates.append(("download.aspx (anonymous)", download_url, None))
         return candidates
 
     @_retry_download
@@ -308,26 +308,13 @@ class TransferService:
                     failures.append(f"{label} ({exc})")
                     log.warning("%s errored for %s: %s", label, rec.name, exc)
                     continue
-            cookies_tried = any(
-                f.startswith("download.aspx (browser cookies)") for f in failures
+            hint = (
+                "every download route was denied — tap the 🔑 Login button"
+                " below to refresh the Microsoft session, then retry."
+                " If it still fails after a fresh login, the site blocks"
+                " downloads for this account (permissions / Block-Download"
+                " policy)."
             )
-            if cookies_tried:
-                hint = (
-                    "browser cookies rejected too — session expired,"
-                    " re-export SP_COOKIES_JSON from a logged-in browser"
-                )
-            elif sp_token:
-                hint = (
-                    "user-context token denied on REST + download.aspx — account"
-                    " lacks download rights or Block-Download policy applies;"
-                    " set SP_COOKIES_JSON for the proven cookie path"
-                )
-            else:
-                hint = (
-                    "check Conditional Access / Block-Download"
-                    " policy / site permissions for the service account;"
-                    " set SP_COOKIES_JSON for the proven cookie path"
-                )
             raise DownloadError(
                 f"SharePoint download failed for {rec.name}"
                 f" ({' ; '.join(failures)}): {hint}."
