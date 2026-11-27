@@ -128,6 +128,15 @@ class TestDownloadRecording:
         resp.headers = {"Location": location}
         return resp
 
+    def _graph_item_resp(self, download_url="https://tenant.sharepoint.com/sites/x/_layouts/15/download.aspx?tempauth=tok"):
+        """Graph driveItem response carrying the pre-authenticated URL."""
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json = MagicMock(
+            return_value={"@microsoft.graph.downloadUrl": download_url}
+        )
+        return resp
+
     def _dl_resp(self, chunk=b"x" * 1024, status_error=None, stream_gen=None):
         resp = AsyncMock()
         resp.__aenter__.return_value = resp
@@ -231,7 +240,7 @@ class TestDownloadRecording:
                 graph_resp=self._graph_redirect(location=dl_url + "&tempauth=tok"),
                 dl_resp=self._dl_resp(status_error=status_error),
             )
-            with pytest.raises(DownloadError, match=r"download\.aspx \(pre-authed\) \[401\]"):
+            with pytest.raises(DownloadError, match=r"download\.aspx \(no auth\) \[401\]"):
                 await transfer_service._download_recording(rec, dest)
             # SharePoint fetch must not carry the Graph Bearer.
             _, stream_kwargs = mock_client.stream.call_args
@@ -254,15 +263,23 @@ class TestDownloadRecording:
         ):
             mock_client = self._mock_client(
                 mock_cls,
-                graph_resp=self._graph_redirect(),
+                get_side_effect=[
+                    self._graph_item_resp(),
+                    self._graph_redirect(),
+                ],
                 dl_resp=self._dl_resp(chunk),
             )
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
         assert mock_client.stream.call_count == 1
         first_call = mock_client.stream.call_args_list[0]
-        assert "download.aspx" in first_call.args[1]
+        assert "tempauth=tok" in first_call.args[1]
         assert first_call.kwargs["headers"] is None
+        # The bearer token was fetched but never attached to the pre-authed URL.
+        _, first_get_kwargs = mock_client.get.await_args_list[0]
+        assert first_get_kwargs["params"] == {
+            "$select": "@microsoft.graph.downloadUrl"
+        }
 
     async def test_preauthed_401_falls_back_to_sharepoint_token(
         self, transfer_service, sample_recordings, tmp_path
@@ -287,7 +304,10 @@ class TestDownloadRecording:
         ):
             mock_client = self._mock_client(
                 mock_cls,
-                graph_resp=self._graph_redirect(),
+                get_side_effect=[
+                    self._graph_item_resp(),
+                    self._graph_redirect(),
+                ],
             )
             mock_client.stream = MagicMock(
                 side_effect=[
@@ -298,6 +318,8 @@ class TestDownloadRecording:
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
         assert mock_client.stream.call_count == 2
+        first_call = mock_client.stream.call_args_list[0]
+        assert first_call.kwargs["headers"] is None
         second_call = mock_client.stream.call_args_list[1]
         assert "GetFileById" in second_call.args[1]
         assert second_call.args[1].endswith("/$value")
@@ -326,7 +348,10 @@ class TestDownloadRecording:
         ):
             mock_client = self._mock_client(
                 mock_cls,
-                graph_resp=self._graph_redirect(location=dl_url),
+                get_side_effect=[
+                    self._graph_item_resp(),
+                    self._graph_redirect(location=dl_url),
+                ],
             )
             mock_client.stream = MagicMock(
                 side_effect=[
@@ -441,7 +466,10 @@ class TestDownloadRecording:
         with patch("httpx.AsyncClient") as mock_cls:
             mock_client = self._mock_client(
                 mock_cls,
-                graph_resp=self._graph_redirect(),
+                get_side_effect=[
+                    self._graph_item_resp(),
+                    self._graph_redirect(),
+                ],
                 dl_resp=self._dl_resp(chunk),
             )
             size = await transfer_service._download_recording(rec, dest)
@@ -471,7 +499,11 @@ class TestDownloadRecording:
         )
         with patch("httpx.AsyncClient") as mock_cls:
             mock_client = self._mock_client(
-                mock_cls, graph_resp=self._graph_redirect(location=dl_url)
+                mock_cls,
+                get_side_effect=[
+                    self._graph_item_resp(),
+                    self._graph_redirect(location=dl_url),
+                ],
             )
             mock_client.stream = MagicMock(
                 side_effect=[
