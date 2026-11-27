@@ -4,10 +4,10 @@ Runs a headed Chromium on the runner's virtual display (Xvfb), shares it to
 the owner's phone through noVNC + a Cloudflare quick tunnel, and waits while
 the owner logs into Microsoft himself. Credentials never touch the bot: the
 remote page is the real login.microsoftonline.com, and the only thing this
-module ever reads back is the resulting session cookies. When SharePoint
-session markers appear, the cookies are written to the SP_COOKIES_JSON
-GitHub secret and the whole session (tunnel, VNC, browser, profile) is
-torn down and wiped.
+module ever reads back is the resulting session cookies. When real
+SharePoint session cookies (FedAuth/rtFa on sharepoint.com) appear, they
+are written to the SP_COOKIES_JSON GitHub secret and the whole session
+(tunnel, VNC, browser, profile) is torn down and wiped.
 """
 
 import asyncio
@@ -35,18 +35,14 @@ SITE_URL = (
 COOKIE_SECRET = "SP_COOKIES_JSON"
 BOT_RUNNER_WORKFLOW = "bot-runner.yml"
 
-# Legacy (FedAuth/rtFa) + current Entra/SharePoint session markers.
-MARKERS = (
-    "FedAuth",
-    "rtFa",
-    "SPOIDCRL",
-    "ESTSAUTH",
-    "ESTSAUTHPERSISTENT",
-    "ESTSAUTHLIGHT",
-    "STSServiceCookie",
-    "RpsContextCookie",
-)
-# Domains worth keeping even if tiny — login flow scatters session state here.
+# Success markers: ONLY real SharePoint session cookies on a sharepoint.com
+# domain. Login-flow cookies (RpsContextCookie, ESTSAUTH*, ...) are set by
+# the login PAGE before any password is typed — counting them produced a
+# false "session saved" that tore the tunnel down before the owner could
+# even open it.
+SESSION_MARKERS = ("FedAuth", "rtFa")
+SESSION_DOMAIN = "sharepoint.com"
+# Domains worth exporting even if tiny — login flow scatters state here.
 KEEP_SUBSTRINGS = (
     "sharepoint.com",
     "microsoftonline.com",
@@ -66,6 +62,8 @@ NOVNC_PORT = 6080
 NOVNC_WEB = "/usr/share/novnc"
 POLL_SECONDS = 5
 TUNNEL_WAIT_SECONDS = 45
+LOCAL_HEALTH_SECONDS = 30
+PUBLIC_HEALTH_SECONDS = 90
 DEFAULT_TIMEOUT_MINUTES = 12
 
 Notify = Callable[[str], Awaitable[None]]
@@ -85,14 +83,24 @@ def parse_tunnel_url(text: str) -> str | None:
 def filter_session_cookies(
     all_cookies: list[dict],
 ) -> tuple[list[dict], list[str]]:
-    """Keep auth-relevant domains; return (kept, session markers found)."""
+    """Keep auth-relevant domains; return (kept, session markers found).
+
+    A marker only counts when it lives on the SharePoint domain — the same
+    cookie name anywhere else does not prove a SharePoint session.
+    """
     kept = [
         c
         for c in all_cookies
         if any(s in (c.get("domain") or "") for s in KEEP_SUBSTRINGS)
     ]
-    names = {c.get("name", "") for c in kept}
-    found = [m for m in MARKERS if any(n == m or n.startswith(m) for n in names)]
+    found = [
+        m
+        for m in SESSION_MARKERS
+        if any(
+            c.get("name") == m and SESSION_DOMAIN in (c.get("domain") or "")
+            for c in kept
+        )
+    ]
     return kept, found
 
 
@@ -126,19 +134,71 @@ async def notify_owner(text: str) -> None:
         resp.raise_for_status()
 
 
-async def _spawn(*args: str, pipe_output: bool = False) -> asyncio.subprocess.Process:
-    """Spawn a helper process. Only the tunnel's output is read."""
+async def _spawn(
+    *args: str, pipe_output: bool = False
+) -> asyncio.subprocess.Process:
+    """Spawn a helper. Output is inherited (lands in the run log) except
+    for the tunnel, whose output we parse for the public URL."""
     if pipe_output:
         return await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-    return await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
+    return await asyncio.create_subprocess_exec(*args)
+
+
+async def _http_status(url: str, timeout: float = 8.0) -> int | None:
+    """GET a URL and return its HTTP status, or None on network error."""
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(url, timeout=timeout)
+            return resp.status_code
+    except Exception as exc:
+        log.debug("health probe %s failed: %s", url, exc)
+        return None
+
+
+async def wait_for_local_origin(
+    port: int = NOVNC_PORT,
+    timeout: int = LOCAL_HEALTH_SECONDS,
+    poll_seconds: float = 1.0,
+) -> bool:
+    """Wait until noVNC's web page answers on localhost."""
+    url = f"http://localhost:{port}/vnc.html"
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        status = await _http_status(url)
+        log.info("Local noVNC health: %s -> %s", url, status)
+        if status == 200:
+            return True
+        await asyncio.sleep(poll_seconds)
+    return False
+
+
+async def wait_for_public_tunnel(
+    tunnel_url: str,
+    timeout: int = PUBLIC_HEALTH_SECONDS,
+    poll_seconds: float = 3.0,
+) -> int | None:
+    """Wait until the public tunnel URL answers 200 end-to-end.
+
+    cloudflared prints the URL before the tunnel is registered at the edge
+    (early clicks see Cloudflare 1033), and a dead origin gives a 502 — so
+    the link only goes out after this returns 200.
+    """
+    url = tunnel_url.rstrip("/") + "/vnc.html"
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+    last: int | None = None
+    while loop.time() < deadline:
+        last = await _http_status(url)
+        log.info("Public tunnel health: %s -> %s", url, last)
+        if last == 200:
+            return last
+        await asyncio.sleep(poll_seconds)
+    return last
 
 
 async def _wait_tunnel_url(
@@ -160,6 +220,11 @@ async def _wait_tunnel_url(
         if url:
             return url
     return None
+
+
+def _dead_helpers(procs: list[tuple[str, asyncio.subprocess.Process]]) -> list[str]:
+    """Names of helper processes that already exited."""
+    return [name for name, p in procs if p.returncode is not None]
 
 
 async def wait_for_session_cookies(
@@ -202,14 +267,14 @@ async def run_browser_login(
 ) -> bool:
     """Run one remote self-login session. Returns True on cookies saved."""
     site = site_url or os.getenv("SP_LOGIN_URL") or SITE_URL
-    procs: list[asyncio.subprocess.Process] = []
+    procs: list[tuple[str, asyncio.subprocess.Process]] = []
     tmpdir = tempfile.mkdtemp(prefix="sp-login-")
     pw = None
     context = None
     password = generate_password()
     try:
         procs.append(
-            await _spawn("Xvfb", XVFB_DISPLAY, "-screen", "0", XVFB_SCREEN)
+            ("Xvfb", await _spawn("Xvfb", XVFB_DISPLAY, "-screen", "0", XVFB_SCREEN))
         )
         await asyncio.sleep(2)
 
@@ -232,25 +297,31 @@ async def run_browser_login(
         await page.goto(site)
 
         procs.append(
-            await _spawn(
+            (
                 "x11vnc",
-                "-display",
-                XVFB_DISPLAY,
-                "-forever",
-                "-shared",
-                "-rfbport",
-                str(VNC_PORT),
-                "-passwd",
-                password,
+                await _spawn(
+                    "x11vnc",
+                    "-display",
+                    XVFB_DISPLAY,
+                    "-forever",
+                    "-shared",
+                    "-rfbport",
+                    str(VNC_PORT),
+                    "-passwd",
+                    password,
+                ),
             )
         )
         procs.append(
-            await _spawn(
+            (
                 "websockify",
-                "--web",
-                NOVNC_WEB,
-                str(NOVNC_PORT),
-                f"localhost:{VNC_PORT}",
+                await _spawn(
+                    "websockify",
+                    "--web",
+                    NOVNC_WEB,
+                    str(NOVNC_PORT),
+                    f"localhost:{VNC_PORT}",
+                ),
             )
         )
         tunnel = await _spawn(
@@ -261,7 +332,13 @@ async def run_browser_login(
             "--no-autoupdate",
             pipe_output=True,
         )
-        procs.append(tunnel)
+        procs.append(("cloudflared", tunnel))
+
+        # Give helpers a moment, then fail loudly if any died on startup.
+        await asyncio.sleep(3)
+        dead = _dead_helpers(procs)
+        if dead:
+            raise RuntimeError(f"helper process(es) died at startup: {', '.join(dead)}")
 
         url = await _wait_tunnel_url(tunnel)
         if not url:
@@ -270,6 +347,23 @@ async def run_browser_login(
                 " Please tap 🖥 Browser Login again."
             )
             return False
+
+        # Health gate: the link only goes out once it actually works.
+        if not await wait_for_local_origin():
+            await notify(
+                "❌ Browser login's local viewer never came up."
+                " Please tap 🖥 Browser Login again."
+            )
+            return False
+        public_status = await wait_for_public_tunnel(url)
+        if public_status != 200:
+            await notify(
+                "❌ The login link never came online"
+                f" (last status: {public_status})."
+                " Please tap 🖥 Browser Login again."
+            )
+            return False
+        log.info("Tunnel verified live: %s returned 200.", url)
 
         await notify(
             "🖥 **Browser login ready**\n\n"
@@ -334,14 +428,14 @@ async def run_browser_login(
                 await pw.stop()
             except Exception:
                 pass
-        for proc in procs:
+        for _, proc in procs:
             try:
                 proc.terminate()
             except ProcessLookupError:
                 pass
         if procs:
             await asyncio.gather(
-                *(p.wait() for p in procs), return_exceptions=True
+                *(p.wait() for _, p in procs), return_exceptions=True
             )
         shutil.rmtree(tmpdir, ignore_errors=True)
         log.info("Browser login session cleaned up.")
