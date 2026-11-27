@@ -108,3 +108,23 @@ async def save_subjects_text_async(content: str) -> str:
 
     await rotate_github_secret("SUBJECTS_JSON", content)
     return "secret"
+
+
+async def persist_subjects(subjects: list) -> str:
+    """Serialize SubjectConfig objects and persist them (gist or secret).
+
+    Returns the store that was written ("gist" or "secret"). When the
+    secret store is used, also refreshes the in-memory settings value so
+    later loads in this process see the update.
+    """
+    import json as _json
+    import os as _os
+
+    json_str = _json.dumps(
+        {"subjects": [s.model_dump() for s in subjects]}, indent=2
+    )
+    source = await save_subjects_text_async(json_str)
+    if source == "secret":
+        _os.environ["SUBJECTS_JSON"] = json_str
+        settings.subjects_json = json_str
+    return source

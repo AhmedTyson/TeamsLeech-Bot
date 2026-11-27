@@ -1,4 +1,5 @@
 import logging
+import re
 
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -8,7 +9,8 @@ from pyrogram.types import (
     Message,
 )
 
-from teamsleech.models.domain import Recording
+from teamsleech.core.config import settings
+from teamsleech.models.domain import Recording, UploadedItem
 from teamsleech.services.scanner import ScannerService, subject_key
 from teamsleech.services.state import StateManager
 from teamsleech.services.transfer import TransferService
@@ -49,7 +51,7 @@ def register_upload_ui(
         subj_map = {subject_key(s): s for s in scanner.load_subjects()}
         text = build_checklist_text(
             session.grouped_recordings, session.scan_label, session.rename_overrides,
-            subjects=subj_map,
+            subjects=subj_map, flags=session.triage_flags,
         )
         keyboard = build_checklist_keyboard(
             session.pending_recordings,
@@ -217,12 +219,10 @@ def register_upload_ui(
 
         await cb.answer("Starting upload...")
 
-        selected_recs = []
+        selected_pairs = []  # (checklist index, recording), oldest first
         for i in sorted(session.selected_indices):
             if i < len(session.pending_recordings):
                 rec = session.pending_recordings[i]
-                selected_recs.append(rec)
-
                 override_name = session.rename_overrides.get(i)
                 if override_name:
                     log.info(
@@ -230,6 +230,10 @@ def register_upload_ui(
                         rec.name, override_name,
                     )
                     rec.name = override_name
+                selected_pairs.append((i, rec))
+        selected_pairs.sort(key=lambda p: (p[1].created, p[1].time))
+        selected_recs = [rec for _, rec in selected_pairs]
+        idx_by_rec_id = {id(rec): i for i, rec in selected_pairs}
 
         await safe_edit_text(
             cb.message,
@@ -302,13 +306,147 @@ def register_upload_ui(
             success = sum(1 for r in results if r.get("success"))
             failed = sum(1 for r in results if not r.get("success"))
 
+            session.last_uploads = []
+            for r in results:
+                if not (r.get("success") and r.get("message_id")):
+                    continue
+                rec = r["rec"]
+                src_idx = idx_by_rec_id.get(id(rec))
+                session.last_uploads.append(
+                    UploadedItem(
+                        name=rec.name,
+                        message_id=r["message_id"],
+                        chat_id=r["chat_id"],
+                        subject_name=rec.subject_name,
+                        created=rec.created,
+                        time=rec.time,
+                        is_video=rec.is_video,
+                        assigned_no=(
+                            session.proposed_numbers.get(src_idx)
+                            if src_idx is not None
+                            else None
+                        ),
+                    )
+                )
+
             summary = (
                 f"✅ **Upload complete!**\n"
                 f"   ✔ {success} succeeded\n"
                 f"   ✘ {failed} failed"
             )
-            await safe_edit_text(progress_msg, summary)
+            target = settings.target_chat_id()
+            if session.last_uploads and target is not None:
+                summary += (
+                    f"\n\n{len(session.last_uploads)} file(s) are in this DM."
+                    " Review the names above, then publish:"
+                )
+                publish_kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        f"📤 Publish {len(session.last_uploads)} to group",
+                        callback_data="pub:group",
+                    )
+                ]])
+                await safe_edit_text(progress_msg, summary, reply_markup=publish_kb)
+            elif session.last_uploads:
+                summary += (
+                    "\n\n⚠️ Publishing is off: add the bot to the group and"
+                    " send /link inside a topic — the group id saves itself."
+                )
+                await safe_edit_text(progress_msg, summary)
+            else:
+                await safe_edit_text(progress_msg, summary)
         except Exception as e:
             await safe_edit_text(progress_msg, f"❌ Upload failed: {e}")
 
-        state.clear_session(chat_id)
+        # Keep the session when uploads await publishing; otherwise reset.
+        if not session.last_uploads:
+            state.clear_session(chat_id)
+        else:
+            session.pending_recordings = []
+            session.selected_indices.clear()
+            session.rename_overrides.clear()
+            session.triage_flags.clear()
+            session.proposed_numbers.clear()
+
+    @app.on_callback_query(filters.regex(r"^pub:group$") & owner_only)
+    async def handle_publish(client: Client, cb: CallbackQuery):
+        chat_id = cb.message.chat.id
+        session = state.get_session(chat_id)
+
+        if not session.last_uploads:
+            await cb.answer("Nothing left to publish.", show_alert=True)
+            return
+        target = settings.target_chat_id()
+        if target is None:
+            await cb.answer(
+                "TELEGRAM_TARGET_CHAT_ID secret is not set.", show_alert=True
+            )
+            return
+
+        subjects = scanner.load_subjects()
+        subj_map = {subject_key(s): s for s in subjects}
+
+        ordered = sorted(
+            session.last_uploads, key=lambda u: (u.created, u.time)
+        )
+        no_topic = sorted({
+            u.subject_name for u in ordered
+            if not (subj_map.get(u.subject_name) and subj_map[u.subject_name].topic_id)
+        })
+
+        await safe_edit_text(
+            cb.message,
+            f"📤 **Publishing {len(ordered)} file(s) to the group...**",
+        )
+        await cb.answer()
+
+        posted, failed = 0, []
+        for u in ordered:
+            subj = subj_map.get(u.subject_name)
+            if not subj or not subj.topic_id:
+                failed.append((u.name, "no topic linked (/topics)"))
+                continue
+            caption = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", u.name)
+            try:
+                await client.copy_message(
+                    chat_id=target,
+                    from_chat_id=u.chat_id,
+                    message_id=u.message_id,
+                    caption=caption,
+                    message_thread_id=subj.topic_id,
+                )
+                posted += 1
+                if u.assigned_no is not None:
+                    subj.next_no = max(subj.next_no, u.assigned_no + 1)
+            except Exception as e:
+                log.warning("Publish failed for %s: %s", u.name, e)
+                failed.append((u.name, str(e)))
+
+        if posted:
+            try:
+                from teamsleech.services.subjects_store import persist_subjects
+
+                await persist_subjects(subjects)
+            except Exception as e:
+                log.error("Could not persist numbering counters: %s", e)
+                await cb.message.reply(
+                    f"⚠️ Published, but saving the new numbering failed: {e}"
+                )
+
+        lines = [f"📤 **Publish done:** {posted} posted"]
+        if no_topic:
+            lines.append(
+                "⚠️ No topic linked for: "
+                + ", ".join(f"**{n}**" for n in no_topic)
+                + " — link topics with /topics, then publish again."
+            )
+        for name, err in failed:
+            lines.append(f"❌ `{name}` — {err}")
+        await safe_edit_text(cb.message, "\n".join(lines))
+
+        session.last_uploads = [
+            u for u in session.last_uploads
+            if any(u.name == n for n, _ in failed)
+        ]
+        if not session.last_uploads:
+            state.clear_session(chat_id)

@@ -19,6 +19,9 @@ class AppConfig(BaseSettings):
     telegram_api_hash: str = Field(..., alias="TELEGRAM_API_HASH")
     telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: int = Field(..., alias="TELEGRAM_CHAT_ID")
+    # Forum group the bot publishes reviewed uploads into (e.g. -100...).
+    # Kept as str so an unset/empty secret never fails boot validation.
+    telegram_target_chat_id: str = Field("", alias="TELEGRAM_TARGET_CHAT_ID")
     
     # GitHub (Optional but recommended for secret rotation)
     gh_pat: str = Field("", alias="GH_PAT")
@@ -38,6 +41,16 @@ class AppConfig(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    def target_chat_id(self) -> int | None:
+        """Parsed TELEGRAM_TARGET_CHAT_ID, or None when not configured."""
+        raw = (self.telegram_target_chat_id or "").strip()
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
 
 # Global singleton configuration object to be imported by other modules
 settings = AppConfig()

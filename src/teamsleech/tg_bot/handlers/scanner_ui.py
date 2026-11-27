@@ -108,17 +108,26 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         ]
         for subj_name in results:
             results[subj_name] = videos_first(results[subj_name])
-        session.selected_indices.clear()
-        session.rename_overrides.clear()
         session.scan_label = label
 
         subj_map = {}
-        for s in scanner.load_subjects():
+        subjects_list = scanner.load_subjects()
+        for s in subjects_list:
             subj_map[subject_key(s)] = s
-        text = build_checklist_text(results, label, subjects=subj_map)
+
+        from teamsleech.services.triage import prepare_session
+
+        prepare_session(session, subjects_list)
+
+        text = build_checklist_text(
+            results, label, session.rename_overrides,
+            subjects=subj_map, flags=session.triage_flags,
+        )
         keyboard = (
             build_checklist_keyboard(
-                session.pending_recordings, session.selected_indices
+                session.pending_recordings,
+                session.selected_indices,
+                session.rename_overrides,
             )
             if session.pending_recordings
             else None

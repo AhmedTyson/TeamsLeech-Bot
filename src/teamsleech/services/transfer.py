@@ -27,6 +27,7 @@ from teamsleech.services.state import StateManager
 log = logging.getLogger("transfer")
 
 THUMBNAIL_TIMESTAMP = "00:00:02"
+AUDIO_EXTENSIONS = (".m4a", ".mp3", ".aac", ".ogg", ".wav", ".flac")
 
 class TransferError(Exception):
     pass
@@ -81,6 +82,16 @@ class TransferService:
             supports_streaming=True,
             duration=duration, width=width, height=height,
             thumb=thumb, progress=progress,
+        )
+
+    @retry_tg
+    async def _tg_send_audio(
+        self, chat_id, file_path, file_name, caption, duration, progress
+    ) -> Message:
+        return await self.tg.send_audio(
+            chat_id=chat_id, audio=file_path,
+            file_name=file_name, caption=caption,
+            duration=duration, progress=progress,
         )
 
     def _probe_video(self, file_path: str) -> tuple[int, int, int]:
@@ -150,10 +161,25 @@ class TransferService:
     def _download_candidates(
         self, download_url: str, sp_token: str | None
     ) -> list[tuple[str, str, dict[str, str] | None]]:
-        """Ordered (label, url, headers) attempts. Browser cookies first —
-        proven path (same session as a working browser); token endpoints
-        after; anonymous last."""
+        """Ordered (label, url, headers) attempts. The user's SharePoint
+        token first — it derives silently from the refresh token, so no
+        manual cookie exports. Browser cookies are the fallback for tenants
+        that reject the bearer token; anonymous pre-authed URL last."""
         candidates = []
+        bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
+        if sp_token:
+            parts = urlsplit(download_url)
+            unique_id = parse_qs(parts.query).get("UniqueId", [None])[0]
+            marker = "/_layouts/15/download.aspx"
+            if unique_id and marker in parts.path:
+                site_path = parts.path.split(marker)[0]
+                api_url = (
+                    f"{parts.scheme}://{parts.netloc}{site_path}"
+                    f"/_api/web/GetFileById('{unique_id}')/$value"
+                )
+                candidates.append(("SharePoint REST $value", api_url, bearer))
+            candidates.append(("download.aspx (user token)", download_url, bearer))
+
         cookies = load_cookies(settings.sp_cookies_json)
         if cookies:
             candidates.append(
@@ -163,23 +189,8 @@ class TransferService:
                     {"Cookie": cookie_header(cookies)},
                 )
             )
-
-        bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
         if not sp_token:
             candidates.append(("download.aspx (anonymous)", download_url, None))
-            return candidates
-
-        parts = urlsplit(download_url)
-        unique_id = parse_qs(parts.query).get("UniqueId", [None])[0]
-        marker = "/_layouts/15/download.aspx"
-        if unique_id and marker in parts.path:
-            site_path = parts.path.split(marker)[0]
-            api_url = (
-                f"{parts.scheme}://{parts.netloc}{site_path}"
-                f"/_api/web/GetFileById('{unique_id}')/$value"
-            )
-            candidates.append(("SharePoint REST $value", api_url, bearer))
-        candidates.append(("download.aspx (user token)", download_url, bearer))
         return candidates
 
     @_retry_download
@@ -329,8 +340,15 @@ class TransferService:
         is_video: bool,
         tg_progress_cb: Callable,
     ) -> Message:
-        if not is_video:
+        is_audio = filename.lower().endswith(AUDIO_EXTENSIONS)
+        if not is_video and not is_audio:
             duration, width, height = 0, 0, 0
+            thumb_path = None
+        elif is_audio:
+            duration, _, _ = await asyncio.to_thread(
+                self._probe_video, file_path
+            )
+            width, height = 0, 0
             thumb_path = None
         else:
             duration, width, height = await asyncio.to_thread(
@@ -358,7 +376,12 @@ class TransferService:
             save_filename, caption,
         )
         try:
-            if not is_video:
+            if is_audio:
+                sent_msg = await self._tg_send_audio(
+                    self.chat_id, file_path, save_filename, caption,
+                    duration, tg_progress_cb,
+                )
+            elif not is_video:
                 sent_msg = await self._tg_send_document(
                     self.chat_id, file_path, save_filename, caption, None, tg_progress_cb,
                 )
@@ -445,7 +468,7 @@ class TransferService:
                 await self._report_progress(current, total, _i, _name, progress_cb)
 
             try:
-                await self._upload_to_telegram(
+                sent_msg = await self._upload_to_telegram(
                     tmp_path, rec.name, rec.is_video, _tg_progress
                 )
                 elapsed_file = (
@@ -463,7 +486,14 @@ class TransferService:
                         },
                     )
                 results.append(
-                    {"name": rec.name, "success": True, "error": None, "rec": rec}
+                    {
+                        "name": rec.name,
+                        "success": True,
+                        "error": None,
+                        "rec": rec,
+                        "message_id": sent_msg.id,
+                        "chat_id": sent_msg.chat.id,
+                    }
                 )
             except (TelegramUploadError, OSError) as e:
                 if progress_cb:

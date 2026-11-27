@@ -1,5 +1,4 @@
 import json
-import os
 
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -9,7 +8,6 @@ from pyrogram.types import (
     Message,
 )
 
-from teamsleech.core.config import settings
 from teamsleech.models.domain import SubjectConfig, Team
 from teamsleech.services.discovery import DiscoveryService
 from teamsleech.services.scanner import ScannerService
@@ -78,15 +76,9 @@ def register_search_inputs(
     search_filter = filters.create(is_searching)
 
     async def _persist_subjects(existing) -> str:
-        from teamsleech.services.subjects_store import save_subjects_text_async
-        json_str = json.dumps(
-            {"subjects": [s.model_dump() for s in existing]}, indent=2
-        )
-        source = await save_subjects_text_async(json_str)
-        if source == "secret":
-            os.environ["SUBJECTS_JSON"] = json_str
-            settings.subjects_json = json_str
-        return source
+        from teamsleech.services.subjects_store import persist_subjects
+
+        return await persist_subjects(existing)
 
     def _detail_text(s) -> str:
         return (
@@ -94,7 +86,9 @@ def register_search_inputs(
             f"   🏷 Short: `{s.short or '—'}`\n"
             f"   👨‍🏫 Doctor: `{s.doctor or '—'}`\n"
             f"   🔎 Subject keys: `{', '.join(s.keywords) or '—'}`\n"
-            f"   🩺 Doctor keys: `{', '.join(s.doctor_keywords) or '—'}`"
+            f"   🩺 Doctor keys: `{', '.join(s.doctor_keywords) or '—'}`\n"
+            f"   🗂 Type: `{s.kind}`  |  Topic: `{s.topic_id or '—'}`"
+            f"  |  Next: `{s.next_no}`"
         )
 
     def _load_existing() -> list:
@@ -159,6 +153,14 @@ def register_search_inputs(
                 subj.short = text
             elif field == "doctor":
                 subj.doctor = "" if text.lower() == "clear" else text
+            elif field == "kind":
+                if text.lower() not in ("lecture", "section"):
+                    await message.reply(
+                        "❌ Type must be `lecture` or `section`."
+                        " Send one of them, or `keep`."
+                    )
+                    return
+                subj.kind = text.lower()
             try:
                 await _persist_subjects(existing)
             except Exception as e:

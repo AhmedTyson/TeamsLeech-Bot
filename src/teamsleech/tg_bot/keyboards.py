@@ -10,7 +10,7 @@ from teamsleech.models.domain import Recording, SubjectConfig
 REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("🔍 Check Recordings"), KeyboardButton("📚 Subjects")],
-        [KeyboardButton("🛑 Cancel Workflow")],
+        [KeyboardButton("🔑 Microsoft Login"), KeyboardButton("🛑 Cancel Workflow")],
     ],
     resize_keyboard=True,
 )
@@ -143,6 +143,7 @@ MANAGE_FIELDS: list[tuple[str, str]] = [
     ("doctor", "Doctor"),
     ("subj_kw", "Subject keys"),
     ("doc_kw", "Doctor keys"),
+    ("kind", "Type (lecture/section)"),
 ]
 
 
@@ -164,4 +165,3 @@ def build_manage_fields(idx: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⬅️ Back", callback_data=f"mng:sel:{idx}")
     ])
     return InlineKeyboardMarkup(buttons)
-

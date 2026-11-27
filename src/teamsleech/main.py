@@ -239,10 +239,23 @@ def main():
                     session.scan_label = label
 
                     subj_map = {}
-                    for s in scanner_service.load_subjects():
+                    subjects_list = scanner_service.load_subjects()
+                    for s in subjects_list:
                         subj_map[subject_key(s)] = s
-                    text = build_checklist_text(results, label, subjects=subj_map)
-                    keyboard = build_checklist_keyboard(session.pending_recordings, session.selected_indices)
+
+                    from teamsleech.services.triage import prepare_session
+
+                    prepare_session(session, subjects_list)
+
+                    text = build_checklist_text(
+                        results, label, session.rename_overrides,
+                        subjects=subj_map, flags=session.triage_flags,
+                    )
+                    keyboard = build_checklist_keyboard(
+                        session.pending_recordings,
+                        session.selected_indices,
+                        session.rename_overrides,
+                    )
 
                     await app.send_message(settings.telegram_chat_id, text, reply_markup=keyboard)
                     log.info("Auto-check found %d recordings, notification sent.", total)
