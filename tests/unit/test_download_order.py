@@ -1,4 +1,6 @@
-"""Download candidate order: SharePoint token first, cookies as fallback."""
+"""Download candidate order: Graph's pre-authed URL bare first, then the
+SharePoint token, cookies last. A rejected bearer or stale cookie must
+never poison the tempauth URL that needs no auth."""
 
 from teamsleech.core.config import settings
 from teamsleech.services.transfer import TransferService
@@ -12,30 +14,43 @@ URL = (
 def _candidates(monkeypatch, cookies_json, token):
     monkeypatch.setattr(settings, "sp_cookies_json", cookies_json)
     svc = TransferService.__new__(TransferService)
-    return [label for label, _, _ in svc._download_candidates(URL, token)]
+    return svc._download_candidates(URL, token)
 
 
-def test_token_first_cookies_fallback(monkeypatch):
-    order = _candidates(monkeypatch, '[{"name":"rtFa","value":"v"}]', "tok123")
-    assert order == [
+def _labels(cands):
+    return [label for label, _, _ in cands]
+
+
+def test_preauthed_first_with_token_and_cookies(monkeypatch):
+    cands = _candidates(monkeypatch, '[{"name":"rtFa","value":"v"}]', "tok123")
+    assert _labels(cands) == [
+        "download.aspx (pre-authed)",
         "SharePoint REST $value",
         "download.aspx (user token)",
         "download.aspx (browser cookies)",
     ]
+    # The pre-authed attempt must send no auth headers at all.
+    assert cands[0][2] is None
 
 
-def test_no_token_cookies_then_anonymous(monkeypatch):
-    order = _candidates(monkeypatch, '[{"name":"rtFa","value":"v"}]', None)
+def test_preauthed_first_without_token(monkeypatch):
+    order = _labels(_candidates(monkeypatch, '[{"name":"rtFa","value":"v"}]', None))
     assert order == [
+        "download.aspx (pre-authed)",
         "download.aspx (browser cookies)",
-        "download.aspx (anonymous)",
     ]
 
 
-def test_token_without_cookies_never_anonymous(monkeypatch):
-    order = _candidates(monkeypatch, "", "tok123")
-    assert order == ["SharePoint REST $value", "download.aspx (user token)"]
-    assert "download.aspx (anonymous)" not in order
+def test_preauthed_always_present(monkeypatch):
+    for cookies_json, token in [
+        ("", "tok123"),
+        ("", None),
+        ('[{"name":"rtFa","value":"v"}]', "tok123"),
+        ('[{"name":"rtFa","value":"v"}]', None),
+    ]:
+        cands = _candidates(monkeypatch, cookies_json, token)
+        assert cands[0][0] == "download.aspx (pre-authed)"
+        assert cands[0][2] is None
 
 
 def test_rest_api_url_built_from_uniqueid(monkeypatch):
