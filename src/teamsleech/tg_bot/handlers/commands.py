@@ -106,6 +106,13 @@ def register_commands(
     async def handle_login_button(client: Client, message: Message):
         await _do_login(client, message)
 
+    @app.on_callback_query(filters.regex(r"^login:start$") & owner_only)
+    async def handle_login_cb(client: Client, cb):
+        from teamsleech.tg_bot.handlers import safe_answer
+
+        await safe_answer(cb, "Starting login...")
+        await _do_login(client, cb.message)
+
     @app.on_message(filters.command("topics") & filters.private & owner_only)
     async def handle_topics(client: Client, message: Message):
         subjects = scanner.load_subjects()

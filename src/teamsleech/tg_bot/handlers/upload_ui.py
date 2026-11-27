@@ -21,6 +21,19 @@ from teamsleech.tg_bot.views import build_checklist_text
 
 log = logging.getLogger("upload_ui")
 
+LOGIN_BUTTON_KB = InlineKeyboardMarkup([
+    [InlineKeyboardButton("🔑 Login", callback_data="login:start")]
+])
+
+_AUTH_FAILURE_MARKERS = ("401", "denied", "expired", "rejected", "Login")
+
+
+def _failure_keyboard(err: str) -> InlineKeyboardMarkup | None:
+    """One-tap 🔑 Login on auth-shaped download failures."""
+    if any(m in err for m in _AUTH_FAILURE_MARKERS):
+        return LOGIN_BUTTON_KB
+    return None
+
 
 def _get_rename_suggestion(
     rec: Recording, state: StateManager, scanner: ScannerService
@@ -297,6 +310,7 @@ def register_upload_ui(
                 await _render()
                 await cb.message.reply(
                     f"❌ `{data.get('name', 'file')}` failed:\n{err}",
+                    reply_markup=_failure_keyboard(err),
                 )
 
         try:

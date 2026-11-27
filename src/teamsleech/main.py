@@ -215,7 +215,21 @@ def main():
             return
 
         log.info("Step 3/3: Bot is live and listening.")
-        
+
+        # Show the persistent button bar every run so the owner never
+        # needs /start to reach 🔍 Check or 🔑 Microsoft Login.
+        try:
+            from teamsleech.tg_bot.keyboards import REPLY_KEYBOARD
+
+            await app.send_message(
+                settings.telegram_chat_id,
+                "✅ Bot is live. Tap 🔍 **Check Recordings** to scan,"
+                " or 🔑 **Microsoft Login** to refresh the session.",
+                reply_markup=REPLY_KEYBOARD,
+            )
+        except Exception as e:
+            log.warning("Could not send boot message: %s", e)
+
         # 5. Scheduled Auto-Check Logic (Silent Mode)
         if settings.auto_check == "1":
             log.info("Running automated scheduled check...")

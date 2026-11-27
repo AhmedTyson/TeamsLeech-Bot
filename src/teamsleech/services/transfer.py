@@ -159,13 +159,24 @@ class TransferService:
             log.warning("Could not inspect SharePoint token: %s", exc)
 
     def _download_candidates(
-        self, download_url: str, sp_token: str | None
+        self,
+        download_url: str,
+        sp_token: str | None,
+        preauth_url: str | None = None,
     ) -> list[tuple[str, str, dict[str, str] | None]]:
-        """Ordered (label, url, headers) attempts. The user's SharePoint
-        token first — it derives silently from the refresh token, so no
-        manual cookie exports. Browser cookies are the fallback for tenants
-        that reject the bearer token; anonymous pre-authed URL last."""
+        """Ordered (label, url, headers) attempts. Graph's
+        @microsoft.graph.downloadUrl first, fetched with NO headers — it is
+        pre-authenticated (tempauth), and attaching a rejected bearer or
+        stale cookies makes SharePoint 401 a URL that needed no auth. The
+        /content redirect Location is NOT reliably pre-authenticated (seen
+        401 without tempauth), so bearer/cookie routes stay as fallbacks
+        and the bare Location stays last for OneDrive-personal-style
+        redirects."""
         candidates = []
+        if preauth_url:
+            candidates.append(
+                ("Graph downloadUrl (pre-authed)", preauth_url, None)
+            )
         bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
         if sp_token:
             parts = urlsplit(download_url)
@@ -189,8 +200,7 @@ class TransferService:
                     {"Cookie": cookie_header(cookies)},
                 )
             )
-        if not sp_token:
-            candidates.append(("download.aspx (anonymous)", download_url, None))
+        candidates.append(("download.aspx (no auth)", download_url, None))
         return candidates
 
     @_retry_download
@@ -200,12 +210,32 @@ class TransferService:
         dest_path: str,
         dl_cb: Callable | None = None,
     ) -> int:
-        graph_url = (
+        graph_item_url = (
             f"{GRAPH_BASE_URL}/drives/{rec.drive_id}"
-            f"/items/{rec.item_id}/content"
+            f"/items/{rec.item_id}"
         )
+        graph_url = f"{graph_item_url}/content"
 
         async with httpx.AsyncClient() as client:
+            # Step 0: ask Graph for the item's pre-authenticated download
+            # URL (@microsoft.graph.downloadUrl). Unlike the /content
+            # redirect, this URL needs no auth on every tenant.
+            preauth_url: str | None = None
+            try:
+                item_resp = await client.get(
+                    graph_item_url,
+                    params={"$select": "@microsoft.graph.downloadUrl"},
+                    headers=self.graph.headers,
+                    timeout=60.0,
+                )
+                if item_resp.status_code == 200:
+                    preauth_url = item_resp.json().get(
+                        "@microsoft.graph.downloadUrl"
+                    )
+            except Exception as exc:
+                log.warning(
+                    "downloadUrl lookup failed for %s: %s", rec.name, exc
+                )
             # Step 1: ask Graph, do NOT auto-follow. Graph answers 302
             # with a pre-authenticated SharePoint download URL in
             # Location. Following automatically risks forwarding the
@@ -261,7 +291,7 @@ class TransferService:
                 )
             failures: list[str] = []
             for label, url, headers in self._download_candidates(
-                download_url, sp_token
+                download_url, sp_token, preauth_url
             ):
                 log.info("Trying %s for %s.", label, rec.name)
                 try:
@@ -308,26 +338,13 @@ class TransferService:
                     failures.append(f"{label} ({exc})")
                     log.warning("%s errored for %s: %s", label, rec.name, exc)
                     continue
-            cookies_tried = any(
-                f.startswith("download.aspx (browser cookies)") for f in failures
+            hint = (
+                "every download route was denied — tap the 🔑 Login button"
+                " below to refresh the Microsoft session, then retry."
+                " If it still fails after a fresh login, the site blocks"
+                " downloads for this account (permissions / Block-Download"
+                " policy)."
             )
-            if cookies_tried:
-                hint = (
-                    "browser cookies rejected too — session expired,"
-                    " re-export SP_COOKIES_JSON from a logged-in browser"
-                )
-            elif sp_token:
-                hint = (
-                    "user-context token denied on REST + download.aspx — account"
-                    " lacks download rights or Block-Download policy applies;"
-                    " set SP_COOKIES_JSON for the proven cookie path"
-                )
-            else:
-                hint = (
-                    "check Conditional Access / Block-Download"
-                    " policy / site permissions for the service account;"
-                    " set SP_COOKIES_JSON for the proven cookie path"
-                )
             raise DownloadError(
                 f"SharePoint download failed for {rec.name}"
                 f" ({' ; '.join(failures)}): {hint}."
