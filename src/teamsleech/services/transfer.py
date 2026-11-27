@@ -161,10 +161,25 @@ class TransferService:
     def _download_candidates(
         self, download_url: str, sp_token: str | None
     ) -> list[tuple[str, str, dict[str, str] | None]]:
-        """Ordered (label, url, headers) attempts. Browser cookies first —
-        proven path (same session as a working browser); token endpoints
-        after; anonymous last."""
+        """Ordered (label, url, headers) attempts. The user's SharePoint
+        token first — it derives silently from the refresh token, so no
+        manual cookie exports. Browser cookies are the fallback for tenants
+        that reject the bearer token; anonymous pre-authed URL last."""
         candidates = []
+        bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
+        if sp_token:
+            parts = urlsplit(download_url)
+            unique_id = parse_qs(parts.query).get("UniqueId", [None])[0]
+            marker = "/_layouts/15/download.aspx"
+            if unique_id and marker in parts.path:
+                site_path = parts.path.split(marker)[0]
+                api_url = (
+                    f"{parts.scheme}://{parts.netloc}{site_path}"
+                    f"/_api/web/GetFileById('{unique_id}')/$value"
+                )
+                candidates.append(("SharePoint REST $value", api_url, bearer))
+            candidates.append(("download.aspx (user token)", download_url, bearer))
+
         cookies = load_cookies(settings.sp_cookies_json)
         if cookies:
             candidates.append(
@@ -174,23 +189,8 @@ class TransferService:
                     {"Cookie": cookie_header(cookies)},
                 )
             )
-
-        bearer = {"Authorization": f"Bearer {sp_token}"} if sp_token else None
         if not sp_token:
             candidates.append(("download.aspx (anonymous)", download_url, None))
-            return candidates
-
-        parts = urlsplit(download_url)
-        unique_id = parse_qs(parts.query).get("UniqueId", [None])[0]
-        marker = "/_layouts/15/download.aspx"
-        if unique_id and marker in parts.path:
-            site_path = parts.path.split(marker)[0]
-            api_url = (
-                f"{parts.scheme}://{parts.netloc}{site_path}"
-                f"/_api/web/GetFileById('{unique_id}')/$value"
-            )
-            candidates.append(("SharePoint REST $value", api_url, bearer))
-        candidates.append(("download.aspx (user token)", download_url, bearer))
         return candidates
 
     @_retry_download
