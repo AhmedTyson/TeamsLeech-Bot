@@ -17,12 +17,14 @@ from teamsleech.services.transfer import TransferService
 from teamsleech.tg_bot.filters import owner_only
 from teamsleech.tg_bot.handlers import safe_edit_text
 from teamsleech.tg_bot.keyboards import build_checklist_keyboard
+from teamsleech.tg_bot.retry_failed import record_failed, retry_failed_downloads
 from teamsleech.tg_bot.views import build_checklist_text
 
 log = logging.getLogger("upload_ui")
 
 LOGIN_BUTTON_KB = InlineKeyboardMarkup([
-    [InlineKeyboardButton("🔑 Login", callback_data="login:start")]
+    [InlineKeyboardButton("🔁 Retry failed", callback_data="retry:failed")],
+    [InlineKeyboardButton("🔑 Login", callback_data="login:start")],
 ])
 
 _AUTH_FAILURE_MARKERS = ("401", "denied", "expired", "rejected", "Login")
@@ -218,6 +220,13 @@ def register_upload_ui(
         else:
             message.continue_propagation()
 
+    @app.on_callback_query(filters.regex(r"^retry:failed$") & owner_only)
+    async def handle_retry_failed(client: Client, cb: CallbackQuery):
+        from teamsleech.tg_bot.handlers import safe_answer
+
+        await safe_answer(cb, "Retrying failed downloads...")
+        await retry_failed_downloads(client, cb.message, transfer, state)
+
     @app.on_callback_query(filters.regex(r"^upload:confirm") & owner_only)
     async def handle_upload(client: Client, cb: CallbackQuery):
         chat_id = cb.message.chat.id
@@ -307,6 +316,8 @@ def register_upload_ui(
             elif action == "error":
                 err = data.get("error", "unknown")
                 rows[idx] = f"❌ {name}"
+                if idx < len(selected_recs):
+                    record_failed(state, chat_id, selected_recs[idx])
                 await _render()
                 await cb.message.reply(
                     f"❌ `{data.get('name', 'file')}` failed:\n{err}",
