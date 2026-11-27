@@ -57,5 +57,8 @@ def test_build_checklist_keyboard():
     assert "📄 PDFs" in kb.inline_keyboard[2][0].text
     assert "🎬 Videos" in kb.inline_keyboard[2][1].text
     
-    # Check actions
-    assert kb.inline_keyboard[3][0].callback_data == "date:change"
+    # Check actions: one-tap approve-all, then date, then cancel
+    assert kb.inline_keyboard[3][0].callback_data == "upload:all"
+    assert "Approve all" in kb.inline_keyboard[3][0].text
+    assert kb.inline_keyboard[3][1].callback_data == "date:change"
+    assert kb.inline_keyboard[3][2].callback_data == "cancel:check"
