@@ -39,7 +39,7 @@ def register_all_handlers(
     """
     Registers all modular Telegram handlers to the Pyrogram client.
     """
-    register_commands(app, scanner, state, discovery)
+    register_commands(app, scanner, state, discovery, transfer)
     register_search_inputs(app, discovery, state)
     register_scanner_ui(app, scanner, state)
     register_upload_ui(app, transfer, state, scanner)
