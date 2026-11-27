@@ -105,15 +105,15 @@ def register_commands(
             )
 
         # Auto-retry downloads that failed before the login.
-        session = state.get_session(settings.telegram_chat_id)
-        if transfer is not None and session.failed_downloads:
+        failed = state.get_failed_downloads(settings.telegram_chat_id)
+        if transfer is not None and failed:
             try:
                 from teamsleech.tg_bot.retry_failed import (
                     retry_failed_downloads,
                 )
 
                 await message.reply(
-                    f"🔁 Retrying {len(session.failed_downloads)} failed"
+                    f"🔁 Retrying {len(failed)} failed"
                     " download(s) with the new session…"
                 )
                 await retry_failed_downloads(client, message, transfer, state)

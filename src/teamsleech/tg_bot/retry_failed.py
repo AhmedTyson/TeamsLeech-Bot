@@ -22,11 +22,12 @@ def _rec_key(rec: Recording) -> tuple[str, str]:
 
 
 def record_failed(state: StateManager, chat_id: int, rec: Recording) -> None:
-    """Remember a failed download once (deduped by drive/item)."""
-    session = state.get_session(chat_id)
-    if any(_rec_key(f) == _rec_key(rec) for f in session.failed_downloads):
-        return
-    session.failed_downloads.append(rec)
+    """Remember a failed download once (deduped by drive/item).
+
+    Stored on the StateManager, not the per-scan session, so rescans do
+    not wipe the retry queue.
+    """
+    state.add_failed_download(chat_id, rec)
 
 
 async def retry_failed_downloads(
@@ -39,8 +40,7 @@ async def retry_failed_downloads(
     from teamsleech.tg_bot.handlers.upload_ui import _failure_keyboard
 
     chat_id = message.chat.id
-    session = state.get_session(chat_id)
-    recs = list(session.failed_downloads)
+    recs = state.get_failed_downloads(chat_id)
     if not recs:
         await message.reply("✅ Nothing waiting to retry.")
         return 0
@@ -86,21 +86,22 @@ async def retry_failed_downloads(
     ok_keys = {_rec_key(r) for r in succeeded}
     newly_recorded = [
         f
-        for f in session.failed_downloads
+        for f in state.get_failed_downloads(chat_id)
         if all(_rec_key(f) != _rec_key(r) for r in recs)
     ]
-    session.failed_downloads = [
+    remaining = [
         f for f in failed_again if _rec_key(f) not in ok_keys
     ] + newly_recorded
+    state.set_failed_downloads(chat_id, remaining)
 
-    if succeeded and not session.failed_downloads:
+    if succeeded and not remaining:
         await message.reply(
             f"✅ Retry complete — {len(succeeded)} file(s) uploaded."
         )
     elif succeeded:
         await message.reply(
             f"✅ {len(succeeded)} uploaded,"
-            f" ❌ {len(session.failed_downloads)} still failing"
+            f" ❌ {len(remaining)} still failing"
             " — tap 🔑 Login and retry again."
         )
     else:

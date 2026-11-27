@@ -341,6 +341,12 @@ class TransferService:
                     log.warning("%s failed for %s: %s", label, rec.name, exc)
                     try:
                         hdrs = exc.response.headers
+                        try:
+                            body = exc.response.text
+                        except Exception:
+                            # Streamed responses need an explicit read.
+                            raw = await exc.response.aread()
+                            body = raw.decode("utf-8", errors="replace")
                         log.warning(
                             "%s [%s] diagnostics for %s:"
                             " www-authenticate=%s x-ms-diagnostics=%s"
@@ -351,10 +357,10 @@ class TransferService:
                             hdrs.get("www-authenticate", "<none>")[:400],
                             hdrs.get("x-ms-diagnostics", "<none>")[:400],
                             hdrs.get("sprequestguid", "<none>"),
-                            exc.response.text[:400].replace("\n", " "),
+                            body[:400].replace("\n", " "),
                         )
-                    except Exception:
-                        pass
+                    except Exception as diag_exc:
+                        log.warning("diagnostics read failed: %s", diag_exc)
                     continue
                 except httpx.HTTPError as exc:
                     failures.append(f"{label} ({exc})")

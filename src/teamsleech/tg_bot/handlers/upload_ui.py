@@ -224,6 +224,10 @@ def register_upload_ui(
     async def handle_retry_failed(client: Client, cb: CallbackQuery):
         from teamsleech.tg_bot.handlers import safe_answer
 
+        if not state.get_failed_downloads(cb.message.chat.id):
+            # Toast only — no DM spam when the queue is empty.
+            await safe_answer(cb, "✅ Nothing waiting to retry.")
+            return
         await safe_answer(cb, "Retrying failed downloads...")
         await retry_failed_downloads(client, cb.message, transfer, state)
 
