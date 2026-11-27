@@ -23,6 +23,7 @@ async def safe_answer(cb, *args, **kwargs) -> None:
         pass
 
 from .commands import register_commands  # noqa: E402
+from .link_download import register_link_download  # noqa: E402
 from .scanner_ui import register_scanner_ui  # noqa: E402
 from .search_inputs import register_search_inputs  # noqa: E402
 from .upload_ui import register_upload_ui  # noqa: E402
@@ -42,3 +43,4 @@ def register_all_handlers(
     register_search_inputs(app, discovery, state)
     register_scanner_ui(app, scanner, state)
     register_upload_ui(app, transfer, state, scanner)
+    register_link_download(app, transfer, state, scanner)
