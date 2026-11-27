@@ -27,6 +27,7 @@ from teamsleech.services.state import StateManager
 log = logging.getLogger("transfer")
 
 THUMBNAIL_TIMESTAMP = "00:00:02"
+AUDIO_EXTENSIONS = (".m4a", ".mp3", ".aac", ".ogg", ".wav", ".flac")
 
 class TransferError(Exception):
     pass
@@ -81,6 +82,16 @@ class TransferService:
             supports_streaming=True,
             duration=duration, width=width, height=height,
             thumb=thumb, progress=progress,
+        )
+
+    @retry_tg
+    async def _tg_send_audio(
+        self, chat_id, file_path, file_name, caption, duration, progress
+    ) -> Message:
+        return await self.tg.send_audio(
+            chat_id=chat_id, audio=file_path,
+            file_name=file_name, caption=caption,
+            duration=duration, progress=progress,
         )
 
     def _probe_video(self, file_path: str) -> tuple[int, int, int]:
@@ -329,8 +340,15 @@ class TransferService:
         is_video: bool,
         tg_progress_cb: Callable,
     ) -> Message:
-        if not is_video:
+        is_audio = filename.lower().endswith(AUDIO_EXTENSIONS)
+        if not is_video and not is_audio:
             duration, width, height = 0, 0, 0
+            thumb_path = None
+        elif is_audio:
+            duration, _, _ = await asyncio.to_thread(
+                self._probe_video, file_path
+            )
+            width, height = 0, 0
             thumb_path = None
         else:
             duration, width, height = await asyncio.to_thread(
@@ -358,7 +376,12 @@ class TransferService:
             save_filename, caption,
         )
         try:
-            if not is_video:
+            if is_audio:
+                sent_msg = await self._tg_send_audio(
+                    self.chat_id, file_path, save_filename, caption,
+                    duration, tg_progress_cb,
+                )
+            elif not is_video:
                 sent_msg = await self._tg_send_document(
                     self.chat_id, file_path, save_filename, caption, None, tg_progress_cb,
                 )
@@ -445,7 +468,7 @@ class TransferService:
                 await self._report_progress(current, total, _i, _name, progress_cb)
 
             try:
-                await self._upload_to_telegram(
+                sent_msg = await self._upload_to_telegram(
                     tmp_path, rec.name, rec.is_video, _tg_progress
                 )
                 elapsed_file = (
@@ -463,7 +486,14 @@ class TransferService:
                         },
                     )
                 results.append(
-                    {"name": rec.name, "success": True, "error": None, "rec": rec}
+                    {
+                        "name": rec.name,
+                        "success": True,
+                        "error": None,
+                        "rec": rec,
+                        "message_id": sent_msg.id,
+                        "chat_id": sent_msg.chat.id,
+                    }
                 )
             except (TelegramUploadError, OSError) as e:
                 if progress_cb:
