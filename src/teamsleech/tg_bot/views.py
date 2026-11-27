@@ -53,7 +53,12 @@ def _build_header(scan_label: str, n_video: int, n_doc: int) -> list[str]:
     lines.append(DIVIDER_THICK)
     return lines
 
-def _format_recording_item(idx: int, rec: Recording, override_name: str | None = None) -> str:
+def _format_recording_item(
+    idx: int,
+    rec: Recording,
+    override_name: str | None = None,
+    flag: str | None = None,
+) -> str:
     display_name = clean_filename(override_name or rec.name)
     date_short = format_date_short(rec.created)
     time_display = f", {rec.time}" if rec.time else ""
@@ -63,10 +68,12 @@ def _format_recording_item(idx: int, rec: Recording, override_name: str | None =
         if rec.is_video and rec.duration_ms
         else ""
     )
+    flag_str = f"   ⚠️ {flag}\n" if flag else ""
     return (
         f"{num_label(idx + 1)} 👥 **{rec.team_name}**\n"
         f"   🗓 {date_short}{time_display}  |  💾 {rec.size_mb} MB{duration_str}\n"
         f"   {icon} `{display_name}`\n"
+        f"{flag_str}"
     )
 
 def _build_footer(total: int, n_video: int, n_doc: int) -> list[str]:
@@ -96,6 +103,7 @@ def build_checklist_text(
     scan_label: str = "",
     rename_overrides: dict[int, str] | None = None,
     subjects: dict[str, object] | None = None,
+    flags: dict[int, str] | None = None,
 ) -> str:
     total = sum(len(recs) for recs in results.values())
     if total == 0:
@@ -138,8 +146,19 @@ def build_checklist_text(
         for pos, rec in enumerate(ordered):
             if pos == n_vid and n_vid < len(ordered):
                 lines.append("📄 **Documents**")
-            lines.append(_format_recording_item(idx, rec, overrides.get(idx)))
+            lines.append(
+                _format_recording_item(
+                    idx, rec, overrides.get(idx), (flags or {}).get(idx)
+                )
+            )
             idx += 1
+
+    n_flagged = len(flags or {})
+    if n_flagged:
+        lines.append(
+            f"\n⚠️ **{n_flagged} item(s) flagged** — not selected."
+            " Tap their number to include them anyway."
+        )
 
     lines.append(DIVIDER_THICK)
     lines.extend(_build_footer(total, n_video, n_doc))
