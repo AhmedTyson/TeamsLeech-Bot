@@ -165,3 +165,42 @@ def build_manage_fields(idx: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⬅️ Back", callback_data=f"mng:sel:{idx}")
     ])
     return InlineKeyboardMarkup(buttons)
+
+WEEKDAY_HEADER = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+
+def build_calendar_keyboard(
+    year: int, month: int, picked_start: str | None = None
+) -> InlineKeyboardMarkup:
+    """Month-grid calendar for picking a date range. Day cells carry
+    `cal:day:YYYY-MM-DD`; navigation carries `cal:nav:YYYY-MM`; the picked
+    start date (ISO) is highlighted with dots."""
+    import calendar as _cal
+
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+    rows: list[list[InlineKeyboardButton]] = []
+    rows.append([
+        InlineKeyboardButton("◀", callback_data=f"cal:nav:{prev_year:04d}-{prev_month:02d}"),
+        InlineKeyboardButton(f"{_cal.month_name[month]} {year}", callback_data="cal:noop"),
+        InlineKeyboardButton("▶", callback_data=f"cal:nav:{next_year:04d}-{next_month:02d}"),
+    ])
+    rows.append([
+        InlineKeyboardButton(d, callback_data="cal:noop") for d in WEEKDAY_HEADER
+    ])
+
+    for week in _cal.monthcalendar(year, month):
+        row: list[InlineKeyboardButton] = []
+        for day in week:
+            if day == 0:
+                row.append(InlineKeyboardButton(" ", callback_data="cal:noop"))
+            else:
+                iso = f"{year:04d}-{month:02d}-{day:02d}"
+                label = f"•{day}•" if iso == picked_start else str(day)
+                row.append(InlineKeyboardButton(label, callback_data=f"cal:day:{iso}"))
+        rows.append(row)
+
+    rows.append([
+        InlineKeyboardButton("✖ Cancel", callback_data="cal:cancel"),
+    ])
+    return InlineKeyboardMarkup(rows)
