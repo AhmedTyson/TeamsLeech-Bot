@@ -73,6 +73,39 @@ def register_commands(
             " in GitHub. To stop one, use 🛑 Cancel Workflow."
         )
 
+    async def _do_login(client: Client, message: Message):
+        await message.reply(
+            "🔑 Starting Microsoft login — the next message has your link."
+        )
+        from teamsleech.services.reauth import run_reauth_flow
+
+        ok = await run_reauth_flow(client, settings.telegram_chat_id)
+        if not ok:
+            return
+        # Refresh the live Graph token so this run uses the new session too.
+        try:
+            from teamsleech.services.auth import authenticate
+
+            discovery.graph.access_token = await authenticate()
+            await message.reply(
+                "✅ Session active. Downloads now use your Microsoft session"
+                " — no cookie exports needed."
+            )
+        except Exception as e:
+            await message.reply(
+                f"⚠️ Logged in and saved, but refreshing this run failed: {e}"
+            )
+
+    @app.on_message(filters.command("login") & filters.private & owner_only)
+    async def handle_login(client: Client, message: Message):
+        await _do_login(client, message)
+
+    @app.on_message(
+        filters.regex("^🔑 Microsoft Login$") & filters.private & owner_only
+    )
+    async def handle_login_button(client: Client, message: Message):
+        await _do_login(client, message)
+
     @app.on_message(filters.command("topics") & filters.private & owner_only)
     async def handle_topics(client: Client, message: Message):
         subjects = scanner.load_subjects()
