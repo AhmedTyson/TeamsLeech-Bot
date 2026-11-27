@@ -143,6 +143,7 @@ MANAGE_FIELDS: list[tuple[str, str]] = [
     ("doctor", "Doctor"),
     ("subj_kw", "Subject keys"),
     ("doc_kw", "Doctor keys"),
+    ("kind", "Type (lecture/section)"),
 ]
 
 
@@ -164,4 +165,3 @@ def build_manage_fields(idx: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⬅️ Back", callback_data=f"mng:sel:{idx}")
     ])
     return InlineKeyboardMarkup(buttons)
-
