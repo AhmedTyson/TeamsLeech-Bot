@@ -29,6 +29,16 @@ def test_parse_tunnel_url_absent():
     assert bl.parse_tunnel_url("https://example.com/not-a-tunnel") is None
 
 
+def test_parse_tunnel_url_localhost_run():
+    text = (
+        "Welcome to localhost.run!\n"
+        "abc123.lhr.life tunneled with tls termination,"
+        " https://abc123.lhr.life\r\n"
+    )
+    assert bl.parse_tunnel_url(text, bl.LHR_URL_RE) == "https://abc123.lhr.life"
+    assert bl.parse_tunnel_url("no url here", bl.LHR_URL_RE) is None
+
+
 def test_filter_session_cookies_keeps_auth_domains():
     cookies = [
         {"name": "FedAuth", "value": "x", "domain": "tenant.sharepoint.com"},
@@ -242,6 +252,60 @@ async def test_run_browser_login_saves_cookies_and_dispatches():
     assert any("Session saved" in n for n in notes)
     assert context.closed is True
     assert pw_instance.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_run_browser_login_prefers_localhost_run():
+    """localhost.run answers first -> cloudflared is never spawned."""
+    context = FakeContext([
+        [{"name": "FedAuth", "value": "x", "domain": "tenant.sharepoint.com"}],
+    ])
+    context.pages = [types.SimpleNamespace(goto=_async_noop())]
+    pw_module, _ = _fake_playwright(context)
+    spawned = []
+    notes = []
+    saved = {}
+
+    async def spawn(*args, pipe_output=False):
+        spawned.append(args[0])
+        if args[0] == "ssh":
+            return FakeProc([
+                "abc123.lhr.life tunneled with tls termination,"
+                " https://abc123.lhr.life\n"
+            ])
+        return FakeProc()
+
+    async def notify(text):
+        notes.append(text)
+
+    async def rotate(name, value):
+        saved[name] = value
+
+    async def dispatch(wf):
+        pass
+
+    async def healthy_local(**kwargs):
+        return True
+
+    async def healthy_public(*args, **kwargs):
+        return 200
+
+    with (
+        patch.object(bl, "_spawn", spawn),
+        patch.object(bl, "wait_for_local_origin", healthy_local),
+        patch.object(bl, "wait_for_public_tunnel", healthy_public),
+        patch.object(bl, "rotate_github_secret", rotate),
+        patch.object(bl, "dispatch_workflow", dispatch),
+        patch.dict(sys.modules, {"playwright.async_api": pw_module}),
+    ):
+        ok = await bl.run_browser_login(
+            notify=notify, timeout_minutes=1, site_url="https://tenant.sharepoint.com/"
+        )
+
+    assert ok is True
+    assert "ssh" in spawned
+    assert "cloudflared" not in spawned
+    assert any("https://abc123.lhr.life" in n for n in notes)
 
 
 @pytest.mark.asyncio

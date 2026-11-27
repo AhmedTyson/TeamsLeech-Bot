@@ -1,7 +1,8 @@
 """Remote self-login for SharePoint session cookies.
 
 Runs a headed Chromium on the runner's virtual display (Xvfb), shares it to
-the owner's phone through noVNC + a Cloudflare quick tunnel, and waits while
+the owner's phone through noVNC + a public tunnel (localhost.run over ssh,
+with a Cloudflare quick tunnel as fallback), and waits while
 the owner logs into Microsoft himself. Credentials never touch the bot: the
 remote page is the real login.microsoftonline.com, and the only thing this
 module ever reads back is the resulting session cookies. When real
@@ -54,6 +55,9 @@ KEEP_SUBSTRINGS = (
 )
 
 TUNNEL_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+# localhost.run (ssh -R) prints its URL on connect — no install, no download,
+# usually live a few seconds after the workflow starts.
+LHR_URL_RE = re.compile(r"https://[a-z0-9.-]+\.(?:lhr\.life|localhost\.run)")
 
 XVFB_DISPLAY = ":99"
 XVFB_SCREEN = "1280x800x24"
@@ -62,6 +66,7 @@ NOVNC_PORT = 6080
 NOVNC_WEB = "/usr/share/novnc"
 POLL_SECONDS = 5
 TUNNEL_WAIT_SECONDS = 45
+LHR_WAIT_SECONDS = 25
 LOCAL_HEALTH_SECONDS = 30
 PUBLIC_HEALTH_SECONDS = 90
 DEFAULT_TIMEOUT_MINUTES = 12
@@ -74,9 +79,11 @@ def generate_password() -> str:
     return secrets.token_urlsafe(6)
 
 
-def parse_tunnel_url(text: str) -> str | None:
-    """Extract the trycloudflare URL from cloudflared log output."""
-    match = TUNNEL_URL_RE.search(text)
+def parse_tunnel_url(
+    text: str, url_re: re.Pattern[str] = TUNNEL_URL_RE
+) -> str | None:
+    """Extract the public tunnel URL from tunnel log output."""
+    match = url_re.search(text)
     return match.group(0) if match else None
 
 
@@ -202,9 +209,11 @@ async def wait_for_public_tunnel(
 
 
 async def _wait_tunnel_url(
-    proc: asyncio.subprocess.Process, timeout: int = TUNNEL_WAIT_SECONDS
+    proc: asyncio.subprocess.Process,
+    url_re: re.Pattern[str] = TUNNEL_URL_RE,
+    timeout: int = TUNNEL_WAIT_SECONDS,
 ) -> str | None:
-    """Read cloudflared output until the public tunnel URL appears."""
+    """Read tunnel output until the public tunnel URL appears."""
     loop = asyncio.get_event_loop()
     deadline = loop.time() + timeout
     while loop.time() < deadline:
@@ -216,10 +225,47 @@ async def _wait_tunnel_url(
             continue
         if not line:
             return None
-        url = parse_tunnel_url(line.decode(errors="replace"))
+        url = parse_tunnel_url(line.decode(errors="replace"), url_re)
         if url:
             return url
     return None
+
+
+async def _start_tunnel() -> tuple[str, asyncio.subprocess.Process, str | None]:
+    """Start the public tunnel: localhost.run over ssh first (no download,
+    URL within seconds), cloudflared quick tunnel as fallback. Returns
+    (name, proc, public_url or None)."""
+    try:
+        ssh = await _spawn(
+            "ssh",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ServerAliveInterval=30",
+            "-R",
+            f"80:localhost:{NOVNC_PORT}",
+            "nokey@localhost.run",
+            pipe_output=True,
+        )
+        url = await _wait_tunnel_url(ssh, LHR_URL_RE, timeout=LHR_WAIT_SECONDS)
+        if url:
+            return "localhost.run", ssh, url
+        log.warning("localhost.run gave no URL; falling back to cloudflared.")
+        ssh.terminate()
+    except Exception as exc:
+        log.warning("localhost.run tunnel failed to start: %s", exc)
+    cf = await _spawn(
+        "cloudflared",
+        "tunnel",
+        "--url",
+        f"http://localhost:{NOVNC_PORT}",
+        "--no-autoupdate",
+        pipe_output=True,
+    )
+    url = await _wait_tunnel_url(cf, TUNNEL_URL_RE)
+    return "cloudflared", cf, url
 
 
 def _dead_helpers(procs: list[tuple[str, asyncio.subprocess.Process]]) -> list[str]:
@@ -324,29 +370,21 @@ async def run_browser_login(
                 ),
             )
         )
-        tunnel = await _spawn(
-            "cloudflared",
-            "tunnel",
-            "--url",
-            f"http://localhost:{NOVNC_PORT}",
-            "--no-autoupdate",
-            pipe_output=True,
-        )
-        procs.append(("cloudflared", tunnel))
-
         # Give helpers a moment, then fail loudly if any died on startup.
         await asyncio.sleep(3)
         dead = _dead_helpers(procs)
         if dead:
             raise RuntimeError(f"helper process(es) died at startup: {', '.join(dead)}")
 
-        url = await _wait_tunnel_url(tunnel)
+        tunnel_name, tunnel, url = await _start_tunnel()
+        procs.append((tunnel_name, tunnel))
         if not url:
             await notify(
                 "❌ Browser login could not start its secure link."
                 " Please tap 🖥 Browser Login again."
             )
             return False
+        log.info("Tunnel up via %s: %s", tunnel_name, url)
 
         # Health gate: the link only goes out once it actually works.
         if not await wait_for_local_origin():
@@ -369,8 +407,10 @@ async def run_browser_login(
             "🖥 **Browser login ready**\n\n"
             f"1. Open: {url}\n"
             f"2. Password: `{password}`\n"
-            "3. Log into Microsoft in the remote browser — your password and"
-            " MFA go only to Microsoft's real page, never to the bot.\n"
+            "3. Log into Microsoft in the remote browser — tick **Keep me"
+            " signed in** so the session lasts weeks, not hours. Your"
+            " password and MFA go only to Microsoft's real page, never to"
+            " the bot.\n"
             "4. Wait for the SharePoint site to load. I detect the sign-in"
             " and save the session myself.\n\n"
             f"⏳ The link stays open for up to {timeout_minutes} minutes."

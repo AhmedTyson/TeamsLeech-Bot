@@ -20,7 +20,11 @@ from teamsleech.core.constants import CHUNK_SIZE_BYTES, GRAPH_BASE_URL
 from teamsleech.core.retry import retry_tg
 from teamsleech.models.domain import Recording
 from teamsleech.services.auth import authenticate_sharepoint
-from teamsleech.services.cookies import cookie_header, load_cookies
+from teamsleech.services.cookies import (
+    cookie_header,
+    load_cookies,
+    persist_refreshed_cookies,
+)
 from teamsleech.services.graph import GraphClient
 from teamsleech.services.state import StateManager
 
@@ -164,15 +168,24 @@ class TransferService:
         sp_token: str | None,
         preauth_url: str | None = None,
     ) -> list[tuple[str, str, dict[str, str] | None]]:
-        """Ordered (label, url, headers) attempts. Graph's
-        @microsoft.graph.downloadUrl first, fetched with NO headers — it is
-        pre-authenticated (tempauth), and attaching a rejected bearer or
-        stale cookies makes SharePoint 401 a URL that needed no auth. The
-        /content redirect Location is NOT reliably pre-authenticated (seen
-        401 without tempauth), so bearer/cookie routes stay as fallbacks
-        and the bare Location stays last for OneDrive-personal-style
-        redirects."""
+        """Ordered (label, url, headers) attempts. Browser cookies first
+        when configured: tenants that reject app and bearer tokens only
+        serve the exact browser session, and the cookie attempt fetches the
+        /content redirect Location — never the pre-authenticated URL — so
+        stale cookies cannot poison a route that needed no auth. Graph's
+        @microsoft.graph.downloadUrl (tempauth) comes next, fetched with NO
+        headers; bearer routes follow, and the bare Location stays last for
+        OneDrive-personal-style redirects."""
         candidates = []
+        cookies = load_cookies(settings.sp_cookies_json)
+        if cookies:
+            candidates.append(
+                (
+                    "download.aspx (browser cookies)",
+                    download_url,
+                    {"Cookie": cookie_header(cookies)},
+                )
+            )
         if preauth_url:
             candidates.append(
                 ("Graph downloadUrl (pre-authed)", preauth_url, None)
@@ -191,15 +204,6 @@ class TransferService:
                 candidates.append(("SharePoint REST $value", api_url, bearer))
             candidates.append(("download.aspx (user token)", download_url, bearer))
 
-        cookies = load_cookies(settings.sp_cookies_json)
-        if cookies:
-            candidates.append(
-                (
-                    "download.aspx (browser cookies)",
-                    download_url,
-                    {"Cookie": cookie_header(cookies)},
-                )
-            )
         candidates.append(("download.aspx (no auth)", download_url, None))
         return candidates
 
@@ -335,6 +339,16 @@ class TransferService:
                                             await dl_cb(total_written, None)
                             if dl_cb is not None:
                                 await dl_cb(total_written, total, done=True)
+                        if label == "download.aspx (browser cookies)":
+                            # SharePoint often answers with refreshed
+                            # FedAuth/rtFa; re-saving them extends the
+                            # session for the next run.
+                            await persist_refreshed_cookies(
+                                [
+                                    {"name": c.name, "value": c.value}
+                                    for c in client.cookies.jar
+                                ]
+                            )
                         return total_written
                 except httpx.HTTPStatusError as exc:
                     failures.append(f"{label} [{exc.response.status_code}]")

@@ -110,6 +110,7 @@ class TestDownloadRecording:
     def _mock_client(self, mock_cls, graph_resp=None, dl_resp=None,
                      get_side_effect=None, stream_side_effect=None):
         mock_client = MagicMock()
+        mock_client.cookies.jar = []
         mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
         if get_side_effect is not None:
@@ -453,9 +454,12 @@ class TestDownloadRecording:
         assert events[-1] == (2048, 2048, True)
         assert events[0][0] == 1024
 
-    async def test_cookies_are_last_resort(
+    async def test_cookies_preferred_over_preauthed(
         self, transfer_service, sample_recordings, tmp_path, monkeypatch
     ):
+        """With cookies configured the browser-cookie route goes first:
+        tenants that reject bearer tokens only serve the exact browser
+        session, and the cookie route never touches the pre-authed URL."""
         from teamsleech.core.config import settings
         monkeypatch.setattr(
             settings, "sp_cookies_json", '[{"name": "FedAuth", "value": "abc"}]'
@@ -474,15 +478,16 @@ class TestDownloadRecording:
             )
             size = await transfer_service._download_recording(rec, dest)
         assert size == len(chunk)
-        # Pre-authed URL wins immediately; cookies are never sent.
+        # Cookies win immediately; the pre-authed URL is never fetched.
         assert mock_client.stream.call_count == 1
         first_call = mock_client.stream.call_args_list[0]
         assert "download.aspx" in first_call.args[1]
-        assert first_call.kwargs["headers"] is None
+        assert first_call.kwargs["headers"] == {"Cookie": "FedAuth=abc"}
 
-    async def test_preauthed_401_falls_back_to_cookies(
+    async def test_cookie_401_falls_back_to_preauthed(
         self, transfer_service, sample_recordings, tmp_path, monkeypatch
     ):
+        """Stale cookies 401 -> the pre-authed URL is tried next, bare."""
         from teamsleech.core.config import settings
         monkeypatch.setattr(
             settings, "sp_cookies_json", '[{"name": "FedAuth", "value": "stale"}]'
@@ -515,9 +520,47 @@ class TestDownloadRecording:
         assert size == len(chunk)
         assert mock_client.stream.call_count == 2
         first_call = mock_client.stream.call_args_list[0]
-        assert first_call.kwargs.get("headers") is None
+        assert first_call.kwargs["headers"] == {"Cookie": "FedAuth=stale"}
         second_call = mock_client.stream.call_args_list[1]
-        assert second_call.kwargs["headers"] == {"Cookie": "FedAuth=stale"}
+        assert second_call.kwargs.get("headers") is None
+        assert "tempauth=tok" in second_call.args[1]
+
+    async def test_cookie_success_persists_refreshed_cookies(
+        self, transfer_service, sample_recordings, tmp_path, monkeypatch
+    ):
+        """A successful cookie-route download hands the response jar's
+        refreshed cookies to the secret re-save."""
+        from teamsleech.core.config import settings
+        monkeypatch.setattr(
+            settings, "sp_cookies_json", '[{"name": "rtFa", "value": "old"}]'
+        )
+        chunk = b"x" * 1024
+        rec = sample_recordings[0]
+        dest = str(tmp_path / "t.mp4")
+        jar_cookie = MagicMock()
+        jar_cookie.name = "rtFa"
+        jar_cookie.value = "new"
+        with (
+            patch("httpx.AsyncClient") as mock_cls,
+            patch(
+                "teamsleech.services.transfer.persist_refreshed_cookies",
+                AsyncMock(return_value=["rtFa"]),
+            ) as mock_persist,
+        ):
+            mock_client = self._mock_client(
+                mock_cls,
+                get_side_effect=[
+                    self._graph_item_resp(),
+                    self._graph_redirect(),
+                ],
+                dl_resp=self._dl_resp(chunk),
+            )
+            mock_client.cookies.jar = [jar_cookie]
+            size = await transfer_service._download_recording(rec, dest)
+        assert size == len(chunk)
+        mock_persist.assert_awaited_once()
+        fresh = mock_persist.await_args.args[0]
+        assert fresh == [{"name": "rtFa", "value": "new"}]
 
     async def test_failure_hint_points_to_login_button(
         self, transfer_service, sample_recordings, tmp_path, monkeypatch
