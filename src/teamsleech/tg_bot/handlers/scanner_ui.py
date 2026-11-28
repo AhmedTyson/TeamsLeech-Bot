@@ -137,6 +137,74 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
 
     return None
 
+async def run_missing_scan(client: Client, chat_id: int, scanner, state):
+    """Scan every subject, queue only what the group hasn't seen yet.
+
+    Already-published = the oldest (next_no - 1) recordings per subject
+    (next_no is seeded/corrected with /setno). The rest is queued
+    oldest-first into the normal review checklist.
+    """
+    from teamsleech.services.missing import unpublished_in_order
+
+    await client.send_message(
+        chat_id,
+        "🗂 Scanning **all subjects** for unpublished recordings...",
+    )
+    try:
+        results = await scanner.scan_recordings(None, None, None)
+    except Exception as e:
+        await client.send_message(chat_id, f"❌ Fetch error: {e}")
+        return
+
+    subjects_list = scanner.load_subjects()
+    subj_map = {subject_key(s): s for s in subjects_list}
+
+    filtered: dict[str, list] = {}
+    skipped = 0
+    for subj in subjects_list:
+        key = subject_key(subj)
+        recs = results.get(key, [])
+        kept = unpublished_in_order(recs, subj.next_no)
+        skipped += len(recs) - len(kept)
+        if kept:
+            filtered[key] = kept
+
+    if not filtered:
+        await client.send_message(
+            chat_id,
+            "✅ Nothing unpublished found "
+            f"({skipped} already-published recording(s) skipped). "
+            "If that looks wrong, fix numbering with /setno.",
+        )
+        return
+
+    session = state.get_session(chat_id)
+    for subj_name in filtered:
+        filtered[subj_name] = videos_first(filtered[subj_name])
+    session.pending_recordings = [r for recs in filtered.values() for r in recs]
+    session.scan_label = "Unpublished (oldest first)"
+
+    from teamsleech.services.triage import prepare_session
+
+    prepare_session(session, subjects_list)
+
+    text = build_checklist_text(
+        filtered, session.scan_label, session.rename_overrides,
+        subjects=subj_map, flags=session.triage_flags,
+    )
+    text += (
+        f"\n\n_Skipped {skipped} already-published recording(s) by"
+        " /setno numbering. Check the first item per subject before"
+        " uploading._"
+    )
+    keyboard = build_checklist_keyboard(
+        session.pending_recordings,
+        session.selected_indices,
+        session.rename_overrides,
+    )
+    await client.send_message(chat_id, text, reply_markup=keyboard)
+
+
 def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManager):
     async def run_scan_and_reply(
         client: Client,
@@ -187,80 +255,13 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         await client.send_message(chat_id, text, reply_markup=keyboard)
 
-    async def run_missing_scan(client: Client, chat_id: int):
-        """Scan every subject, queue only what the group hasn't seen yet.
-
-        Already-published = the oldest (next_no - 1) recordings per subject
-        (next_no is seeded/corrected with /setno). The rest is queued
-        oldest-first into the normal review checklist.
-        """
-        from teamsleech.services.missing import unpublished_in_order
-
-        await client.send_message(
-            chat_id,
-            "🗂 Scanning **all subjects** for unpublished recordings...",
-        )
-        try:
-            results = await scanner.scan_recordings(None, None, None)
-        except Exception as e:
-            await client.send_message(chat_id, f"❌ Fetch error: {e}")
-            return
-
-        subjects_list = scanner.load_subjects()
-        subj_map = {subject_key(s): s for s in subjects_list}
-
-        filtered: dict[str, list] = {}
-        skipped = 0
-        for subj in subjects_list:
-            key = subject_key(subj)
-            recs = results.get(key, [])
-            kept = unpublished_in_order(recs, subj.next_no)
-            skipped += len(recs) - len(kept)
-            if kept:
-                filtered[key] = kept
-
-        if not filtered:
-            await client.send_message(
-                chat_id,
-                "✅ Nothing unpublished found "
-                f"({skipped} already-published recording(s) skipped). "
-                "If that looks wrong, fix numbering with /setno.",
-            )
-            return
-
-        session = state.get_session(chat_id)
-        for subj_name in filtered:
-            filtered[subj_name] = videos_first(filtered[subj_name])
-        session.pending_recordings = [r for recs in filtered.values() for r in recs]
-        session.scan_label = "Unpublished (oldest first)"
-
-        from teamsleech.services.triage import prepare_session
-
-        prepare_session(session, subjects_list)
-
-        text = build_checklist_text(
-            filtered, session.scan_label, session.rename_overrides,
-            subjects=subj_map, flags=session.triage_flags,
-        )
-        text += (
-            f"\n\n_Skipped {skipped} already-published recording(s) by"
-            " /setno numbering. Check the first item per subject before"
-            " uploading._"
-        )
-        keyboard = build_checklist_keyboard(
-            session.pending_recordings,
-            session.selected_indices,
-            session.rename_overrides,
-        )
-        await client.send_message(chat_id, text, reply_markup=keyboard)
-
     @app.on_message(
-        (filters.command("scanmissing") | filters.regex("^🗂 Scan Missing$"))
+        (filters.command("scanmissing") | filters.regex("^🗂 الناقص$") | filters.regex("^🗂 Scan Missing$"))
         & filters.private
         & owner_only
     )
     async def handle_scan_missing(client: Client, message: Message):
-        await run_missing_scan(client, message.chat.id)
+        await run_missing_scan(client, message.chat.id, scanner, state)
 
     @app.on_callback_query(filters.regex(r"^subj:") & owner_only)
     async def handle_subject_select(client: Client, cb: CallbackQuery):

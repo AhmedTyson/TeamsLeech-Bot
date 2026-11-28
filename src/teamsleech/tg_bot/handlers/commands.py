@@ -29,23 +29,16 @@ def register_commands(
     @app.on_message(filters.command("start") & filters.private & owner_only)
     async def handle_start(client: Client, message: Message):
         await message.reply(
-            "🎓 **𝗧𝗲𝗮𝗺𝘀𝗟𝗲𝗲𝗰𝗵 𝗕𝗼𝘁**\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "**𝗔𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀:**\n"
-            "🔍 `/check`   — Scan for new files & recordings\n"
-            "📚 `/subjects` — Manage your courses\n"
-            "⚙️ `/runner`   — Manage background workflow\n\n"
-            "💡 **𝗤𝘂𝗶𝗰𝗸 𝗔𝗰𝗰𝗲𝘀𝘀:**\n"
-            "• Tap a subject → pick scope (60 days default)\n"
-            "• Send a date: `2026-04-01`\n"
-            "• Send a range: `2026-04-01 to 2026-04-07`\n"
-            "• Type `today` or `this week`\n\n"
-            "_Tap_ 🔍 **Check Recordings** _below to get started!_",
+            "🎓 **TeamsLeech**\n\n"
+            "أهلاً 👋 كل اللي محتاجه زرارين:\n\n"
+            "⚙️ **الإعداد** — أول مرة بس: ربط المواضيع والترقيم خطوة بخطوة.\n"
+            "🗂 **الناقص** — بعد كده كل مرة: فحص، مراجعة، نشر.\n\n"
+            "📊 **الحالة** لو حابب تتطمن إن كل حاجة شغالة.",
             reply_markup=REPLY_KEYBOARD,
         )
 
     @app.on_message(
-        (filters.command("check") | filters.regex("^🔍 Check Recordings$"))
+        (filters.command("check") | filters.regex("^🔍 فحص بتاريخ$") | filters.regex("^🔍 Check Recordings$"))
         & filters.private
         & owner_only
     )
@@ -78,7 +71,7 @@ def register_commands(
     async def handle_runner_removed(client: Client, message: Message):
         await message.reply(
             "⚙️ Runner panel removed. Runs start on schedule or manual dispatch"
-            " in GitHub. To stop one, use 🛑 Cancel Workflow."
+            " in GitHub. To stop one, use 🛑 إيقاف."
         )
 
     async def _do_login(client: Client, message: Message):
@@ -171,13 +164,13 @@ def register_commands(
         await _do_browser_login(client, message)
 
     @app.on_message(
-        filters.regex("^🖥 Browser Login$") & filters.private & owner_only
+        (filters.regex("^🖥 تسجيل الدخول$") | filters.regex("^🖥 Browser Login$")) & filters.private & owner_only
     )
     async def handle_browser_login_button(client: Client, message: Message):
         await _do_browser_login(client, message)
 
     @app.on_message(
-        (filters.command("status") | filters.regex("^📊 Status$"))
+        (filters.command("status") | filters.regex("^📊 الحالة$") | filters.regex("^📊 Status$"))
         & filters.private
         & owner_only
     )
@@ -287,7 +280,7 @@ def register_commands(
         await message.reply(f"✅ **{subj.name}** linked to this topic.{note}")
 
     @app.on_message(
-        filters.regex("^🛑 Cancel Workflow$")
+        (filters.regex("^🛑 إيقاف$") | filters.regex("^🛑 Cancel Workflow$"))
         & filters.private
         & owner_only
     )

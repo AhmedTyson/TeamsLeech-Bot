@@ -50,7 +50,8 @@ async def test_commands_handlers(mock_scanner, mock_state, mock_discovery):
     msg = AsyncMock()
     await handlers["handle_start"](mock_client, msg)
     msg.reply.assert_called_once()
-    assert "𝗧𝗲𝗮𝗺𝘀𝗟𝗲𝗲𝗰𝗵 𝗕𝗼𝘁" in msg.reply.call_args[0][0]
+    assert "TeamsLeech" in msg.reply.call_args[0][0]
+    assert "الإعداد" in msg.reply.call_args[0][0]
     
     # Test handle_check
     msg = AsyncMock()
