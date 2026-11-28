@@ -235,6 +235,16 @@ def register_commands(
         prefix = "Sec" if subj.kind == "section" else "L"
         await message.reply(f"✅ **{subj.name}** will continue from {prefix}{n:02d}.")
 
+    @app.on_message(filters.command("link") & filters.private & owner_only)
+    async def handle_link_in_dm(client: Client, message: Message):
+        # /link only works inside a forum topic; in the DM it used to be
+        # silently ignored. Point him at the paste-the-link flow instead.
+        await message.reply(
+            "الأمر ده مكانه جوا التوبيك نفسه في الجروب، مش هنا. 😊\n"
+            "الأسهل: افتح التوبيك، انسخ لينكه (Copy link)، وابعته هنا —"
+            " وهسألك المادة دي أنهي واحدة بزرار."
+        )
+
     @app.on_message(filters.command("link") & filters.group)
     async def handle_link_topic(client: Client, message: Message):
         # Only the owner may link topics, and only inside a forum topic.
