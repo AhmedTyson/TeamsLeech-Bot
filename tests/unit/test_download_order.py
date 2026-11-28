@@ -81,4 +81,4 @@ def test_login_button_in_reply_keyboard():
     from teamsleech.tg_bot.keyboards import REPLY_KEYBOARD
 
     labels = [b.text for row in REPLY_KEYBOARD.keyboard for b in row]
-    assert "🔑 Microsoft Login" in labels
+    assert "🖥 تسجيل الدخول" in labels
