@@ -229,10 +229,10 @@ def main():
             session_ok, session_detail = await probe_sharepoint_session()
             icon = "✅" if session_ok else "⚠️"
             boot_text = (
-                "✅ Bot is live. Tap 🔍 **Check Recordings** to scan, 🗂 "
-                "**Scan Missing** for everything the group hasn't seen yet,"
-                " or 📊 **Status** anytime.\n"
-                f"{icon} SharePoint session: {session_detail}"
+                "✅ البوت شغال.\n"
+                "🗂 دوس **الناقص** عشان ينزل الجديد، أو ⚙️ **الإعداد**"
+                " لو لسه مظبطتش.\n"
+                f"{icon} الجلسة: {session_detail}"
             )
             boot_markup = REPLY_KEYBOARD
             if not session_ok:
@@ -242,8 +242,8 @@ def main():
                 )
 
                 boot_text += (
-                    "\n👉 Tap 🖥 **Browser Login** to refresh it —"
-                    " downloads fail until you do."
+                    "\n👉 دوس 🖥 **تسجيل الدخول** عشان تجددها —"
+                    " التحميل مش هيشتغل قبل كده."
                 )
                 boot_markup = InlineKeyboardMarkup([[
                     InlineKeyboardButton(
@@ -266,6 +266,31 @@ def main():
                 )
         except Exception as e:
             log.warning("Could not send boot message: %s", e)
+
+        # First-boot setup nudge: subjects without a linked topic mean
+        # publishing is not configured yet — one button opens the wizard.
+        try:
+            subjects_boot = scanner_service.load_subjects()
+            missing_links = [s for s in subjects_boot if not s.topic_id]
+            if subjects_boot and missing_links:
+                from pyrogram.types import (
+                    InlineKeyboardButton,
+                    InlineKeyboardMarkup,
+                )
+
+                await app.send_message(
+                    settings.telegram_chat_id,
+                    f"⚙️ **الإعداد ناقص** — {len(missing_links)} مادة لسه"
+                    " مترابطةش بمواضيع الجروب. دوس الزرار وهنظبطها خطوة"
+                    " خطوة:",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton(
+                            "⚙️ ابدأ الإعداد", callback_data="wiz:start"
+                        )
+                    ]]),
+                )
+        except Exception as e:
+            log.warning("Setup nudge failed: %s", e)
 
         # 5. Scheduled Auto-Check Logic (Silent Mode)
         if settings.auto_check == "1":
