@@ -122,7 +122,43 @@ async def test_cancel_workflow_cancels_runs(mock_scanner, mock_state, mock_disco
     ):
         await handlers["handle_cancel_workflow"](mock_client, msg)
     assert mock_cancel.await_count == 2
-    assert "Cancelled 2" in mock_edit.await_args.args[1]
+    assert "Stopping 2" in mock_edit.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_cancel_workflow_confirms_before_killing_own_run(
+    mock_scanner, mock_state, mock_discovery, monkeypatch
+):
+    """The confirmation edit must happen BEFORE any cancel (the bot kills
+    its own run mid-handler), and its own run must be canceled LAST."""
+    from unittest.mock import patch
+    handlers = {}
+    mock_client = MagicMock()
+    mock_client.on_message.side_effect = (
+        lambda *a, **k: (lambda f: handlers.setdefault(f.__name__, f) or f)
+    )
+    register_commands(mock_client, mock_scanner, mock_state, mock_discovery)
+    msg = AsyncMock()
+    monkeypatch.setenv("GITHUB_RUN_ID", "2")
+    with (
+        patch(
+            "teamsleech.tg_bot.handlers.commands.get_active_runs",
+            AsyncMock(return_value=[{"id": 2}, {"id": 1}]),
+        ),
+        patch(
+            "teamsleech.tg_bot.handlers.commands.cancel_run",
+            AsyncMock(),
+        ) as mock_cancel,
+        patch(
+            "teamsleech.tg_bot.handlers.commands.safe_edit_text",
+            AsyncMock(),
+        ) as mock_edit,
+    ):
+        await handlers["handle_cancel_workflow"](mock_client, msg)
+    # Own run (id=2) canceled last even though listed first.
+    assert [c.args[0] for c in mock_cancel.await_args_list] == [1, 2]
+    # Confirmation sent before the first cancel call.
+    assert "Stopping 2" in mock_edit.await_args.args[1]
 
 
 @pytest.mark.asyncio
