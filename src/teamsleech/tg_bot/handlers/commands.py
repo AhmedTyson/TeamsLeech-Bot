@@ -1,4 +1,5 @@
 import logging
+import os
 
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -304,15 +305,23 @@ def register_commands(
         if not runs:
             await safe_edit_text(notice, "💤 Runner idle — nothing to cancel.")
             return
+        # Confirm BEFORE canceling: one of these runs is the bot's own, and
+        # killing it ends this handler mid-flight, so any "done" message
+        # written after cancel_run would never send.
+        await safe_edit_text(
+            notice,
+            f"🛑 Stopping {len(runs)} run(s) — the bot will go quiet."
+            " Dispatch a new run from GitHub Actions to restart.",
+        )
+        # Cancel the bot's own run LAST so other runs are stopped first.
+        current = os.environ.get("GITHUB_RUN_ID", "")
+        ordered = sorted(runs, key=lambda r: str(r["id"]) == current)
         try:
-            for r in runs:
+            for r in ordered:
                 await cancel_run(r["id"])
         except Exception as e:
             await safe_edit_text(notice, f"❌ GitHub unreachable: {e}")
             return
-        await safe_edit_text(
-            notice, f"✅ Cancelled {len(runs)} run(s)."
-        )
 
 
 async def persist_target_chat_id(chat_id: int) -> None:
