@@ -9,10 +9,9 @@ from teamsleech.models.domain import Recording, SubjectConfig
 
 REPLY_KEYBOARD = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("🔍 Check Recordings"), KeyboardButton("📚 Subjects")],
-        [KeyboardButton("🔑 Microsoft Login"), KeyboardButton("🖥 Browser Login")],
-        [KeyboardButton("🗂 Scan Missing"), KeyboardButton("📊 Status")],
-        [KeyboardButton("🛑 Cancel Workflow")],
+        [KeyboardButton("🗂 الناقص"), KeyboardButton("⚙️ الإعداد")],
+        [KeyboardButton("🔍 فحص بتاريخ"), KeyboardButton("📊 الحالة")],
+        [KeyboardButton("🖥 تسجيل الدخول"), KeyboardButton("🛑 إيقاف")],
     ],
     resize_keyboard=True,
 )
