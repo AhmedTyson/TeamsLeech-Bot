@@ -1,9 +1,11 @@
+import asyncio
 import calendar
 import re
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
 
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -77,6 +79,21 @@ def _get_current_week_range() -> tuple[str, str]:
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
     return monday.isoformat(), sunday.isoformat()
+
+async def _send_flood_safe(client: Client, chat_id: int, text: str, **kwargs):
+    """send_message that waits out Telegram flood limits instead of dying.
+
+    A scan result that never arrives reads as the bot ignoring him, so a
+    420 FLOOD_WAIT must pause and retry, not propagate.
+    """
+    for attempt in range(4):
+        try:
+            return await client.send_message(chat_id, text, **kwargs)
+        except FloodWait as e:
+            if attempt == 3:
+                raise
+            await asyncio.sleep(e.value + 1)
+
 
 def _looks_like_date_attempt(text: str) -> bool:
     """Heuristic: the user tried to type a date/range but it didn't parse.
@@ -226,7 +243,7 @@ async def run_missing_scan(client: Client, chat_id: int, scanner, state):
         session.selected_indices,
         session.rename_overrides,
     )
-    await client.send_message(chat_id, text, reply_markup=keyboard)
+    await _send_flood_safe(client, chat_id, text, reply_markup=keyboard)
 
 
 def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManager):
@@ -277,7 +294,7 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
             else None
         )
 
-        await client.send_message(chat_id, text, reply_markup=keyboard)
+        await _send_flood_safe(client, chat_id, text, reply_markup=keyboard)
 
     @app.on_message(
         (filters.command("scanmissing") | filters.regex("^🗂 الناقص$") | filters.regex("^🗂 Scan Missing$"))
