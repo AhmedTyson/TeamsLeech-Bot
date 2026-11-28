@@ -89,7 +89,14 @@ def rig(mock_scanner):
         return wrapper
 
     client.on_callback_query.side_effect = on_cb
-    client.on_message.side_effect = lambda *a, **k: (lambda f: f)
+
+    def on_msg(*args, **kwargs):
+        def wrapper(func):
+            handlers[func.__name__] = func
+            return func
+        return wrapper
+
+    client.on_message.side_effect = on_msg
 
     register_scanner_ui(client, mock_scanner, state)
     return handlers, session, client, mock_scanner
@@ -197,6 +204,122 @@ async def test_noop_answers_only(rig):
     await handlers["handle_cal_noop"](client, cb)
     cb.answer.assert_awaited_once()
     scanner.scan_recordings.assert_not_called()
+
+
+def _msg(text):
+    m = AsyncMock()
+    m.text = text
+    m.chat = MagicMock(spec=Chat)
+    m.chat.id = 123
+    return m
+
+
+class TestTypedDatesAnytime:
+    """A typed date/range must work at any time and always get a reply."""
+
+    @pytest.mark.asyncio
+    async def test_range_without_state_scans_all_subjects(self, rig):
+        handlers, session, client, scanner = rig
+        session.date_input_pending = False
+        m = _msg("2026-11-01 to 2026-11-27")
+        await handlers["handle_date_input"](client, m)
+        scanner.scan_recordings.assert_awaited_once_with(
+            None, "2026-11-01", "2026-11-27"
+        )
+        m.reply.assert_awaited()
+        m.continue_propagation.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_range_separators(self, rig):
+        for sep in (" - ", " – ", " — ", " إلى ", " الى "):
+            handlers, session, client, scanner = rig
+            session.date_input_pending = False
+            scanner.scan_recordings.reset_mock()
+            m = _msg(f"2026-11-01{sep}2026-11-27")
+            await handlers["handle_date_input"](client, m)
+            scanner.scan_recordings.assert_awaited_once_with(
+                None, "2026-11-01", "2026-11-27"
+            )
+
+    @pytest.mark.asyncio
+    async def test_single_date_without_state(self, rig):
+        handlers, session, client, scanner = rig
+        session.date_input_pending = False
+        m = _msg("2026-11-01")
+        await handlers["handle_date_input"](client, m)
+        scanner.scan_recordings.assert_awaited_once_with(
+            None, "2026-11-01", None
+        )
+
+    @pytest.mark.asyncio
+    async def test_invalid_date_gets_error_reply(self, rig):
+        handlers, session, client, scanner = rig
+        session.date_input_pending = False
+        m = _msg("2026-13-40 to 2026-14-99")
+        await handlers["handle_date_input"](client, m)
+        scanner.scan_recordings.assert_not_called()
+        m.reply.assert_awaited_once()
+        assert m.reply.call_args.args[0].startswith("❌")
+        m.continue_propagation.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_garbled_date_gets_help_reply(self, rig):
+        handlers, session, client, scanner = rig
+        session.date_input_pending = False
+        m = _msg("2026/11/1 til 27")
+        await handlers["handle_date_input"](client, m)
+        scanner.scan_recordings.assert_not_called()
+        m.reply.assert_awaited_once()
+        assert "Could not understand" in m.reply.call_args.args[0]
+        m.continue_propagation.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_plain_text_still_propagates(self, rig):
+        handlers, session, client, scanner = rig
+        session.date_input_pending = False
+        m = _msg("hello bot")
+        await handlers["handle_date_input"](client, m)
+        m.continue_propagation.assert_called_once()
+        scanner.scan_recordings.assert_not_called()
+        m.reply.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_over_60_days_rejected_with_reply(self, rig):
+        handlers, session, client, scanner = rig
+        session.date_input_pending = True
+        m = _msg("2026-01-01 to 2026-04-01")
+        await handlers["handle_date_input"](client, m)
+        scanner.scan_recordings.assert_not_called()
+        assert "60" in m.reply.call_args.args[0]
+        # Still pending so he can retry with a smaller range.
+        assert session.date_input_pending is True
+
+    @pytest.mark.asyncio
+    async def test_pending_range_scans_subject(self, rig):
+        handlers, session, client, scanner = rig
+        session.date_input_pending = True
+        session.subject_filter = "Math"
+        m = _msg("2026-11-01 to 2026-11-27")
+        await handlers["handle_date_input"](client, m)
+        scanner.scan_recordings.assert_awaited_once_with(
+            "Math", "2026-11-01", "2026-11-27"
+        )
+        assert session.date_input_pending is False
+
+
+class TestCheckAllFlow:
+    @pytest.mark.asyncio
+    async def test_check_all_goes_to_date_step(self, rig):
+        handlers, session, client, scanner = rig
+        cb = _cb("subj:__ALL__")
+        await handlers["handle_subject_select"](client, cb)
+        assert session.date_input_pending is True
+        assert session.subject_filter is None
+        scanner.scan_recordings.assert_not_called()
+        kb = cb.message.edit_text.call_args.kwargs["reply_markup"]
+        assert any(
+            b.callback_data.startswith("cal:open:") for b in _flat(kb)
+        )
 
 
 @pytest.mark.asyncio
