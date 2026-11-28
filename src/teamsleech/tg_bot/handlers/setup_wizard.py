@@ -12,6 +12,7 @@ jargon, and auto-detected defaults instead of asking. Three steps:
 """
 
 import logging
+import re
 
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -35,17 +36,23 @@ def _prefix(subj) -> str:
     return "Sec" if subj.kind == "section" else "L"
 
 
+def _label(subj) -> str:
+    return f"{subj.name} — {subj.doctor}" if subj.doctor else subj.name
+
+
 def build_topics_text(subjects) -> str:
     lines = [
         "⚙️ **الإعداد — خطوة 1 من 3: ربط المواضيع**",
         "",
-        "افتح الجروب، ادخل على موضوع كل مادة، وابعت الأمر اللي تحت اسمها",
-        "جوا الموضوع (دوس على الأمر يتنسخ):",
+        "الطريقة الأسهل: افتح التوبيك، انسخ لينكه (Copy link)، وابعته هنا —",
+        "هسألك المادة دي أنهي واحدة، وتدوس على اسمها وخلاص.",
+        "",
+        "(طريقة تانية لو حابب: ابعت الأمر اللي تحت المادة جوا التوبيك نفسه.)",
         "",
     ]
     for s in subjects:
         status = "✅ مربوط" if s.topic_id else "❌ لسه"
-        lines.append(f"📚 **{s.name}** — {status}")
+        lines.append(f"📚 **{_label(s)}** — {status}")
         lines.append(f"`/link {s.short or s.name}`")
         lines.append("")
     linked = sum(1 for s in subjects if s.topic_id)
@@ -128,6 +135,59 @@ async def _flush_pending(chat_id: int, subjects) -> bool:
 
     await persist_subjects(subjects)
     return True
+
+
+# --- Link a topic by pasting its t.me/c link right here in the DM ---------
+
+TOPIC_LINK_RE = re.compile(r"(?:https?://)?t\.me/c/(\d+)/(\d+)(?:/\d+)?")
+
+
+def parse_topic_link(text: str) -> tuple[int, int] | None:
+    """t.me/c/<g>/<topic>[/msg] -> (group chat id -100<g>, topic id)."""
+    m = TOPIC_LINK_RE.search(text or "")
+    if not m:
+        return None
+    return int(f"-100{m.group(1)}"), int(m.group(2))
+
+
+def build_pick_subject_text() -> str:
+    return "اللينك وصل ✅\n\nالموضوع ده بتاع أنهي مادة؟ دوس على اسمها:"
+
+
+def build_pick_subject_keyboard(
+    subjects, group_id: int, topic_id: int
+) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                f"📚 {_label(s)}{' ✅' if s.topic_id == topic_id else ''}",
+                callback_data=f"wiz:linkto:{group_id}:{topic_id}:{i}",
+            )
+        ]
+        for i, s in enumerate(subjects)
+    ]
+    rows.append([InlineKeyboardButton("❌ إلغاء", callback_data="wiz:cancel")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _write_status_note(client: Client, group_id: int) -> str:
+    """Whether the bot can write in that group — membership/permissions
+    only; no test message is ever sent to the group."""
+    try:
+        me = await client.get_chat_member(group_id, "me")
+        status = str(getattr(me, "status", "")).lower()
+    except Exception:
+        return "⚠️ مش لاقي البوت جوا الجروب ده — ضيفه وخليه أدمن."
+    if any(k in status for k in ("admin", "creator", "owner")):
+        return "✅ البوت أدمن في الجروب — يقدر ينشر في الموضوع."
+    try:
+        chat = await client.get_chat(group_id)
+        can = getattr(getattr(chat, "permissions", None), "can_send_messages", None)
+    except Exception:
+        can = None
+    if can is False:
+        return "⚠️ البوت عضو بس ممنوع يكتب — خليه أدمن عشان يقدر ينشر."
+    return "✅ البوت جوا الجروب ويقدر يكتب."
 
 
 def register_setup_wizard(app: Client, scanner, state):
@@ -232,6 +292,61 @@ def register_setup_wizard(app: Client, scanner, state):
             "1️⃣ دوس **✅ Approve all & Upload** عشان يرفعهم هنا.\n"
             "2️⃣ لما الرفع يخلص دوس **📤 Publish to group** عشان ينزلهم"
             " في المواضيع.",
+        )
+
+    @app.on_message(filters.private & owner_only & filters.regex(TOPIC_LINK_RE))
+    async def handle_topic_link_paste(client: Client, message: Message):
+        parsed = parse_topic_link(message.text or "")
+        if not parsed:
+            return
+        group_id, topic_id = parsed
+        subjects = scanner.load_subjects()
+        if not subjects:
+            await message.reply("❌ مفيش مواد متظبطة لسه.")
+            return
+        await message.reply(
+            build_pick_subject_text(),
+            reply_markup=build_pick_subject_keyboard(subjects, group_id, topic_id),
+        )
+
+    @app.on_callback_query(filters.regex(r"^wiz:linkto:-?\d+:\d+:\d+$") & owner_only)
+    async def handle_wiz_linkto(client: Client, cb: CallbackQuery):
+        _, _, group_s, topic_s, idx_s = cb.data.split(":")
+        group_id, topic_id, idx = int(group_s), int(topic_s), int(idx_s)
+        subjects = scanner.load_subjects()
+        if idx >= len(subjects):
+            await safe_answer(cb, "⚠️ المادة مش موجودة.", show_alert=True)
+            return
+        subj = subjects[idx]
+        moved_from = next(
+            (s for s in subjects if s.topic_id == topic_id and s is not subj), None
+        )
+        subj.topic_id = topic_id
+        try:
+            from teamsleech.services.subjects_store import persist_subjects
+
+            await persist_subjects(subjects)
+        except Exception as e:
+            await safe_answer(cb, f"⚠️ الحفظ فشل: {e}", show_alert=True)
+            return
+        try:
+            from teamsleech.tg_bot.handlers.commands import persist_target_chat_id
+
+            await persist_target_chat_id(group_id)
+        except Exception:
+            pass
+        note = await _write_status_note(client, group_id)
+        await safe_answer(cb, "✅ اتربط")
+        moved = f"\n(كان مربوط بـ **{moved_from.name}** — اتنقل هنا)" if moved_from else ""
+        await safe_edit_text(
+            cb.message,
+            f"✅ **اتربط!**\n📚 **{_label(subj)}**\n🧵 الموضوع: `{topic_id}`{moved}\n{note}",
+        )
+        subjects = scanner.load_subjects()
+        await client.send_message(
+            cb.message.chat.id,
+            build_topics_text(subjects),
+            reply_markup=build_topics_keyboard(),
         )
 
     @app.on_callback_query(filters.regex(r"^wiz:cancel$") & owner_only)
