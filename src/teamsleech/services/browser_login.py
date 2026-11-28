@@ -1,8 +1,8 @@
 """Remote self-login for SharePoint session cookies.
 
 Runs a headed Chromium on the runner's virtual display (Xvfb), shares it to
-the owner's phone through noVNC + a public tunnel (localhost.run over ssh,
-with a Cloudflare quick tunnel as fallback), and waits while
+the owner's phone through noVNC + a free Cloudflare quick tunnel
+(trycloudflare.com, no account, no signup), and waits while
 the owner logs into Microsoft himself. Credentials never touch the bot: the
 remote page is the real login.microsoftonline.com, and the only thing this
 module ever reads back is the resulting session cookies. When real
@@ -55,9 +55,9 @@ KEEP_SUBSTRINGS = (
 )
 
 TUNNEL_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
-# localhost.run (ssh -R) prints its URL on connect — no install, no download,
-# usually live a few seconds after the workflow starts.
-LHR_URL_RE = re.compile(r"https://[a-z0-9.-]+\.(?:lhr\.life|localhost\.run)")
+# Marker proving the public URL serves OUR noVNC page, not a foreign site
+# (a tunnel service's admin/plan page can also answer 200).
+NOVNC_MARKER = "noVNC"
 
 XVFB_DISPLAY = ":99"
 XVFB_SCREEN = "1280x800x24"
@@ -66,7 +66,6 @@ NOVNC_PORT = 6080
 NOVNC_WEB = "/usr/share/novnc"
 POLL_SECONDS = 5
 TUNNEL_WAIT_SECONDS = 45
-LHR_WAIT_SECONDS = 25
 LOCAL_HEALTH_SECONDS = 30
 PUBLIC_HEALTH_SECONDS = 90
 DEFAULT_TIMEOUT_MINUTES = 12
@@ -155,15 +154,21 @@ async def _spawn(
     return await asyncio.create_subprocess_exec(*args)
 
 
-async def _http_status(url: str, timeout: float = 8.0) -> int | None:
-    """GET a URL and return its HTTP status, or None on network error."""
+async def _http_get(url: str, timeout: float = 8.0) -> tuple[int | None, str]:
+    """GET a URL; return (HTTP status, first bytes of body) or (None, "")."""
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(url, timeout=timeout)
-            return resp.status_code
+            return resp.status_code, resp.text[:4096]
     except Exception as exc:
         log.debug("health probe %s failed: %s", url, exc)
-        return None
+        return None, ""
+
+
+async def _http_status(url: str, timeout: float = 8.0) -> int | None:
+    """GET a URL and return its HTTP status, or None on network error."""
+    status, _ = await _http_get(url, timeout)
+    return status
 
 
 async def wait_for_local_origin(
@@ -188,24 +193,29 @@ async def wait_for_public_tunnel(
     tunnel_url: str,
     timeout: int = PUBLIC_HEALTH_SECONDS,
     poll_seconds: float = 3.0,
-) -> int | None:
-    """Wait until the public tunnel URL answers 200 end-to-end.
+) -> bool:
+    """Wait until the public tunnel serves OUR noVNC page end-to-end.
 
     cloudflared prints the URL before the tunnel is registered at the edge
-    (early clicks see Cloudflare 1033), and a dead origin gives a 502 — so
-    the link only goes out after this returns 200.
+    (early clicks see Cloudflare 1033), and a dead origin gives a 502. A
+    bare 200 is not enough: a wrong URL can land on a foreign page that
+    also answers 200 (a tunnel provider's admin/plan page), so the page
+    must carry the noVNC marker. The link only goes out after this passes.
     """
     url = tunnel_url.rstrip("/") + "/vnc.html"
     loop = asyncio.get_event_loop()
     deadline = loop.time() + timeout
-    last: int | None = None
     while loop.time() < deadline:
-        last = await _http_status(url)
-        log.info("Public tunnel health: %s -> %s", url, last)
-        if last == 200:
-            return last
+        status, body = await _http_get(url)
+        ours = status == 200 and NOVNC_MARKER in body
+        log.info(
+            "Public tunnel health: %s -> %s%s", url, status,
+            "" if status != 200 else (" (our viewer)" if ours else " (FOREIGN page, not our viewer)"),
+        )
+        if ours:
+            return True
         await asyncio.sleep(poll_seconds)
-    return last
+    return False
 
 
 async def _wait_tunnel_url(
@@ -232,30 +242,9 @@ async def _wait_tunnel_url(
 
 
 async def _start_tunnel() -> tuple[str, asyncio.subprocess.Process, str | None]:
-    """Start the public tunnel: localhost.run over ssh first (no download,
-    URL within seconds), cloudflared quick tunnel as fallback. Returns
-    (name, proc, public_url or None)."""
-    try:
-        ssh = await _spawn(
-            "ssh",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-            "-o",
-            "ServerAliveInterval=30",
-            "-R",
-            f"80:localhost:{NOVNC_PORT}",
-            "nokey@localhost.run",
-            pipe_output=True,
-        )
-        url = await _wait_tunnel_url(ssh, LHR_URL_RE, timeout=LHR_WAIT_SECONDS)
-        if url:
-            return "localhost.run", ssh, url
-        log.warning("localhost.run gave no URL; falling back to cloudflared.")
-        ssh.terminate()
-    except Exception as exc:
-        log.warning("localhost.run tunnel failed to start: %s", exc)
+    """Start the public tunnel: a cloudflared quick tunnel. Free, no
+    account, no signup — the only tunnel we use. Returns (name, proc,
+    public_url or None)."""
     cf = await _spawn(
         "cloudflared",
         "tunnel",
@@ -393,15 +382,13 @@ async def run_browser_login(
                 " Please tap 🖥 Browser Login again."
             )
             return False
-        public_status = await wait_for_public_tunnel(url)
-        if public_status != 200:
+        if not await wait_for_public_tunnel(url):
             await notify(
-                "❌ The login link never came online"
-                f" (last status: {public_status})."
+                "❌ The login link never came online."
                 " Please tap 🖥 Browser Login again."
             )
             return False
-        log.info("Tunnel verified live: %s returned 200.", url)
+        log.info("Tunnel verified live: %s serves our viewer.", url)
 
         await notify(
             "🖥 **Browser login ready**\n\n"

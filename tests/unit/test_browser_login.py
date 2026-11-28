@@ -29,14 +29,14 @@ def test_parse_tunnel_url_absent():
     assert bl.parse_tunnel_url("https://example.com/not-a-tunnel") is None
 
 
-def test_parse_tunnel_url_localhost_run():
+def test_parse_tunnel_url_rejects_foreign_tunnel_urls():
+    """localhost.run/lhr.life URLs (incl. its admin/plan page) must NOT parse."""
     text = (
         "Welcome to localhost.run!\n"
         "abc123.lhr.life tunneled with tls termination,"
-        " https://abc123.lhr.life\r\n"
+        " https://abc123.lhr.life https://admin.localhost.run\r\n"
     )
-    assert bl.parse_tunnel_url(text, bl.LHR_URL_RE) == "https://abc123.lhr.life"
-    assert bl.parse_tunnel_url("no url here", bl.LHR_URL_RE) is None
+    assert bl.parse_tunnel_url(text) is None
 
 
 def test_filter_session_cookies_keeps_auth_domains():
@@ -230,7 +230,7 @@ async def test_run_browser_login_saves_cookies_and_dispatches():
         return True
 
     async def healthy_public(*args, **kwargs):
-        return 200
+        return True
 
     with (
         patch.object(bl, "_spawn", _fake_spawn(["https://abc-def.trycloudflare.com\n"])),
@@ -255,8 +255,8 @@ async def test_run_browser_login_saves_cookies_and_dispatches():
 
 
 @pytest.mark.asyncio
-async def test_run_browser_login_prefers_localhost_run():
-    """localhost.run answers first -> cloudflared is never spawned."""
+async def test_run_browser_login_uses_cloudflared_only():
+    """Only cloudflared is spawned for the tunnel (free, no account)."""
     context = FakeContext([
         [{"name": "FedAuth", "value": "x", "domain": "tenant.sharepoint.com"}],
     ])
@@ -268,10 +268,10 @@ async def test_run_browser_login_prefers_localhost_run():
 
     async def spawn(*args, pipe_output=False):
         spawned.append(args[0])
-        if args[0] == "ssh":
+        if args[0] == "cloudflared":
             return FakeProc([
-                "abc123.lhr.life tunneled with tls termination,"
-                " https://abc123.lhr.life\n"
+                "2026-11-28 INF +----------------------------------------+\n"
+                "https://funny-words-123.trycloudflare.com\n"
             ])
         return FakeProc()
 
@@ -288,7 +288,7 @@ async def test_run_browser_login_prefers_localhost_run():
         return True
 
     async def healthy_public(*args, **kwargs):
-        return 200
+        return True
 
     with (
         patch.object(bl, "_spawn", spawn),
@@ -303,9 +303,9 @@ async def test_run_browser_login_prefers_localhost_run():
         )
 
     assert ok is True
-    assert "ssh" in spawned
-    assert "cloudflared" not in spawned
-    assert any("https://abc123.lhr.life" in n for n in notes)
+    assert "cloudflared" in spawned
+    assert "ssh" not in spawned
+    assert any("https://funny-words-123.trycloudflare.com" in n for n in notes)
 
 
 @pytest.mark.asyncio
@@ -346,7 +346,7 @@ async def test_run_browser_login_timeout_notifies():
         return True
 
     async def healthy_public(*args, **kwargs):
-        return 200
+        return True
 
     with (
         patch.object(bl, "_spawn", _fake_spawn(["https://x-y.trycloudflare.com\n"])),
@@ -492,16 +492,30 @@ async def test_wait_for_local_origin_never_up(respx_mock):
 
 
 @pytest.mark.asyncio
-async def test_wait_for_public_tunnel_waits_for_200(respx_mock):
+async def test_wait_for_public_tunnel_waits_for_our_page(respx_mock):
     route = respx_mock.get("https://abc.trycloudflare.com/vnc.html")
     route.side_effect = [
         __import__("httpx").Response(502),
-        __import__("httpx").Response(200),
+        __import__("httpx").Response(200, text="<html><title>noVNC</title></html>"),
     ]
-    status = await bl.wait_for_public_tunnel(
+    ok = await bl.wait_for_public_tunnel(
         "https://abc.trycloudflare.com", timeout=5, poll_seconds=0.01
     )
-    assert status == 200
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_wait_for_public_tunnel_rejects_foreign_200(respx_mock):
+    """A 200 from a foreign page (e.g. a provider's plan page) never passes."""
+    respx_mock.get("https://abc.trycloudflare.com/vnc.html").mock(
+        return_value=__import__("httpx").Response(
+            200, text="Account inactive. This organisation is inactive until you choose a plan."
+        )
+    )
+    ok = await bl.wait_for_public_tunnel(
+        "https://abc.trycloudflare.com", timeout=0.1, poll_seconds=0.01
+    )
+    assert ok is False
 
 
 @pytest.mark.asyncio
@@ -509,10 +523,10 @@ async def test_wait_for_public_tunnel_stays_broken(respx_mock):
     respx_mock.get("https://abc.trycloudflare.com/vnc.html").mock(
         return_value=__import__("httpx").Response(502)
     )
-    status = await bl.wait_for_public_tunnel(
+    ok = await bl.wait_for_public_tunnel(
         "https://abc.trycloudflare.com", timeout=0.1, poll_seconds=0.01
     )
-    assert status == 502
+    assert ok is False
 
 
 @pytest.mark.asyncio
@@ -553,7 +567,7 @@ async def test_run_browser_login_public_tunnel_failure():
         return True
 
     async def tunnel_broken(*args, **kwargs):
-        return 502
+        return False
 
     with (
         patch.object(bl, "_spawn", _fake_spawn(["https://x-y.trycloudflare.com\n"])),
