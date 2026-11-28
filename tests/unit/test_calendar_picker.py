@@ -322,6 +322,46 @@ class TestCheckAllFlow:
         )
 
 
+class TestFloodSafeSend:
+    @pytest.mark.asyncio
+    async def test_retries_after_flood_wait(self, monkeypatch):
+        from pyrogram.errors import FloodWait
+
+        from teamsleech.tg_bot.handlers import scanner_ui
+
+        sleeps = []
+
+        async def fake_sleep(seconds):
+            sleeps.append(seconds)
+
+        monkeypatch.setattr(scanner_ui.asyncio, "sleep", fake_sleep)
+        client = MagicMock()
+        client.send_message = AsyncMock(side_effect=[FloodWait(1), "sent"])
+        out = await scanner_ui._send_flood_safe(client, 123, "hi")
+        assert out == "sent"
+        assert client.send_message.await_count == 2
+        assert sleeps == [2]
+
+    @pytest.mark.asyncio
+    async def test_gives_up_after_retries(self, monkeypatch):
+        import pytest as _pytest
+        from pyrogram.errors import FloodWait
+
+        from teamsleech.tg_bot.handlers import scanner_ui
+
+        async def fake_sleep(seconds):
+            return None
+
+        monkeypatch.setattr(scanner_ui.asyncio, "sleep", fake_sleep)
+        client = MagicMock()
+        client.send_message = AsyncMock(
+            side_effect=[FloodWait(1)] * 10
+        )
+        with _pytest.raises(FloodWait):
+            await scanner_ui._send_flood_safe(client, 123, "hi")
+        assert client.send_message.await_count == 4
+
+
 @pytest.mark.asyncio
 async def test_pick_dates_button_in_choice_keyboard(rig):
     handlers, session, client, _ = rig
