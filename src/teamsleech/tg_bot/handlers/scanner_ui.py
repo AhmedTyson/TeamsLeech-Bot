@@ -78,6 +78,29 @@ def _get_current_week_range() -> tuple[str, str]:
     sunday = monday + timedelta(days=6)
     return monday.isoformat(), sunday.isoformat()
 
+def _looks_like_date_attempt(text: str) -> bool:
+    """Heuristic: the user tried to type a date/range but it didn't parse.
+
+    Used so a mistyped date always gets a helpful reply instead of silence,
+    while ordinary chat text still propagates to other handlers.
+    """
+    if re.match(r"^\d{4}\s*[-/.]\s*\d{1,2}", text):
+        return True
+    if re.match(r"^\d{1,2}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{2,4}", text):
+        return True
+    return "إلى" in text or "الى" in text
+
+
+DATE_HELP = (
+    "❌ Could not understand that date. Try:\n"
+    "• `2026-04-01`\n"
+    "• `2026-04-01 to 2026-04-07`\n"
+    "• `today`\n"
+    "• `this week`\n"
+    "• `march 2026`"
+)
+
+
 def _validate_date_range(start: str, end: str) -> tuple[bool, str]:
     try:
         s = date_type.fromisoformat(start)
@@ -106,7 +129,8 @@ def _parse_date_input(text: str) -> tuple[str, str | None, str] | None:
         )
 
     range_match = re.match(
-        r"^(\d{4}-\d{2}-\d{2})\s*(?:to|-)\s*(\d{4}-\d{2}-\d{2})$", text, re.IGNORECASE
+        r"^(\d{4}-\d{2}-\d{2})\s*(?:to|إلى|الى|–|—|-)\s*(\d{4}-\d{2}-\d{2})$",
+        text, re.IGNORECASE,
     )
     if range_match:
         ds, de = range_match.group(1), range_match.group(2)
@@ -270,26 +294,20 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         session = state.get_session(chat_id)
 
         if subject_key == "__ALL__":
-            label = "All Recordings"
-            await safe_answer(cb, "Starting scan...")
-            await safe_edit_text(
-                cb.message,
-                f"🔍 Scanning **all subjects** — {label}...",
-            )
-            await run_scan_and_reply(
-                client, chat_id, None, None, None, label
-            )
+            session.date_input_pending = True
+            session.subject_filter = None
+            prompt = "📚 **All subjects** selected.\n\n" + DATE_PROMPT
         else:
             session.date_input_pending = True
             session.subject_filter = subject_key
-
             prompt = f"📚 **{subject_key}** selected.\n\n" + DATE_PROMPT
-            await safe_edit_text(
-                cb.message,
-                prompt,
-                reply_markup=_build_date_choice_keyboard(),
-            )
-            await cb.answer()
+
+        await safe_edit_text(
+            cb.message,
+            prompt,
+            reply_markup=_build_date_choice_keyboard(),
+        )
+        await cb.answer()
 
     @app.on_callback_query(filters.regex(r"^date_btn:") & owner_only)
     async def handle_date_btn(client: Client, cb: CallbackQuery):
@@ -444,11 +462,28 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
         chat_id = message.chat.id
         session = state.get_session(chat_id)
 
-        if not session.date_input_pending:
-            message.continue_propagation()
-            return
-
         text = message.text.strip()
+
+        if not session.date_input_pending:
+            # Global fallback: a typed date works at any time, scoped to all
+            # subjects, and always gets a reply (ack or clear error).
+            parsed = _parse_date_input(text)
+            if parsed is None:
+                if _looks_like_date_attempt(text):
+                    await message.reply(DATE_HELP)
+                    return
+                message.continue_propagation()
+                return
+            ds, de, label = parsed
+            ok, err = _validate_date_range(ds, de or ds)
+            if not ok:
+                await message.reply(err)
+                return
+            await message.reply(
+                f"🔍 Scanning **All Subjects** — {label}..."
+            )
+            await run_scan_and_reply(client, chat_id, None, ds, de, label)
+            return
 
         if text.lower() == "cancel":
             session.date_input_pending = False
@@ -459,18 +494,16 @@ def register_scanner_ui(app: Client, scanner: ScannerService, state: StateManage
 
         parsed = _parse_date_input(text)
         if parsed is None:
-            await message.reply(
-                "❌ Could not understand that date. Try:\n"
-                "• `2026-04-01`\n"
-                "• `2026-04-01 to 2026-04-07`\n"
-                "• `today`\n"
-                "• `this week`\n"
-                "• `march 2026`"
-            )
+            await message.reply(DATE_HELP)
+            return
+
+        ds, de, label = parsed
+        ok, err = _validate_date_range(ds, de or ds)
+        if not ok:
+            await message.reply(err)
             return
 
         session.date_input_pending = False
-        ds, de, label = parsed
 
         await message.reply(
             f"🔍 Scanning **{session.subject_filter or 'All Subjects'}**"
